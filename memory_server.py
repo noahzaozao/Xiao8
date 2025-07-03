@@ -4,9 +4,8 @@ import json
 import uvicorn
 from langchain_core.messages import convert_to_messages
 from uuid import uuid4
-from config import MASTER_NAME, MEMORY_SERVER_PORT
+from config import get_character_data, MEMORY_SERVER_PORT
 from pydantic import BaseModel
-from config import NAME_MAPPING
 import re
 
 class HistoryRequest(BaseModel):
@@ -55,7 +54,7 @@ def process_conversation_for_renew(request: HistoryRequest, lanlan_name: str):
 @app.get("/get_recent_history/{lanlan_name}")
 def get_recent_history(lanlan_name: str):
     history = recent_history_manager.get_recent_history(lanlan_name)
-    name_mapping = NAME_MAPPING.copy()
+    _, _, _, _, name_mapping, _, _, _, _, _ = get_character_data()
     name_mapping['ai'] = lanlan_name
     result = f"开始聊天前，{lanlan_name}又在脑海内整理了近期发生的事情。\n"
     for i in history:
@@ -77,9 +76,9 @@ def get_settings(lanlan_name: str):
 @app.get("/new_dialog/{lanlan_name}")
 def new_dialog(lanlan_name: str):
     m1 = re.compile('$$.*?$$')
-    name_mapping = NAME_MAPPING.copy()
+    master_name, _, _, _, name_mapping, _, _, _, _, _ = get_character_data()
     name_mapping['ai'] = lanlan_name
-    result = f"\n========{lanlan_name}的内心活动========\n{lanlan_name}的脑海里经常想着自己和{MASTER_NAME}的事情，她记得{json.dumps(settings_manager.get_settings(lanlan_name), ensure_ascii=False)}\n\n"
+    result = f"\n========{lanlan_name}的内心活动========\n{lanlan_name}的脑海里经常想着自己和{master_name}的事情，她记得{json.dumps(settings_manager.get_settings(lanlan_name), ensure_ascii=False)}\n\n"
     result += f"开始聊天前，{lanlan_name}又在脑海内整理了近期发生的事情。\n"
     for i in recent_history_manager.get_recent_history(lanlan_name):
         if type(i.content) == str:

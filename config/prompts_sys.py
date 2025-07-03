@@ -1,4 +1,5 @@
-from config import MASTER_NAME
+from config import get_character_data
+MASTER_NAME, _, _, _, _, _, _, _, _, _ = get_character_data()
 
 gpt4_1_system = """## PERSISTENCE
 You are an agent - please keep going until the user's query is completely 

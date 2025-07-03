@@ -1,15 +1,19 @@
 import json
 from langchain_openai import ChatOpenAI
-from config import OPENROUTER_API_KEY, SETTING_PROPOSER_MODEL, SETTING_VERIFIER_MODEL, OPENROUTER_URL, SETTING_STORE, MASTER_NAME, NAME_MAPPING, lanlan_basic_config, master_basic_config
+from config import OPENROUTER_API_KEY, SETTING_PROPOSER_MODEL, SETTING_VERIFIER_MODEL, OPENROUTER_URL, get_character_data
 from config.prompts_sys import settings_extractor_prompt, settings_verifier_prompt
 
 
 class ImportantSettingsManager:
-    def __init__(self, settings_file=SETTING_STORE):
-        self.settings_file = settings_file
+    def __init__(self, settings_file=None):
+        _, _, master_basic_config, lanlan_basic_config, name_mapping, _, _, _, setting_store, _ = get_character_data()
+        self.settings_file = settings_file if settings_file is not None else setting_store
         self.proposer = ChatOpenAI(model=SETTING_PROPOSER_MODEL, base_url=OPENROUTER_URL, api_key=OPENROUTER_API_KEY, temperature=0.5)
         self.verifier = ChatOpenAI(model=SETTING_VERIFIER_MODEL, base_url=OPENROUTER_URL, api_key=OPENROUTER_API_KEY, temperature=0.5)
         self.settings = {}
+        self.master_basic_config = master_basic_config
+        self.lanlan_basic_config = lanlan_basic_config
+        self.name_mapping = name_mapping
         self.load_settings()
 
     def load_settings(self):
@@ -18,7 +22,7 @@ class ImportantSettingsManager:
                 with open(self.settings_file[i], 'r', encoding='utf-8') as f:
                     self.settings[i] = json.load(f)
             except (FileNotFoundError, json.JSONDecodeError):
-                self.settings[i] = {i: lanlan_basic_config[i], MASTER_NAME: master_basic_config}
+                self.settings[i] = {i: self.lanlan_basic_config[i], self.name_mapping['human']: self.master_basic_config}
 
     def save_settings(self, lanlan_name):
         with open(self.settings_file[lanlan_name], 'w', encoding='utf-8') as f:
@@ -50,8 +54,7 @@ class ImportantSettingsManager:
         return old_settings
 
     def extract_and_update_settings(self, messages, lanlan_name):
-        # 从消息中提取新设定
-        name_mapping = NAME_MAPPING.copy()
+        name_mapping = self.name_mapping.copy()
         name_mapping['ai'] = lanlan_name
         prompt = settings_extractor_prompt % ("\n".join([f"{name_mapping[msg.type]} | {"\n".join([i.get("text", "|" +i["type"]+ "|") for i in msg.content])}" for msg in messages]))
         prompt = prompt.replace('{LANLAN_NAME}', lanlan_name)
@@ -82,6 +85,6 @@ class ImportantSettingsManager:
 
     def get_settings(self, lanlan_name):
         self.load_settings()
-        self.settings[lanlan_name][lanlan_name].update(lanlan_basic_config[lanlan_name])
-        self.settings[lanlan_name][MASTER_NAME].update(master_basic_config)
+        self.settings[lanlan_name][lanlan_name].update(self.lanlan_basic_config[lanlan_name])
+        self.settings[lanlan_name][self.name_mapping['human']].update(self.master_basic_config)
         return self.settings[lanlan_name]

@@ -11,3 +11,4 @@ langchain_chroma
 langchain_community
 jinja2
 dashscope
+python-multipart

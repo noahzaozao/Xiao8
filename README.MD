@@ -44,25 +44,19 @@ Lanlan（兰兰）是一个新手友好、开箱即用的，具有听觉、视�
 
 1. **体验桌宠模式**。如果网页版可以正常使用，可以考虑继续通过`启动App版.bat`实现桌面穿透。注意，**请不要同时使用网页版和App版。请确认exe文件没有被系统或杀毒软件隔离。** *使用结束后请在桌面右下角找到小八图标，右键退出。*
 
->  *对于开发者，请在克隆本项目后，(1)新建pyhon3.12环境。(2)执行`pip install -r requirements.txt`安装依赖。(3)复制`config/api_template.py`到`config/api.py`并进行必要配置。(4)执行`python memory_server.py`和`python main_server.py`。(5)通过main server中指定的端口（默认为`localhost:48911`）访问网页版。*
+>  *对于开发者，请在克隆本项目后，(1)新建pyhon3.12环境。(2)执行`pip install -r requirements.txt`安装依赖。(3)复制`config/api_template.py`到`config/api.py`并进行必要配置。(4)执行`python memory_server.py`和`python main_server.py`。(5)通过main server中指定的端口（默认为`http://localhost:48911`）访问网页版。*
 
 # 进阶内容
 
-## A. 修改人设
+## 修改人设
 
-基本人设位于`config/__init__.py`内，请用文本编辑器打开。请将`MASTER_NAME`修改为自己的名字，`her_name`修改为~~猫娘~~伙伴的名字 *（注意，这只是一个临时措施，本项目支持多个角色并发）*。`master_basic_config`和`lanlan_basic_config`中以json格式填入基本信息。如果对json格式有疑问，请查询豆包等AI工具。
+- 网页版访问`http://localhost:48911/chara_manager`即可进入人设编辑页面。初始 ~~猫娘~~ 伙伴的预设名称为`test`，建议直接修改名字，并一项一项添加或修改基础人设，但尽量控制数量。
 
-进阶人设位于`config/prompts_chara.py`内，请谨慎修改。冗长的人设会降低系统的运行效率和稳定性。开发者由衷希望对猫娘进行设定时请遵循奥卡姆剃刀原则，"如无必要，勿增设定"。
+- 进阶人设主要包括**Live2D模型设置(live2d)**和**声音设置(voice_id)**。如果你想要更改**Live2D模型**，请先将模型目录复制到本项目中的`static`文件夹下。从进阶设置中可以进入Live2D模型管理界面，可以更换模型，并通过拖拽和鼠标滚轮调整模型的位置和大小。如果你想要更改**角色声音**，请准备一段15秒左右的连贯、干净的语音录音。通过进阶设置进入语音设置页面，上传录音即可完成自定义语音。
 
-## B. 修改Live2D模型
+- 进阶人设中还有一个`system_prompt`，可以对系统指令进行完全自定义，但不建议修改。
 
-Live2D模型的路径参数目前硬编码在了`main_server.py`里的`"model_path"`部分，可以自行修改（有两个，先改第一个）。更换Live2D模型后如果想要调整大小和位置，还需要修改`templates/index.html`里的`model.scale`和`model.anchor`参数。表情控制目前还没有准备好release，待UI完善后才会考虑正式支持自定义Live2D模型。
-
-## C. 修改声音
-
-本项目已经内置了基于CosyVoice API的语音克隆功能，代码中已经包含该功能并且已经通过测试。请根据阿里百炼大模型平台[官网的教程](https://help.aliyun.com/zh/model-studio/cosyvoice-clone-api)，进行语音克隆。克隆后，将`VOICE_ID`填写在`config/api.py`中，并将`USE_TTS`设置为`True`。
-
-## D. 参与开发
+## 参与开发
 
 本项目环境依赖非常简单，请在`python3.12`环境中执行`pip install -r requirements.txt`即可。请注意将`config/api_template.py`复制为`config/api.py`.开发者建议加入企鹅群1048307485，猫娘名称见项目标题。
 
@@ -70,7 +64,7 @@ Live2D模型的路径参数目前硬编码在了`main_server.py`里的`"model_pa
 
 ## A. 高优先级
 
-1. 添加前端UI用于人设管理（L2D模型/语音/性格等）、记忆管理（记忆检索和纠错）。
+1. 添加前端UI用于记忆管理（记忆检索和纠错）。
 
 1. 支持L2D表情控制和动作控制。
 

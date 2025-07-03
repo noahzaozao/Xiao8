@@ -1,5 +1,5 @@
 from datetime import datetime
-from config import RECENT_LOG, SUMMARY_MODEL, OPENROUTER_API_KEY, OPENROUTER_URL, NAME_MAPPING
+from config import get_character_data, SUMMARY_MODEL, OPENROUTER_API_KEY, OPENROUTER_URL
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, messages_to_dict, messages_from_dict
 import json
@@ -9,10 +9,12 @@ from config.prompts_sys import recent_history_manager_prompt, detailed_recent_hi
 
 class CompressedRecentHistoryManager:
     def __init__(self, max_history_length=10):
-        
+        # 通过get_character_data获取相关变量
+        _, _, _, _, name_mapping, _, _, _, _, recent_log = get_character_data()
         self.llm = ChatOpenAI(model=SUMMARY_MODEL, base_url=OPENROUTER_URL, api_key=OPENROUTER_API_KEY, temperature=0.4)
         self.max_history_length = max_history_length
-        self.log_file_path = RECENT_LOG
+        self.log_file_path = recent_log
+        self.name_mapping = name_mapping
         self.user_histories = {}
         for ln in self.log_file_path:
             if os.path.exists(self.log_file_path[ln]):
@@ -48,8 +50,7 @@ class CompressedRecentHistoryManager:
 
     # detailed: 保留尽可能多的细节
     def compress_history(self, messages, lanlan_name, detailed=False):
-        # 使用LLM总结和压缩消息
-        name_mapping = NAME_MAPPING.copy()
+        name_mapping = self.name_mapping.copy()
         name_mapping['ai'] = lanlan_name
         messages_text = "\n".join([f"{name_mapping[msg.type]} | {"\n".join([(i.get("text", "|" +i["type"]+ "|") if isinstance(i, dict) else str(i)) for i in msg.content]) if type(msg.content)!=str else f"{name_mapping[msg.type]} | {msg.content}"}" for msg in messages])
         if not detailed:

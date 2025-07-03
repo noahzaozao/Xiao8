@@ -1,15 +1,16 @@
 from langchain_community.chat_message_histories import SQLChatMessageHistory
 from langchain_core.messages import SystemMessage
 from sqlalchemy import create_engine, text
-from config import TIME_ORIGINAL_TABLE_NAME, TIME_COMPRESSED_TABLE_NAME, TIME_STORE
+from config import TIME_ORIGINAL_TABLE_NAME, TIME_COMPRESSED_TABLE_NAME, get_character_data
 from datetime import datetime
 
 class TimeIndexedMemory:
     def __init__(self, recent_history_manager):
         self.engine = {}
         self.recent_history_manager = recent_history_manager
-        for i in TIME_STORE:
-            self.engine[i] = create_engine(f"sqlite:///{TIME_STORE[i]}")
+        _, _, _, _, _, _, _, time_store, _, _ = get_character_data()
+        for i in time_store:
+            self.engine[i] = create_engine(f"sqlite:///{time_store[i]}")
 
             _ = SQLChatMessageHistory(
                 connection=self.engine[i],

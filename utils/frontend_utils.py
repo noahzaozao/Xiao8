@@ -16,6 +16,10 @@ import re
 import regex
 import os
 import logging
+import json
+from config import CHARACTER_JSON_PATH
+from pathlib import Path
+import requests
 
 chinese_char_pattern = re.compile(r'[\u4e00-\u9fff]+')
 bracket_patterns = [re.compile(r'\(.*?\)'),
@@ -181,3 +185,49 @@ def find_models():
                 break
                 
     return found_models
+
+def load_characters(character_json_path=CHARACTER_JSON_PATH):
+    try:
+        with open(character_json_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {"主人": {}, "猫娘": {}}
+
+def save_characters(data, character_json_path=CHARACTER_JSON_PATH):
+    with open(character_json_path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+# --- 工具函数 ---
+def get_upload_policy(api_key, model_name):
+    url = "https://dashscope.aliyuncs.com/api/v1/uploads"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    params = {
+        "action": "getPolicy",
+        "model": model_name
+    }
+    response = requests.get(url, headers=headers, params=params)
+    if response.status_code != 200:
+        raise Exception(f"获取上传凭证失败: {response.text}")
+    return response.json()['data']
+
+def upload_file_to_oss(policy_data, file_path):
+    file_name = Path(file_path).name
+    key = f"{policy_data['upload_dir']}/{file_name}"
+    with open(file_path, 'rb') as file:
+        files = {
+            'OSSAccessKeyId': (None, policy_data['oss_access_key_id']),
+            'Signature': (None, policy_data['signature']),
+            'policy': (None, policy_data['policy']),
+            'x-oss-object-acl': (None, policy_data['x_oss_object_acl']),
+            'x-oss-forbid-overwrite': (None, policy_data['x_oss_forbid_overwrite']),
+            'key': (None, key),
+            'success_action_status': (None, '200'),
+            'file': (file_name, file)
+        }
+        response = requests.post(policy_data['upload_host'], files=files)
+        if response.status_code != 200:
+            raise Exception(f"上传文件失败: {response.text}")
+    return f'oss://{key}'

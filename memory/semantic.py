@@ -3,18 +3,22 @@ from typing import List
 from langchain_core.documents import Document
 from datetime import datetime
 from memory.recent import CompressedRecentHistoryManager
-from config import SEMANTIC_STORE, SEMANTIC_MODEL, OPENROUTER_API_KEY, OPENROUTER_URL, RERANKER_MODEL, NAME_MAPPING
+from config import get_character_data, SEMANTIC_MODEL, OPENROUTER_API_KEY, OPENROUTER_URL, RERANKER_MODEL
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from config.prompts_sys import semantic_manager_prompt
 import json
 
 class SemanticMemory:
-    def __init__(self, recent_history_manager: CompressedRecentHistoryManager, persist_directory = SEMANTIC_STORE):
+    def __init__(self, recent_history_manager: CompressedRecentHistoryManager, persist_directory=None):
+        # 通过get_character_data获取相关变量
+        _, _, _, _, name_mapping, _, semantic_store, _, _, _ = get_character_data()
         self.original_memory = {}
         self.compressed_memory = {}
+        if persist_directory is None:
+            persist_directory = semantic_store
         for i in persist_directory:
-            self.original_memory[i] = SemanticMemoryOriginal(persist_directory, i)
-            self.compressed_memory[i] = SemanticMemoryCompressed(persist_directory, i, recent_history_manager)
+            self.original_memory[i] = SemanticMemoryOriginal(persist_directory, i, name_mapping)
+            self.compressed_memory[i] = SemanticMemoryCompressed(persist_directory, i, recent_history_manager, name_mapping)
         self.reranker = ChatOpenAI(model=RERANKER_MODEL, base_url=OPENROUTER_URL, api_key=OPENROUTER_API_KEY, temperature=0.1)
 
     def store_conversation(self, event_id, messages, lanlan_name):
@@ -69,7 +73,7 @@ class SemanticMemory:
 
 
 class SemanticMemoryOriginal:
-    def __init__(self, persist_directory, lanlan_name):
+    def __init__(self, persist_directory, lanlan_name, name_mapping):
         self.embeddings = OpenAIEmbeddings(base_url=OPENROUTER_URL, model=SEMANTIC_MODEL, api_key=OPENROUTER_API_KEY)
         self.vectorstore = Chroma(
             collection_name="Origin",
@@ -77,12 +81,13 @@ class SemanticMemoryOriginal:
             embedding_function=self.embeddings
         )
         self.lanlan_name = lanlan_name
+        self.name_mapping = name_mapping
 
     def store_conversation(self, event_id, messages):
         # 将对话转换为文本
         texts = []
         metadatas = []
-        name_mapping = NAME_MAPPING.copy()
+        name_mapping = self.name_mapping.copy()
         name_mapping['ai'] = self.lanlan_name
 
         for message in messages:
@@ -108,8 +113,9 @@ class SemanticMemoryOriginal:
 
 
 class SemanticMemoryCompressed:
-    def __init__(self, persist_directory, lanlan_name, recent_history_manager: CompressedRecentHistoryManager):
+    def __init__(self, persist_directory, lanlan_name, recent_history_manager: CompressedRecentHistoryManager, name_mapping):
         self.lanlan_name = lanlan_name
+        self.name_mapping = name_mapping
         self.embeddings = OpenAIEmbeddings(base_url=OPENROUTER_URL, model=SEMANTIC_MODEL, api_key=OPENROUTER_API_KEY)
         self.vectorstore = Chroma(
             collection_name="Compressed",

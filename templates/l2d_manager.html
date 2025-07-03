@@ -104,6 +104,9 @@
 <script src="/static/libs/gh/RaSan147/pixi-live2d-display@v0.5.0-ls-6/dist/index.min.js"></script>
 
 <script>
+    // 注入后端传来的 lanlan_name 变量
+    const lanlanName = "{{ lanlan_name | default('') }}";
+    // 你可以在后续 JS 逻辑中用 lanlanName 变量
     (async function () {
         const app = new PIXI.Application({
             view: document.getElementById('live2d-canvas'), resizeTo: document.getElementById('live2d-container'),
@@ -133,7 +136,6 @@
                 statusDiv.innerText = "没有可保存的设置";
                 return;
             }
-
             try {
                 const preferences = {
                     model_path: currentModelInfo.path,
@@ -146,7 +148,6 @@
                         y: currentModel.scale.y
                     }
                 };
-
                 const response = await fetch('/api/preferences', {
                     method: 'POST',
                     headers: {
@@ -154,7 +155,6 @@
                     },
                     body: JSON.stringify(preferences)
                 });
-
                 const result = await response.json();
                 if (result.success) {
                     statusDiv.innerText = "设置已保存！";
@@ -169,6 +169,22 @@
             } catch (error) {
                 console.error("保存偏好失败:", error);
                 statusDiv.innerText = "保存失败，请检查网络连接";
+            }
+            // 保存 live2d 字段到后端
+            if (lanlanName && currentModelInfo && currentModelInfo.name) {
+                try {
+                    const resp = await fetch(`/api/characters/catgirl/l2d/${lanlanName}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ live2d: currentModelInfo.name })
+                    });
+                    const result = await resp.json();
+                    if (!result.success) {
+                        statusDiv.innerText += `\n后端保存live2d失败: ${result.error}`;
+                    }
+                } catch (e) {
+                    statusDiv.innerText += '\n后端保存live2d失败，请检查网络';
+                }
             }
         }
 
@@ -190,7 +206,6 @@
                             // 查找该模型的历史偏好
                             const modelPreferences = preferences.find(pref => pref.model_path === modelInfo.path);
                             await loadModel(modelInfo, modelPreferences || null); 
-                            
                             // 将该模型设为首选
                             try {
                                 await fetch('/api/preferences/set-preferred', {
@@ -203,7 +218,6 @@
                             } catch (error) {
                                 console.warn('设置首选模型失败:', error);
                             }
-                            
                             modelListContainer.style.display = 'none'; 
                             document.getElementById('changeModelBtn').innerText = '🔄️ 更换模型'; 
                         };

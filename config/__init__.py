@@ -1,39 +1,46 @@
 from config.api import *
 from config.prompts_chara import *
+import json
+import os
+
+# 读取角色配置
+CHARACTER_JSON_PATH = os.path.join(os.path.dirname(__file__), 'characters.json')
+# 默认值
+_default_master = {"档案名": "哥哥", "性别": "男", "昵称": "哥哥"}
+_default_lanlan = {"test": {"性别": "女", "年龄": 15, "昵称": "T酱, 小T", "live2d": "mao_pro", "voice_id": "", "system_prompt": lanlan_prompt}}
+
+def get_character_data():
+    try:
+        with open(CHARACTER_JSON_PATH, 'r', encoding='utf-8') as f:
+            character_data = json.load(f)
+    except FileNotFoundError:
+        print(f"⚠️ 未找到猫娘配置文件: {CHARACTER_JSON_PATH}，请检查文件是否存在。使用默认人设。")
+        character_data = {"主人": _default_master, "猫娘": _default_lanlan}
+    except Exception as e:
+        print(f"💥 读取猫娘配置文件出错: {e}，使用默认人设。")
+        character_data = {"主人": _default_master, "猫娘": _default_lanlan}
+
+    # MASTER_NAME 必须始终存在，取档案名
+    MASTER_NAME = character_data.get('主人', {}).get('档案名', _default_master['档案名'])
+    # 获取所有猫娘名
+    catgirl_names = list(character_data['猫娘'].keys()) if character_data['猫娘'] and len(character_data['猫娘']) > 0 else list(_default_lanlan.keys())
+    her_name = catgirl_names[0] if catgirl_names else ''
+    master_basic_config = character_data.get('主人', _default_master)
+    lanlan_basic_config = character_data['猫娘'] if catgirl_names else _default_lanlan
+
+    NAME_MAPPING = {'human': MASTER_NAME, 'system': "SYSTEM_MESSAGE"}
+    # 生成以猫娘名为key的各类store
+    LANLAN_PROMPT = {name: character_data['猫娘'][name].get('system_prompt', lanlan_prompt) for name in catgirl_names}
+    SEMANTIC_STORE = {name: f'memory/store/semantic_memory_{name}' for name in catgirl_names}
+    TIME_STORE = {name: f'memory/store/time_indexed_{name}' for name in catgirl_names}
+    SETTING_STORE = {name: f'memory/store/settings_{name}.json' for name in catgirl_names}
+    RECENT_LOG = {name: f'memory/store/recent_{name}.json' for name in catgirl_names}
+
+    return MASTER_NAME, her_name, master_basic_config, lanlan_basic_config, NAME_MAPPING, LANLAN_PROMPT, SEMANTIC_STORE, TIME_STORE, SETTING_STORE, RECENT_LOG
 
 TIME_ORIGINAL_TABLE_NAME = "time_indexed_original"
 TIME_COMPRESSED_TABLE_NAME = "time_indexed_compressed"
 
-
-'''
-↓↓↓ 核心人设在这里 ↓↓↓
-'''
-MASTER_NAME = '哥哥'
-her_name = "test" 
-master_basic_config = {'性别': '男', '昵称': MASTER_NAME}
-
-lanlan_basic_config = {her_name: {'性别': '女',
-                                '年龄': 15,
-                                '昵称': ["T酱", "小T"],
-                                }}
-'''
-↑↑↑ 核心人设在这里 ↑↑↑
-'''
-
-
-"""
-本项目支持多个角色，但是为了方便新手用户进行配置，临时增加了一个her_name变量来帮助批量设置初始角色的信息。
-请将her_name后的字符串修改为角色名称。
-"""
-NAME_MAPPING = {'human': MASTER_NAME, 'system': "SYSTEM_MESSAGE"}
-LANLAN_PROMPT = {her_name: lanlan_prompt}
-SEMANTIC_STORE = {her_name: f'memory/store/semantic_memory_{her_name}'}
-TIME_STORE = {her_name: f'memory/store/time_indexed_{her_name}'}
-SETTING_STORE = {her_name: f'memory/store/settings_{her_name}.json'}
-RECENT_LOG = {her_name: f'memory/store/recent_{her_name}.json'}
-
-
-import json
 try:
     with open('core_config.txt', 'r') as f:
         core_cfg = json.load(f)

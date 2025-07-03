@@ -22,7 +22,7 @@ import inflect
 import base64
 from io import BytesIO
 from PIL import Image
-from config import MASTER_NAME, MEMORY_SERVER_PORT, CORE_API_KEY, CORE_URL, CORE_MODEL, USE_TTS
+from config import get_character_data, CORE_URL, CORE_MODEL, CORE_API_KEY, MEMORY_SERVER_PORT, AUDIO_API_KEY
 from multiprocessing import Process, Queue as MPQueue
 from uuid import uuid4
 import numpy as np
@@ -62,7 +62,27 @@ class LLMSessionManager:
 
         self.lanlan_prompt = lanlan_prompt
         self.lanlan_name = lanlan_name
-        self.MODEL = CORE_MODEL
+        # 获取角色相关配置
+        (
+            self.master_name,
+            self.her_name,
+            self.master_basic_config,
+            self.lanlan_basic_config,
+            self.name_mapping,
+            self.lanlan_prompt_map,
+            self.semantic_store,
+            self.time_store,
+            self.setting_store,
+            self.recent_log
+        ) = get_character_data()
+        # 获取API相关配置
+        self.model = CORE_MODEL
+        self.core_url = CORE_URL
+        self.core_api_key = CORE_API_KEY
+        self.memory_server_port = MEMORY_SERVER_PORT
+        self.audio_api_key = AUDIO_API_KEY
+        self.voice_id = self.lanlan_basic_config[self.lanlan_name].get('voice_id', '')
+        self.use_tts = False if not self.voice_id else True
         self.generation_config = {}  # Qwen暂时不用
         self.message_cache_for_new_session = []
         self.is_preparing_new_session = False
@@ -75,9 +95,6 @@ class LLMSessionManager:
         self.pending_session = None
         self.is_hot_swap_imminent = False
         self.tts_handler_task = None
-        self.use_tts = USE_TTS
-        # 将TTS相关的导入移到外部，确保始终可用
-        
         # 热切换相关变量
         self.background_preparation_task = None
         self.final_swap_task = None
@@ -86,9 +103,9 @@ class LLMSessionManager:
 
         # 注册回调
         self.session = OmniRealtimeClient(
-            base_url=CORE_URL,
-            api_key=CORE_API_KEY,
-            model=self.MODEL,
+            base_url=self.core_url,
+            api_key=self.core_api_key,
+            model=self.model,
             voice="Chelsie",
             on_text_delta=self.handle_text_data,
             on_audio_delta=self.handle_audio_data,
@@ -188,8 +205,8 @@ class LLMSessionManager:
             if not hasattr(self, 'message_cache_for_new_session'):
                 self.message_cache_for_new_session = []
             if len(self.message_cache_for_new_session) == 0 or self.message_cache_for_new_session[-1]['role'] == self.lanlan_name:
-                self.message_cache_for_new_session.append({"role": MASTER_NAME, "text": transcript.strip()})
-            elif self.message_cache_for_new_session[-1]['role'] == MASTER_NAME:
+                self.message_cache_for_new_session.append({"role": self.master_name, "text": transcript.strip()})
+            elif self.message_cache_for_new_session[-1]['role'] == self.master_name:
                 self.message_cache_for_new_session[-1]['text'] += transcript.strip()
         # 可选：推送用户活动
         with self.lock:
@@ -215,7 +232,7 @@ class LLMSessionManager:
                 if hasattr(self, 'is_preparing_new_session') and self.is_preparing_new_session:
                     if not hasattr(self, 'message_cache_for_new_session'):
                         self.message_cache_for_new_session = []
-                    if len(self.message_cache_for_new_session) == 0 or self.message_cache_for_new_session[-1]['role']==MASTER_NAME:
+                    if len(self.message_cache_for_new_session) == 0 or self.message_cache_for_new_session[-1]['role']==self.master_name:
                         self.message_cache_for_new_session.append(
                             {"role": self.lanlan_name, "text": text})
                     elif self.message_cache_for_new_session[-1]['role'] == self.lanlan_name:
@@ -289,10 +306,9 @@ class LLMSessionManager:
         if self.use_tts:
             # 启动TTS子进程
             if self.tts_process is None or not self.tts_process.is_alive():
-                from config import AUDIO_API_KEY, VOICE_ID
                 self.tts_process = Process(
                     target=speech_synthesis_worker,
-                    args=(self.tts_request_queue, self.tts_response_queue, AUDIO_API_KEY, VOICE_ID)
+                    args=(self.tts_request_queue, self.tts_response_queue, self.audio_api_key, self.voice_id)
                 )
                 self.tts_process.daemon = True
                 self.tts_process.start()
@@ -309,9 +325,9 @@ class LLMSessionManager:
         try:
             # 获取初始 prompt
             initial_prompt = self.lanlan_prompt
-            initial_prompt += requests.get(f"http://localhost:{MEMORY_SERVER_PORT}/new_dialog/{self.lanlan_name}").text
-            logger.info("====Initial Prompt=====")
-            logger.info(initial_prompt)
+            initial_prompt += requests.get(f"http://localhost:{self.memory_server_port}/new_dialog/{self.lanlan_name}").text
+            # logger.info("====Initial Prompt=====")
+            # logger.info(initial_prompt)
 
             # 标记 session 激活
             if self.session:
@@ -361,9 +377,9 @@ class LLMSessionManager:
         try:
             # 创建新的pending session
             self.pending_session = OmniRealtimeClient(
-                base_url=CORE_URL,
-                api_key=CORE_API_KEY,
-                model=self.MODEL,
+                base_url=self.core_url,
+                api_key=self.core_api_key,
+                model=self.model,
                 voice="Chelsie",
                 on_text_delta=self.handle_text_data,
                 on_audio_delta=self.handle_audio_data,
@@ -377,7 +393,7 @@ class LLMSessionManager:
             initial_prompt = self.lanlan_prompt
             self.initial_cache_snapshot_len = len(self.message_cache_for_new_session)
             async with httpx.AsyncClient() as client:
-                resp = await client.get(f"http://localhost:{MEMORY_SERVER_PORT}/new_dialog/{self.lanlan_name}")
+                resp = await client.get(f"http://localhost:{self.memory_server_port}/new_dialog/{self.lanlan_name}")
                 initial_prompt += resp.text + self._convert_cache_to_str(self.message_cache_for_new_session)
             # print(initial_prompt)
             await self.pending_session.connect(initial_prompt, native_audio = not self.use_tts)
@@ -415,7 +431,7 @@ class LLMSessionManager:
             # 1. Send incremental cache (or a heartbeat) to PENDING session for its *second* ignored response
             if incremental_cache:
                 final_prime_text = f"SYSTEM_MESSAGE | " + self._convert_cache_to_str(incremental_cache) + \
-                    f'=======以上为前情概要。现在请{self.lanlan_name}准备，即将开始用语音与{MASTER_NAME}继续对话。\n'
+                    f'=======以上为前情概要。现在请{self.lanlan_name}准备，即将开始用语音与{self.master_name}继续对话。\n'
             else:  # Ensure session cycles a turn even if no incremental cache
                 logger.error(f"💥 Unexpected: No incremental cache found. {len(self.message_cache_for_new_session)}, {self.initial_cache_snapshot_len}")
                 final_prime_text = f"SYSTEM_MESSAGE | 系统自动报时，当前时间： " + str(
@@ -717,14 +733,14 @@ class LLMSessionManager:
 
 # TTS多进程worker函数，供主进程Process(target=...)调用
 
-def speech_synthesis_worker(request_queue, response_queue, AUDIO_API_KEY, VOICE_ID):
+def speech_synthesis_worker(request_queue, response_queue, audio_api_key, voice_id):
     import dashscope
     from dashscope.audio.tts_v2 import ResultCallback, SpeechSynthesizer, AudioFormat
     import numpy as np
     from librosa import resample
     import re
     import time
-    dashscope.api_key = AUDIO_API_KEY
+    dashscope.api_key = audio_api_key
     class Callback(ResultCallback):
         def __init__(self, response_queue):
             self.response_queue = response_queue
@@ -766,7 +782,7 @@ def speech_synthesis_worker(request_queue, response_queue, AUDIO_API_KEY, VOICE_
                         pass
                 synthesizer = SpeechSynthesizer(
                     model="cosyvoice-v2",
-                    voice=VOICE_ID,
+                    voice=voice_id,
                     speech_rate=1.1,
                     format=AudioFormat.PCM_24000HZ_MONO_16BIT,
                     callback=callback,
