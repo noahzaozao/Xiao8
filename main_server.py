@@ -291,7 +291,10 @@ async def update_catgirl(name: str, request: Request):
     characters = load_characters()
     if name not in characters.get('猫娘', {}):
         return JSONResponse({'success': False, 'error': '猫娘不存在'}, status_code=404)
-    characters['猫娘'][name] = {k: v for k, v in data.items() if k != '档案名' and v}
+    # 只更新前端传来的字段，未传字段保留原值，且不允许通过此接口修改 system_prompt
+    for k, v in data.items():
+        if k not in ('档案名') and v:
+            characters['猫娘'][name][k] = v
     save_characters(characters)
     return {"success": True}
 
