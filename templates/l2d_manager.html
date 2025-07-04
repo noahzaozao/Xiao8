@@ -122,7 +122,9 @@
             try {
                 const response = await fetch('/api/preferences');
                 if (response.ok) {
-                    return await response.json();
+                    const data = await response.json();
+                    // 确保返回的是数组，如果不是则返回空数组
+                    return Array.isArray(data) ? data : [];
                 }
             } catch (error) {
                 console.warn('加载用户偏好失败:', error);
@@ -204,7 +206,7 @@
                         btn.onclick = async () => { 
                             const preferences = await loadUserPreferences();
                             // 查找该模型的历史偏好
-                            const modelPreferences = preferences.find(pref => pref.model_path === modelInfo.path);
+                            const modelPreferences = preferences.find(pref => pref && pref.model_path === modelInfo.path);
                             await loadModel(modelInfo, modelPreferences || null); 
                             // 将该模型设为首选
                             try {
@@ -231,7 +233,7 @@
                     let modelPreferences = null;
                     
                     // 如果有保存的偏好，尝试找到对应的模型
-                    if (preferences.length > 0 && preferences[0].model_path) {
+                    if (preferences.length > 0 && preferences[0] && preferences[0].model_path) {
                         const savedModel = modelsFromServer.find(model => model.path === preferences[0].model_path);
                         console.log('查找保存的模型:', preferences[0].model_path, '找到:', savedModel);
                         if (savedModel) {
@@ -265,7 +267,9 @@
                 
                 // 应用用户偏好或使用默认设置
                 console.log('应用偏好设置:', preferences);
-                if (preferences && preferences.scale && preferences.position) {
+                if (preferences && preferences.scale && preferences.position && 
+                    preferences.scale.x !== undefined && preferences.scale.y !== undefined &&
+                    preferences.position.x !== undefined && preferences.position.y !== undefined) {
                     // 使用保存的偏好设置
                     console.log('使用保存的设置 - 缩放:', preferences.scale, '位置:', preferences.position);
                     model.scale.set(preferences.scale.x, preferences.scale.y);
@@ -337,7 +341,7 @@
                 view.lastWheelListener = onWheelScroll;
                 
                 // 保持之前的状态信息，不覆盖偏好应用信息
-                if (!preferences.scale || !preferences.position) {
+                if (!preferences || !preferences.scale || !preferences.position) {
                     statusDiv.innerText = `加载成功: ${modelInfo.name}。您可以拖拽和滚轮缩放模型。`;
                 }
                 document.getElementById('savePreferencesBtn').disabled = false;

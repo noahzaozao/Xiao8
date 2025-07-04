@@ -364,9 +364,10 @@ function showCatgirlForm(key, container) {
                     <button type="button" class="btn sm" onclick="openVoiceClone('${key || ''}')">注册声音</button>
                 </div>
                 <div class="fold">
-                    <div class="fold-toggle">system_prompt <span class="arrow">▼</span></div>
+                    <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 8px 0;">
+                    <div class="fold-toggle" style="color: #888; font-style: italic">system_prompt <span class="arrow">▼</span></div>
                     <div class="fold-content">
-                        <textarea name="system_prompt" rows="5" style="width:100%">${cat['system_prompt'] || ''}</textarea>
+                        <textarea name="system_prompt" rows="5" style="width:100%" placeholder="系统指令（谨慎修改）">${cat['system_prompt'] || ''}</textarea>
                     </div>
                 </div>
             </div>

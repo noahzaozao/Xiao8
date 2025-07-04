@@ -12,3 +12,4 @@ langchain_community
 jinja2
 dashscope
 python-multipart
+pillow

@@ -14,8 +14,6 @@ MONITOR_SERVER_PORT = 48913
 COMMENTER_SERVER_PORT = 48914
 CORE_API_KEY = ''
 AUDIO_API_KEY = OPENROUTER_API_KEY = ''
-VOICE_ID = 'longxiaochun_v2'
-USE_TTS = False
 
 # Variable for models
 ROUTER_MODEL = 'openai/gpt-4.1'
