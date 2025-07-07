@@ -41,15 +41,15 @@ function registerVoice() {
     const fileInput = document.getElementById('audioFile');
     const prefix = document.getElementById('prefix').value.trim();
     const resultDiv = document.getElementById('result');
-    resultDiv.textContent = '';
+    resultDiv.innerHTML = '';
     resultDiv.className = 'result';
     if (!fileInput.files.length || !prefix) {
-        resultDiv.textContent = '请上传音频文件并填写前缀';
+        resultDiv.innerHTML = '请上传音频文件并填写前缀';
         resultDiv.className = 'result error';
         return;
     }
     setFormDisabled(true);
-    resultDiv.textContent = '正在注册声音，请稍后！';
+    resultDiv.innerHTML = '正在注册声音，请稍后！';
     resultDiv.className = 'result';
     const formData = new FormData();
     formData.append('file', fileInput.files[0]);
@@ -99,6 +99,14 @@ function registerVoice() {
         setFormDisabled(false);
     });
 }
+
+// 监听API Key变更事件
+window.addEventListener('message', function(event) {
+    if (event.data.type === 'api_key_changed') {
+        // API Key已更改，可以在这里添加其他需要的处理逻辑
+        console.log('API Key已更改，音色注册页面已收到通知');
+    }
+});
 </script>
 </body>
 </html> 

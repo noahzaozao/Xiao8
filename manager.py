@@ -92,5 +92,32 @@ def rename_catgirl(old_name):
     save_characters(characters)
     return jsonify({'success': True})
 
+@app.route('/api/characters/clear_voice_ids', methods=['POST'])
+def clear_voice_ids():
+    """清除所有角色的本地Voice ID记录"""
+    try:
+        characters = load_characters()
+        cleared_count = 0
+        
+        # 清除所有猫娘的voice_id
+        if '猫娘' in characters:
+            for name in characters['猫娘']:
+                if 'voice_id' in characters['猫娘'][name] and characters['猫娘'][name]['voice_id']:
+                    characters['猫娘'][name]['voice_id'] = ''
+                    cleared_count += 1
+        
+        save_characters(characters)
+        
+        return jsonify({
+            'success': True, 
+            'message': f'已清除 {cleared_count} 个角色的Voice ID记录',
+            'cleared_count': cleared_count
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False, 
+            'error': f'清除Voice ID记录时出错: {str(e)}'
+        }), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

@@ -729,6 +729,45 @@ if (chatContentWrapper) {
         lanlan_name: "{{lanlan_name}}"
     };
 </script>
+<script>
+// Beacon功能 - 页面关闭时发送信号给服务器
+let beaconSent = false;
+
+function sendBeacon() {
+    if (beaconSent) return; // 防止重复发送
+    beaconSent = true;
+    
+    try {
+        // 使用navigator.sendBeacon确保信号不被拦截
+        const success = navigator.sendBeacon('/api/beacon/shutdown', JSON.stringify({
+            timestamp: Date.now(),
+            action: 'shutdown'
+        }));
+        
+        if (success) {
+            console.log('Beacon信号已发送');
+        } else {
+            console.warn('Beacon发送失败，尝试使用fetch');
+            // 备用方案：使用fetch
+            fetch('/api/beacon/shutdown', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    timestamp: Date.now(),
+                    action: 'shutdown'
+                }),
+                keepalive: true // 确保请求在页面关闭时仍能发送
+            }).catch(err => console.log('备用beacon发送失败:', err));
+        }
+    } catch (e) {
+        console.log('Beacon发送异常:', e);
+    }
+}
+
+// 监听页面关闭事件
+window.addEventListener('beforeunload', sendBeacon);
+window.addEventListener('unload', sendBeacon);
+</script>
 <script src="/static/app.js"></script>
 </body>
 </html>

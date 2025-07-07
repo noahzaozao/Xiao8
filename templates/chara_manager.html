@@ -129,7 +129,10 @@
 </head>
 <body>
 <div class="container">
-    <h2>角色管理</h2>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2 style="margin: 0;">角色管理</h2>
+        <button class="btn sm" onclick="openApiKeySettings()" style="background: #6c757d;">🔑 API Key 设置</button>
+    </div>
     <div class="section" id="master-section">
         <div class="tips">🐷主人档案（唯一）：档案名为必填项，其他均为可选项，可自行删减。</div>
         <div class="catgirl-block">
@@ -478,6 +481,38 @@ window.renameCatgirl = async function(oldName) {
     }
 }
 
+function openApiKeySettings() {
+    // 创建弹窗容器
+    let modal = document.createElement('div');
+    modal.style.position = 'fixed';
+    modal.style.left = '0';
+    modal.style.top = '0';
+    modal.style.width = '100vw';
+    modal.style.height = '100vh';
+    modal.style.background = 'rgba(0,0,0,0.4)';
+    modal.style.zIndex = '9999';
+    modal.onclick = function(e) { if (e.target === modal) document.body.removeChild(modal); };
+    // 创建iframe
+    let iframe = document.createElement('iframe');
+    iframe.src = '/api_key';
+    iframe.style.width = '600px';
+    iframe.style.height = '650px';
+    iframe.style.border = 'none';
+    iframe.style.background = '#fff';
+    iframe.style.display = 'block';
+    iframe.style.margin = '50px auto';
+    iframe.style.borderRadius = '8px';
+    // 监听关闭消息
+    window.addEventListener('message', function handler(e) {
+        if (e.data && e.data.type === 'close_api_key_settings') {
+            document.body.removeChild(modal);
+            window.removeEventListener('message', handler);
+        }
+    });
+    modal.appendChild(iframe);
+    document.body.appendChild(modal);
+}
+
 function openVoiceClone(lanlanName) {
     // 创建弹窗容器
     let modal = document.createElement('div');
@@ -493,7 +528,7 @@ function openVoiceClone(lanlanName) {
     let iframe = document.createElement('iframe');
     iframe.src = '/voice_clone?lanlan_name=' + encodeURIComponent(lanlanName);
     iframe.style.width = '600px';
-    iframe.style.height = '350px';
+    iframe.style.height = '400px';
     iframe.style.border = 'none';
     iframe.style.background = '#fff';
     iframe.style.display = 'block';
@@ -510,6 +545,53 @@ function openVoiceClone(lanlanName) {
     modal.appendChild(iframe);
     document.body.appendChild(modal);
 }
+
+// Beacon功能 - 页面关闭时发送信号给服务器
+let beaconSent = false;
+
+function sendBeacon() {
+    if (beaconSent) return; // 防止重复发送
+    beaconSent = true;
+    
+    try {
+        // 使用navigator.sendBeacon确保信号不被拦截
+        const success = navigator.sendBeacon('/api/beacon/shutdown', JSON.stringify({
+            timestamp: Date.now(),
+            action: 'shutdown'
+        }));
+        
+        if (success) {
+            console.log('Beacon信号已发送');
+        } else {
+            console.warn('Beacon发送失败，尝试使用fetch');
+            // 备用方案：使用fetch
+            fetch('/api/beacon/shutdown', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    timestamp: Date.now(),
+                    action: 'shutdown'
+                }),
+                keepalive: true // 确保请求在页面关闭时仍能发送
+            }).catch(err => console.log('备用beacon发送失败:', err));
+        }
+    } catch (e) {
+        console.log('Beacon发送异常:', e);
+    }
+}
+
+// 监听API Key变更事件
+window.addEventListener('message', function(event) {
+    if (event.data && event.data.type === 'api_key_changed') {
+        // API Key已更改，刷新角色数据以显示更新后的Voice ID状态
+        console.log('API Key已更改，正在刷新角色数据...');
+        loadCharacterData();
+    }
+});
+
+// 监听页面关闭事件
+window.addEventListener('beforeunload', sendBeacon);
+window.addEventListener('unload', sendBeacon);
 
 // 页面加载时拉取数据
 loadCharacterData();

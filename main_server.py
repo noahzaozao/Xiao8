@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import asyncio
 import json
 import traceback
-import sys
 import uuid
 import logging
 from datetime import datetime
+import webbrowser
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, File, UploadFile, Form
 from fastapi.staticfiles import StaticFiles
@@ -15,7 +17,6 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from utils.preferences import load_user_preferences, update_model_preferences, validate_model_preferences, move_model_to_top
 from utils.frontend_utils import find_models, load_characters, save_characters
 from multiprocessing import Process, Queue, Event
-import os
 import atexit
 import dashscope
 from dashscope.audio.tts_v2 import VoiceEnrollmentService
@@ -77,6 +78,20 @@ app = FastAPI()
 # relative to where the server is running (gemini-live-app/).
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# 使用 FastAPI 的 app.state 来管理启动配置
+def get_start_config():
+    """从 app.state 获取启动配置"""
+    if hasattr(app.state, 'start_config'):
+        return app.state.start_config
+    return {
+        "browser_mode_enabled": False,
+        "browser_page": "chara_manager",
+        'server': None
+    }
+
+def set_start_config(config):
+    """设置启动配置到 app.state"""
+    app.state.start_config = config
 
 # *** CORRECTED ROOT PATH TO SERVE index.html ***
 @app.get("/", response_class=HTMLResponse)
@@ -147,6 +162,61 @@ async def set_preferred_model(request: Request):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+@app.get("/api/config/core_api")
+async def get_core_config():
+    """获取核心配置（API Key）"""
+    try:
+        # 尝试从core_config.json读取
+        try:
+            with open('./config/core_config.json', 'r', encoding='utf-8') as f:
+                core_cfg = json.load(f)
+                api_key = core_cfg.get('coreApiKey', '')
+        except FileNotFoundError:
+            # 如果文件不存在，返回当前内存中的CORE_API_KEY
+            api_key = CORE_API_KEY
+        
+        return {
+            "api_key": api_key,
+            "success": True
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@app.post("/api/config/core_api")
+async def update_core_config(request: Request):
+    """更新核心配置（API Key）"""
+    try:
+        data = await request.json()
+        if not data:
+            return {"success": False, "error": "无效的数据"}
+        
+        if 'coreApiKey' not in data:
+            return {"success": False, "error": "缺少coreApiKey字段"}
+        
+        api_key = data['coreApiKey']
+        if api_key is None:
+            return {"success": False, "error": "API Key不能为null"}
+        
+        if not isinstance(api_key, str):
+            return {"success": False, "error": "API Key必须是字符串类型"}
+        
+        api_key = api_key.strip()
+        if not api_key:
+            return {"success": False, "error": "API Key不能为空"}
+        
+        # 保存到core_config.json
+        core_cfg = {"coreApiKey": api_key}
+        with open('./config/core_config.json', 'w', encoding='utf-8') as f:
+            json.dump(core_cfg, f, indent=2, ensure_ascii=False)
+        
+        return {"success": True, "message": "API Key已保存"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -161,6 +231,29 @@ async def startup_event():
             )
             sync_process[k].start()
             logger.info(f"同步连接器进程已启动 (PID: {sync_process[k].pid})")
+    
+    # 如果启用了浏览器模式，在服务器启动完成后打开浏览器
+    current_config = get_start_config()
+    print(f"启动配置: {current_config}")
+    if current_config['browser_mode_enabled']:
+        import threading
+        
+        def launch_browser_delayed():
+            # 等待一小段时间确保服务器完全启动
+            import time
+            time.sleep(1)
+            # 从 app.state 获取配置
+            config = get_start_config()
+            url = f"http://127.0.0.1:{MAIN_SERVER_PORT}/{config['browser_page']}"
+            try:
+                webbrowser.open(url)
+                logger.info(f"服务器启动完成，已打开浏览器访问: {url}")
+            except Exception as e:
+                logger.error(f"打开浏览器失败: {e}")
+        
+        # 在独立线程中启动浏览器
+        t = threading.Thread(target=launch_browser_delayed, daemon=True)
+        t.start()
 
 
 @app.on_event("shutdown")
@@ -175,6 +268,19 @@ async def shutdown_event():
             if sync_process[k].is_alive():
                 sync_process[k].terminate()  # 如果超时，强制终止
     logger.info("同步连接器进程已停止")
+    
+    # 向memory_server发送关闭信号
+    try:
+        import requests
+        from config import MEMORY_SERVER_PORT
+        shutdown_url = f"http://localhost:{MEMORY_SERVER_PORT}/shutdown"
+        response = requests.post(shutdown_url, timeout=2)
+        if response.status_code == 200:
+            logger.info("已向memory_server发送关闭信号")
+        else:
+            logger.warning(f"向memory_server发送关闭信号失败，状态码: {response.status_code}")
+    except Exception as e:
+        logger.warning(f"向memory_server发送关闭信号时出错: {e}")
 
 
 @app.websocket("/ws/{lanlan_name}")
@@ -250,6 +356,12 @@ async def chara_manager(request: Request):
 async def voice_clone_page(request: Request, lanlan_name: str = ""):
     return templates.TemplateResponse("templates/voice_clone.html", {"request": request, "lanlan_name": lanlan_name})
 
+@app.get("/api_key", response_class=HTMLResponse)
+async def api_key_settings(request: Request):
+    """API Key 设置页面"""
+    return templates.TemplateResponse("templates/api_key_settings.html", {
+        "request": request
+    })
 
 @app.get('/api/characters')
 async def get_characters():
@@ -324,6 +436,33 @@ async def update_catgirl_voice_id(name: str, request: Request):
     save_characters(characters)
     return {"success": True}
 
+@app.post('/api/characters/clear_voice_ids')
+async def clear_voice_ids():
+    """清除所有角色的本地Voice ID记录"""
+    try:
+        characters = load_characters()
+        cleared_count = 0
+        
+        # 清除所有猫娘的voice_id
+        if '猫娘' in characters:
+            for name in characters['猫娘']:
+                if 'voice_id' in characters['猫娘'][name] and characters['猫娘'][name]['voice_id']:
+                    characters['猫娘'][name]['voice_id'] = ''
+                    cleared_count += 1
+        
+        save_characters(characters)
+        
+        return JSONResponse({
+            'success': True, 
+            'message': f'已清除 {cleared_count} 个角色的Voice ID记录',
+            'cleared_count': cleared_count
+        })
+    except Exception as e:
+        return JSONResponse({
+            'success': False, 
+            'error': f'清除Voice ID记录时出错: {str(e)}'
+        }, status_code=500)
+
 @app.post('/api/tmpfiles_voice_clone')
 async def tmpfiles_voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
     import os
@@ -374,6 +513,49 @@ async def delete_catgirl(name: str):
     save_characters(characters)
     return {"success": True}
 
+@app.post('/api/beacon/shutdown')
+async def beacon_shutdown():
+    """Beacon API for graceful server shutdown"""
+    try:
+        # 从 app.state 获取配置
+        current_config = get_start_config()
+        # Only respond to beacon if server was started with --open-browser
+        if current_config['browser_mode_enabled']:
+            logger.info("收到beacon信号，准备关闭服务器...")
+            # Schedule server shutdown
+            asyncio.create_task(shutdown_server_async())
+            return {"success": True, "message": "服务器关闭信号已接收"}
+    except Exception as e:
+        logger.error(f"Beacon处理错误: {e}")
+        return {"success": False, "error": str(e)}
+
+async def shutdown_server_async():
+    """异步关闭服务器"""
+    try:
+        # Give a small delay to allow the beacon response to be sent
+        await asyncio.sleep(0.5)
+        logger.info("正在关闭服务器...")
+        
+        # 向memory_server发送关闭信号
+        try:
+            import requests
+            from config import MEMORY_SERVER_PORT
+            shutdown_url = f"http://localhost:{MEMORY_SERVER_PORT}/shutdown"
+            response = requests.post(shutdown_url, timeout=1)
+            if response.status_code == 200:
+                logger.info("已向memory_server发送关闭信号")
+            else:
+                logger.warning(f"向memory_server发送关闭信号失败，状态码: {response.status_code}")
+        except Exception as e:
+            logger.warning(f"向memory_server发送关闭信号时出错: {e}")
+        
+        # Signal the server to stop
+        current_config = get_start_config()
+        if current_config['server'] is not None:
+            current_config['server'].should_exit = True
+    except Exception as e:
+        logger.error(f"关闭服务器时出错: {e}")
+
 @app.post('/api/characters/catgirl/{old_name}/rename')
 async def rename_catgirl(old_name: str, request: Request):
     data = await request.json()
@@ -408,9 +590,19 @@ async def get_index(request: Request, lanlan_name: str):
 
 
 # --- Run the Server ---
-# (Keep your existing __main__ block)
 if __name__ == "__main__":
     import uvicorn
+    import argparse
+    import os
+    import signal
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--open-browser",   action="store_true",
+                        help="启动后是否打开浏览器并监控它")
+    parser.add_argument("--page",           type=str, default="",
+                        choices=["index", "chara_manager", "api_key"],
+                        help="要打开的页面路由（不含域名和端口）")
+    args = parser.parse_args()
 
     logger.info("--- Starting FastAPI Server ---")
     # Use os.path.abspath to show full path clearly
@@ -418,5 +610,48 @@ if __name__ == "__main__":
     logger.info(f"Serving index.html from: {os.path.abspath('templates/index.html')}")
     logger.info(f"Access UI at: http://127.0.0.1:{MAIN_SERVER_PORT} (or your network IP:{MAIN_SERVER_PORT})")
     logger.info("-----------------------------")
-    # Run from the directory containing server.py (gemini-live-app/)
-    uvicorn.run("main_server:app", host="0.0.0.0", port=MAIN_SERVER_PORT, reload=False)
+
+    # 1) 配置 UVicorn
+    config = uvicorn.Config(
+        app=app,
+        host="0.0.0.0",
+        port=MAIN_SERVER_PORT,
+        log_level="info",
+        loop="asyncio",
+        reload=False,
+    )
+    server = uvicorn.Server(config)
+    
+    # Set browser mode flag if --open-browser is used
+    if args.open_browser:
+        # 使用 FastAPI 的 app.state 来管理配置
+        start_config = {
+            "browser_mode_enabled": True,
+            "browser_page": args.page if args.page!='index' else '',
+            'server': server
+        }
+        set_start_config(start_config)
+    else:
+        # 设置默认配置
+        start_config = {
+            "browser_mode_enabled": False,
+            "browser_page": "",
+            'server': server
+        }
+        set_start_config(start_config)
+
+    print(f"启动配置: {get_start_config()}")
+
+    # 2) 定义服务器关闭回调
+    def shutdown_server():
+        logger.info("收到浏览器关闭信号，正在关闭服务器...")
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    # 4) 启动服务器（阻塞，直到 server.should_exit=True）
+    logger.info("--- Starting FastAPI Server ---")
+    logger.info(f"Access UI at: http://127.0.0.1:{MAIN_SERVER_PORT}/{args.page}")
+    
+    try:
+        server.run()
+    finally:
+        logger.info("服务器已关闭")

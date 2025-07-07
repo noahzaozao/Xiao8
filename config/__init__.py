@@ -2,6 +2,10 @@ from config.api import *
 from config.prompts_chara import *
 import json
 import os
+import logging
+
+# Setup logger for this module
+logger = logging.getLogger(__name__)
 
 # 读取角色配置
 CHARACTER_JSON_PATH = os.path.join(os.path.dirname(__file__), 'characters.json')
@@ -14,10 +18,10 @@ def get_character_data():
         with open(CHARACTER_JSON_PATH, 'r', encoding='utf-8') as f:
             character_data = json.load(f)
     except FileNotFoundError:
-        print(f"⚠️ 未找到猫娘配置文件: {CHARACTER_JSON_PATH}，请检查文件是否存在。使用默认人设。")
+        logger.info(f"未找到猫娘配置文件: {CHARACTER_JSON_PATH}，请检查文件是否存在。使用默认人设。")
         character_data = {"主人": _default_master, "猫娘": _default_lanlan}
     except Exception as e:
-        print(f"💥 读取猫娘配置文件出错: {e}，使用默认人设。")
+        logger.error(f"💥 读取猫娘配置文件出错: {e}，使用默认人设。")
         character_data = {"主人": _default_master, "猫娘": _default_lanlan}
 
     # MASTER_NAME 必须始终存在，取档案名
@@ -42,18 +46,21 @@ TIME_ORIGINAL_TABLE_NAME = "time_indexed_original"
 TIME_COMPRESSED_TABLE_NAME = "time_indexed_compressed"
 
 try:
-    with open('core_config.txt', 'r') as f:
+    with open('./config/core_config.json', 'r', encoding='utf-8') as f:
         core_cfg = json.load(f)
     if 'coreApiKey' in core_cfg and core_cfg['coreApiKey'] and core_cfg['coreApiKey'] != CORE_API_KEY:
-        print(f"Warning: coreApiKey in core_config.txt is updated. Overwriting CORE_API_KEY.")
+        logger.warning("coreApiKey in core_config.json is updated. Overwriting CORE_API_KEY.")
         CORE_API_KEY = core_cfg['coreApiKey']
 
 except FileNotFoundError:
     pass
 except Exception as e:
-    print(f"💥 Error parsing core_config.txt: {e}")
+    logger.error(f"Error parsing Core API Key: {e}")
 
 if  AUDIO_API_KEY == '':
     AUDIO_API_KEY = CORE_API_KEY
 if  OPENROUTER_API_KEY == '':
     OPENROUTER_API_KEY = CORE_API_KEY
+
+if not CORE_API_KEY.startswith('sk'):
+    logger.error("💥 请检查Core API Key是否正确，通常以'sk-'开头。请在设置页面中重新设置。")

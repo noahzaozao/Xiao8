@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from memory import CompressedRecentHistoryManager, SemanticMemory, ImportantSettingsManager, TimeIndexedMemory
 from fastapi import FastAPI
 import json
@@ -7,6 +10,12 @@ from uuid import uuid4
 from config import get_character_data, MEMORY_SERVER_PORT
 from pydantic import BaseModel
 import re
+import asyncio
+import logging
+import argparse
+
+# Setup logger
+logger = logging.getLogger(__name__)
 
 class HistoryRequest(BaseModel):
     input_history: str
@@ -18,6 +27,34 @@ recent_history_manager = CompressedRecentHistoryManager()
 semantic_manager = SemanticMemory(recent_history_manager)
 settings_manager = ImportantSettingsManager()
 time_manager = TimeIndexedMemory(recent_history_manager)
+
+# 全局变量用于控制服务器关闭
+shutdown_event = asyncio.Event()
+# 全局变量控制是否响应退出请求
+enable_shutdown = False
+
+@app.post("/shutdown")
+async def shutdown_memory_server():
+    """接收来自main_server的关闭信号"""
+    global enable_shutdown
+    if not enable_shutdown:
+        logger.warning("收到关闭信号，但当前模式不允许响应退出请求")
+        return {"status": "shutdown_disabled", "message": "当前模式不允许响应退出请求"}
+    
+    try:
+        logger.info("收到来自main_server的关闭信号")
+        shutdown_event.set()
+        return {"status": "shutdown_signal_received"}
+    except Exception as e:
+        logger.error(f"处理关闭信号时出错: {e}")
+        return {"status": "error", "message": str(e)}
+
+@app.on_event("shutdown")
+async def shutdown_event_handler():
+    """应用关闭时执行清理工作"""
+    logger.info("Memory server正在关闭...")
+    # 这里可以添加任何需要的清理工作
+    logger.info("Memory server已关闭")
 
 
 @app.post("/process/{lanlan_name}")
@@ -88,4 +125,31 @@ def new_dialog(lanlan_name: str):
     return result
 
 if __name__ == "__main__":
+    import threading
+    import time
+    import signal
+    
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description='Memory Server')
+    parser.add_argument('--enable-shutdown', action='store_true', 
+                       help='启用响应退出请求功能（仅在终端用户环境使用）')
+    args = parser.parse_args()
+    
+    # 设置全局变量
+    enable_shutdown = args.enable_shutdown
+    
+    # 创建一个后台线程来监控关闭信号
+    def monitor_shutdown():
+        while not shutdown_event.is_set():
+            time.sleep(0.1)
+        logger.info("检测到关闭信号，正在关闭memory_server...")
+        # 发送SIGTERM信号给当前进程
+        os.kill(os.getpid(), signal.SIGTERM)
+    
+    # 只有在启用关闭功能时才启动监控线程
+    if enable_shutdown:
+        shutdown_monitor = threading.Thread(target=monitor_shutdown, daemon=True)
+        shutdown_monitor.start()
+    
+    # 启动服务器
     uvicorn.run(app, host="0.0.0.0", port=MEMORY_SERVER_PORT)
