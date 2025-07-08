@@ -37,7 +37,7 @@ Lanlan（兰兰）是一个新手友好、开箱即用的，具有听觉、视�
 
 # 运行
 
-1. **获取阿里云API**。在阿里云的百炼平台[官网](https://bailian.console.aliyun.com/)注册账号。新用户实名认证后可以获取大量免费额度，记得留意页面上的"新人福利"广告。注册完成后，请访问[控制台](https://bailian.console.aliyun.com/api-key?tab=model#/api-key)获取API Key。*一键包用户*可以通过设置页里的按钮设置API Key，*开发者*也可以直接修改`config/api.key`里的内容（首次使用参考`config/）。
+1. **获取阿里云API**。在阿里云的百炼平台[官网](https://bailian.console.aliyun.com/)注册账号。新用户实名认证后可以获取大量免费额度，记得留意页面上的"新人福利"广告。注册完成后，请访问[控制台](https://bailian.console.aliyun.com/api-key?tab=model#/api-key)获取API Key。*一键包用户*可以通过设置页里的按钮设置API Key，*开发者*也可以直接修改`config/api.py`里的内容（首次配置请参考`config/api_template.py`）。
    > *注：本项目提供的都是官方链接，不含任何推广，本人无法从中获取任何收益。阿里的官网目前做的很烂，请忍耐orz*
 
 1. **体验网页版**。对于*一键包用户*，直接运行`启动网页版.bat`即可打开网页版。**请耐心等待网页刷新，并先根据提示配置API Key**。
