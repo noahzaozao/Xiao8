@@ -2,7 +2,7 @@
 开发者请将api_template.py重命名为api.py后，再自行修改配置。CORE_API_KEY为必要修改项，其他可选。
 
 AUDIO_API_KEY和OPENROUTER_API_KEY的如果留空，则会默认使用CORE_API_KEY。
-如果core_config.txt中的coreApiKey被修改，则会在启动时自动覆盖CORE_API_KEY。
+如果core_config.json中的coreApiKey被修改，则会在启动时自动覆盖CORE_API_KEY。
 """
 # Constant for servers
 OPENROUTER_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"#"https://openrouter.ai/api/v1"
