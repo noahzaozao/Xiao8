@@ -78,7 +78,7 @@ function init_app(){
                 } else if (response.type === 'status') {
                     statusElement.textContent = response.message;
                     if (response.message === `${lanlan_config.lanlan_name}失联了，即将重启！`){
-                        if (isRecording === false){
+                        if (false){//isRecording === false){
                             statusElement.textContent = `${lanlan_config.lanlan_name}正在打盹...`;
                         } else {
                             stopRecording();
