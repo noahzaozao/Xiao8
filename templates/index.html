@@ -215,10 +215,14 @@
             position: fixed;
             left: 20px;
             top: 20px;
+            z-index: 20;
+            transition: width 0.3s ease, min-width 0.3s ease, height 0.3s ease, padding 0.3s ease, opacity 0.3s;
+        }
+
+        #sidebarbox {
             display: flex;
             flex-direction: column;
             gap: 12px;
-            z-index: 20;
             min-width: 150px;
             transition: width 0.3s ease, min-width 0.3s ease, height 0.3s ease, padding 0.3s ease, opacity 0.3s;
         }
@@ -240,11 +244,15 @@
         }
 
         #sidebar.minimized .side-btn:not(#toggle-sidebar-btn) {
-            display: none;
+            /* 透明度0%，鼠标穿透 */
+            opacity: 0;
+            pointer-events: none;
         }
 
         #sidebar.minimized #status {
-            display: none;
+            /* 透明度0%，鼠标穿透 */
+            opacity: 0;
+            pointer-events: none;
         }
 
         #toggle-sidebar-btn {
@@ -267,13 +275,13 @@
             border: none;
             cursor: pointer;
             opacity: 0.8;
-            transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+            transition: background 0.2s, color 0.2s, box-shadow 0.2s, top 0.2s, right 0.2s;
         }
 
         #sidebar.minimized #toggle-sidebar-btn {
             /* 将按钮居中显示 */
-            top: 50%;
-            left: 50%;
+            top: 24px;
+            right: 0px;
             transform: translate(-50%, -50%);
         }
 
@@ -290,7 +298,10 @@
             font-size: 1rem;
             cursor: pointer;
             margin-bottom: 4px;
-            transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+            /* 透明度100%，鼠标可点击 */
+            opacity: 1;
+            pointer-events: auto;
+            transition: background 0.2s, color 0.2s, box-shadow 0.2s, opacity 0.2s;
         }
 
         .side-btn:active {
@@ -342,10 +353,15 @@
             #sidebar {
                 left: 5vw;
                 top: 5vh;
-                width: 90vw;
+                /* width: 90vw;
+                flex-direction: row;
+                flex-wrap: wrap; */
+                /*gap: 8px;*/
+            }
+
+            #sidebarbox {           
                 flex-direction: row;
                 flex-wrap: wrap;
-                /*gap: 8px;*/
             }
 
             .side-btn {
@@ -359,13 +375,15 @@
 </head>
 <body>
 <div id="sidebar">
-    <button id="toggle-sidebar-btn" title="折叠侧边栏">—</button>
-    <button id="micButton" class="side-btn">🎤 开始聊天</button>
-    <button id="muteButton" class="side-btn" disabled>⏸️ 休息一下</button>
-    <button id="screenButton" class="side-btn" disabled>🖥️ 屏幕共享</button>
-    <button id="stopButton" class="side-btn" disabled>🛑 暂停共享</button>
-    <button id="resetSessionButton" class="side-btn" disabled>👋 请她离开</button>
-    <div id="status"></div>
+    <div id="sidebarbox">
+        <button id="toggle-sidebar-btn" title="折叠侧边栏">—</button>
+        <button id="micButton" class="side-btn">🎤 开始聊天</button>
+        <button id="muteButton" class="side-btn" disabled>⏸️ 休息一下</button>
+        <button id="screenButton" class="side-btn" disabled>🖥️ 屏幕共享</button>
+        <button id="stopButton" class="side-btn" disabled>🛑 暂停共享</button>
+        <button id="resetSessionButton" class="side-btn" disabled>👋 请她离开</button>
+        <div id="status"></div>
+    </div>
 </div>
 <div id="chat-container">
     <button id="toggle-chat-btn" title="Minimize">—</button>
@@ -451,9 +469,12 @@ toggleSidebarBtn.addEventListener('click', (event) => {
     if (isMinimized) {
         toggleSidebarBtn.textContent = '+';
         toggleSidebarBtn.title = '展开侧边栏';
+        sidebar.style.width = sidebar.style.height = '48px';
     } else {
         toggleSidebarBtn.textContent = '-';
         toggleSidebarBtn.title = '折叠侧边栏';
+        sidebar.style.width = maxsidebarboxWidth + 'px';
+        sidebar.style.height = maxsidebarboxHeight + 'px';
     }
 });
 
@@ -769,5 +790,6 @@ window.addEventListener('beforeunload', sendBeacon);
 window.addEventListener('unload', sendBeacon);
 </script>
 <script src="/static/app.js"></script>
+<script src="/static/a2942.js"></script>
 </body>
 </html>
