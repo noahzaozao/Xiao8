@@ -47,9 +47,8 @@ class LLMSessionManager:
         self.tts_request_queue = MPQueue() # TTS request (多进程队列)
         self.tts_response_queue = MPQueue() # TTS response (多进程队列)
         self.tts_process = None  # TTS子进程
-        self.lock = threading.Lock()
-        with self.lock:
-            self.current_speech_id = None
+        self.lock = asyncio.Lock()  # 使用异步锁替代同步锁
+        self.current_speech_id = None
         self.inflect_parser = inflect.engine()
         self.emoji_pattern = re.compile(r'[^\w\u4e00-\u9fff\s>][^\w\u4e00-\u9fff\s]{2,}[^\w\u4e00-\u9fff\s<]', flags=re.UNICODE)
         self.emoji_pattern2 = re.compile("["
@@ -209,7 +208,7 @@ class LLMSessionManager:
             elif self.message_cache_for_new_session[-1]['role'] == self.master_name:
                 self.message_cache_for_new_session[-1]['text'] += transcript.strip()
         # 可选：推送用户活动
-        with self.lock:
+        async with self.lock:
             self.current_speech_id = str(uuid4())
 
     async def handle_output_transcript(self, text: str, is_first_chunk: bool = False):
@@ -299,8 +298,9 @@ class LLMSessionManager:
 
     async def start_session(self, websocket: WebSocket, new=False):
         self.websocket = websocket
-        if self.is_active:
-            return
+        async with self.lock:
+            if self.is_active:
+                return
 
         # new session时重置部分状态
         if self.use_tts:
@@ -332,7 +332,8 @@ class LLMSessionManager:
             # 标记 session 激活
             if self.session:
                 await self.session.connect(initial_prompt, native_audio = not self.use_tts)
-                self.is_active = True
+                async with self.lock:
+                    self.is_active = True
                 # await self.session.create_response("SYSTEM_MESSAGE | " + initial_prompt)
                 # await self.session.create_response("SYSTEM_MESSAGE | 当前时间：" + str(
                 #             datetime.now().strftime(
@@ -532,7 +533,7 @@ class LLMSessionManager:
             await asyncio.sleep(5)
 
     async def disconnected_by_server(self):
-        await self.send_status(f"{self.lanlan_name}失联了，请重启！")
+        await self.send_status(f"{self.lanlan_name}失联了，即将重启！")
         self.sync_message_queue.put({'type': 'system', 'data': 'API server disconnected'})
         await self.cleanup()
 
@@ -607,15 +608,17 @@ class LLMSessionManager:
             traceback.print_exc()
             await self.send_status(error_message)
 
-    async def end_session(self):  # 与Core API断开连接
+    async def end_session(self, by_server=False):  # 与Core API断开连接
         self._init_renew_status()
 
-        if not self.is_active:
-            return
+        async with self.lock:
+            if not self.is_active:
+                return
 
         logger.info("End Session: Starting cleanup...")
         self.sync_message_queue.put({'type': 'system', 'data': 'session end'})
-        self.is_active = False
+        async with self.lock:
+            self.is_active = False
 
         if self.message_handler_task:
             self.message_handler_task.cancel()
@@ -649,11 +652,12 @@ class LLMSessionManager:
 
         self.last_time = None
         await self.send_expressions()
-        await self.send_status(f"{self.lanlan_name}已离开。")
-        logger.info("End Session: Resources cleaned up.")
+        if not by_server:
+            await self.send_status(f"{self.lanlan_name}已离开。")
+            logger.info("End Session: Resources cleaned up.")
 
     async def cleanup(self):
-        await self.end_session()
+        await self.end_session(by_server=True)
 
     async def send_status(self, message: str): # 向前端发送status message
         try:

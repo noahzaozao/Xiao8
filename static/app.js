@@ -77,30 +77,43 @@ function init_app(){
                     }
                 } else if (response.type === 'status') {
                     statusElement.textContent = response.message;
-                    if (response.message === `${lanlan_config.lanlan_name}失联了，请重启！`){
-                        statusElement.textContent += " 10秒后自动重启...";
-                        stopRecording();
-                        if (socket.readyState === WebSocket.OPEN) {
-                            socket.send(JSON.stringify({
-                                action: 'end_session'
-                            }));
-                        }
-                        hideLive2d();
-                        micButton.disabled = true;
-                        muteButton.disabled = true;
-                        screenButton.disabled = true;
-                        stopButton.disabled = true;
-                        resetSessionButton.disabled = true;
-
-                        setTimeout(async () => {
-                            try {
-                                await startMicCapture();
-                                statusElement.textContent = `重启完成，${lanlan_config.lanlan_name}回来了！`;
-                            } catch (error) {
-                                console.error("重启语音捕捉时出错:", error);
-                                statusElement.textContent = "重启失败，请手动刷新。";
+                    if (response.message === `${lanlan_config.lanlan_name}失联了，即将重启！`){
+                        if (isRecording === false){
+                            statusElement.textContent = `${lanlan_config.lanlan_name}正在打盹...`;
+                        } else {
+                            stopRecording();
+                            if (socket.readyState === WebSocket.OPEN) {
+                                socket.send(JSON.stringify({
+                                    action: 'end_session'
+                                }));
                             }
-                        }, 10000); // 5秒后执行
+                            hideLive2d();
+                            micButton.disabled = true;
+                            muteButton.disabled = true;
+                            screenButton.disabled = true;
+                            stopButton.disabled = true;
+                            resetSessionButton.disabled = true;
+
+                            setTimeout(async () => {
+                                try {
+                                    // 发送start session事件
+                                    socket.send(JSON.stringify({
+                                        action: 'start_session',
+                                        input_type: 'audio'
+                                    }));
+                                    
+                                    // 等待2.5秒后执行后续操作
+                                    await new Promise(resolve => setTimeout(resolve, 2500));
+                                    
+                                    showLive2d();
+                                    await startMicCapture();
+                                    statusElement.textContent = `重启完成，${lanlan_config.lanlan_name}回来了！`;
+                                } catch (error) {
+                                    console.error("重启时出错:", error);
+                                    statusElement.textContent = "重启失败，请手动刷新。";
+                                }
+                            }, 7500); // 7.5秒后执行
+                        }
                     }
                 } else if (response.type === 'expression') {
                     window.LanLan1.registered_expressions[response.message]();
@@ -286,26 +299,6 @@ function init_app(){
 
             // 获取麦克风流
             if (!isRecording) statusElement.textContent = '没开麦啊喂！';
-            // const mic_stream = await navigator.mediaDevices.getUserMedia({audio: true});
-
-            // 检查音频轨道状态
-            // const audioTracks = mic_stream.getAudioTracks();
-            // console.log("音频轨道数量:", audioTracks.length);
-            // console.log("音频轨道状态:", audioTracks.map(track => ({
-            //     label: track.label,
-            //     enabled: track.enabled,
-            //     muted: track.muted,
-            //     readyState: track.readyState
-            // })));
-            //
-            // if (audioTracks.length === 0) {
-            //     console.error("没有可用的音频轨道");
-            //     statusElement.textContent = '无法访问麦克风';
-            //     return;
-            // }
-
-            // await startAudioWorklet(micStream);
-            // statusElement.textContent = isMobile() ? '正在使用摄像头...' : '正在共享屏幕...';
           } catch (err) {
             console.error(isMobile() ? '摄像头访问失败:' : '屏幕共享失败:', err);
             console.error('启动失败 →', err);
@@ -347,7 +340,7 @@ function init_app(){
         if (stopButton.disabled) {
             // 检查是否在录音状态
             if (!isRecording) {
-                statusElement.textContent = '请先开启麦克风录音！';
+                statusElement.textContent = '请先开启麦克风！';
                 return;
             }
             await startScreenSharing();

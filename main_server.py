@@ -76,7 +76,13 @@ app = FastAPI()
 # Mount the 'static' directory under the URL path '/static'
 # When a request comes in for /static/app.js, FastAPI will look for the file 'static/app.js'
 # relative to where the server is running (gemini-live-app/).
-app.mount("/static", StaticFiles(directory="static"), name="static")
+class CustomStaticFiles(StaticFiles):
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        if path.endswith('.js'):
+            response.headers['Content-Type'] = 'application/javascript'
+        return response
+app.mount("/static", CustomStaticFiles(directory="static"), name="static")
 
 # 使用 FastAPI 的 app.state 来管理启动配置
 def get_start_config():
