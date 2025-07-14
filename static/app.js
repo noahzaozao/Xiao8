@@ -462,6 +462,7 @@ function init_app(){
 
         } catch (err) {
             console.error('加载AudioWorklet失败:', err);
+            console.dir(err); // <--- 使用 console.dir()
             statusElement.textContent = 'AudioWorklet加载失败';
         }
     }

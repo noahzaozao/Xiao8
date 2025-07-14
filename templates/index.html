@@ -399,397 +399,58 @@
     <canvas id="live2d-canvas"></canvas>
 </div>
 
-<!-- Cubism 4核心库（支持Cubism 3/4模型） -->
-<script src="/static/libs/cubismcore/live2dcubismcore.min.js"></script>
-<!-- Cubism 2.1核心库（支持旧模型） -->
-<script src="/static/libs/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"></script>
-<!-- PixiJS v7 CDN -->
-<script src="/static/libs/npm/pixi.js@7/dist/pixi.min.js"></script>
-<!-- pixi-live2d-display v0.5.0-ls-6（RaSan147 fork，支持v7） -->
-<script src="/static/libs/gh/RaSan147/pixi-live2d-display@v0.5.0-ls-6/dist/index.min.js"></script>
-
-<script> // 聊天框自动滚动至底部，可最小化
-// 获取聊天容器元素
-const chatContainer = document.getElementById('chat-container');
-const chatContentWrapper = document.getElementById('chat-content-wrapper');
-const toggleBtn = document.getElementById('toggle-chat-btn');
-
-// 定义一个滚动到底部的函数
-function scrollToBottom() {
-    if (chatContentWrapper && !chatContainer.classList.contains('minimized')) {
-        chatContentWrapper.scrollTop = chatContentWrapper.scrollHeight;
-    }
-}
-
-// --- 添加新消息函数 (修正) ---
-function addNewMessage(messageHTML) {
-    if (!chatContentWrapper) return; // 安全检查
-
-    const newMessageElement = document.createElement('div');
-    newMessageElement.innerHTML = messageHTML;
-    chatContentWrapper.appendChild(newMessageElement);
-
-    // 确保在添加消息后立即滚动到底部
-    setTimeout(scrollToBottom, 10); // 短暂延迟确保DOM更新
-}
-
-// --- 切换聊天框最小化/展开状态 ---
-toggleBtn.addEventListener('click', (event) => {
-    event.stopPropagation();
-
-    const isMinimized = chatContainer.classList.toggle('minimized');
-
-    if (isMinimized) {
-        // 刚刚最小化
-        toggleBtn.textContent = '+';
-        toggleBtn.title = 'Restore';
-    } else {
-        // 刚刚还原展开
-        toggleBtn.textContent = '-';
-        toggleBtn.title = 'Minimize';
-        // 还原后滚动到底部
-        setTimeout(scrollToBottom, 300); // 给CSS过渡留出时间
-    }
-});
-
-// 让最小化后的小方块本身也能点击还原
-chatContainer.addEventListener('click', (event) => {
-    if (chatContainer.classList.contains('minimized') && event.target === chatContainer) {
-        toggleBtn.click();
-    }
-});
-
-// --- Sidebar 折叠/展开功能 ---
-const sidebar = document.getElementById('sidebar');
-const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
-
-toggleSidebarBtn.addEventListener('click', (event) => {
-    event.stopPropagation();
-    const isMinimized = sidebar.classList.toggle('minimized');
-    if (isMinimized) {
-        toggleSidebarBtn.textContent = '+';
-        toggleSidebarBtn.title = '展开侧边栏';
-        sidebar.style.width = sidebar.style.height = '48px';
-    } else {
-        toggleSidebarBtn.textContent = '-';
-        toggleSidebarBtn.title = '折叠侧边栏';
-        sidebar.style.width = maxsidebarboxWidth + 'px';
-        sidebar.style.height = maxsidebarboxHeight + 'px';
-    }
-});
-
-// 允许点击整个 sidebar 区域还原
-sidebar.addEventListener('click', (event) => {
-    if (sidebar.classList.contains('minimized') && event.target === sidebar) {
-        toggleSidebarBtn.click();
-    }
-});
-
-// --- 初始化 ---
-document.addEventListener('DOMContentLoaded', () => {
-    // 设置初始按钮状态 - 聊天框
-    if (chatContainer && toggleBtn) {
-        if (chatContainer.classList.contains('minimized')) {
-            toggleBtn.textContent = '+';
-            toggleBtn.title = 'Restore';
-        } else {
-            toggleBtn.textContent = '-';
-            toggleBtn.title = 'Minimize';
-            scrollToBottom(); // 初始加载时滚动一次
-        }
-    }
-
-    // 设置初始按钮状态 - 侧边栏
-    if (sidebar && toggleSidebarBtn) {
-        if (sidebar.classList.contains('minimized')) {
-            toggleSidebarBtn.textContent = '+';
-            toggleSidebarBtn.title = '展开侧边栏';
-        } else {
-            toggleSidebarBtn.textContent = '-';
-            toggleSidebarBtn.title = '折叠侧边栏';
-        }
-    }
-
-    // 确保自动滚动在页面加载后生效
-    scrollToBottom();
-});
-
-// 监听 DOM 变化，确保新内容添加后自动滚动
-const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-            scrollToBottom();
-        }
-    });
-});
-
-// 开始观察聊天内容区域的变化
-if (chatContentWrapper) {
-    observer.observe(chatContentWrapper, {childList: true, subtree: true});
-}
-
-</script>
-
-<script>
-
-    /*function add_controller(model) {
-        model.internalModel.coreModel.setParameterValueById('Param97', 1.0);
-    }
-
-    function remove_controller(model) {
-        model.internalModel.coreModel.setParameterValueById('Param97', 0.0);
-    }
-
-    function add_tongue(model) {
-        model.internalModel.coreModel.setParameterValueById('Param78', 1.0);
-    }
-
-    function remove_tongue(model) {
-        model.internalModel.coreModel.setParameterValueById('Param78', 0.0);
-    }
-
-    function add_tears(model) {
-        model.internalModel.coreModel.setParameterValueById('Param105', 5.0);
-    }
-
-    function remove_tears(model) {
-        model.internalModel.coreModel.setParameterValueById('Param105', 0.0);
-    }
-
-    function add_mask(model) {
-        model.internalModel.coreModel.setParameterValueById('kouzhao', 1.0);
-    }
-
-    function remove_mask(model) {
-        model.internalModel.coreModel.setParameterValueById('kouzhao', 0.0);
-    }
-
-    function add_stars(model) {
-        model.internalModel.coreModel.setParameterValueById('Param107', 1.0);
-    }
-
-    function remove_stars(model) {
-        model.internalModel.coreModel.setParameterValueById('Param107', 0.0);
-    }
-
-    function add_hearts(model) {
-        model.internalModel.coreModel.setParameterValueById('Param106', 1.0);
-    }
-
-    function remove_hearts(model) {
-        model.internalModel.coreModel.setParameterValueById('Param106', 0.0);
-    }
-
-    function add_anger(model) {
-        model.internalModel.coreModel.setParameterValueById('Param104', 1.0);
-    }
-
-    function remove_anger(model) {
-        model.internalModel.coreModel.setParameterValueById('Param104', 0.0);
-    }
-
-    function remove_all(model) {
-        model.internalModel.coreModel.setParameterValueById('Param104', 0.0);
-        model.internalModel.coreModel.setParameterValueById('Param106', 0.0);
-        model.internalModel.coreModel.setParameterValueById('Param107', 0.0);
-        model.internalModel.coreModel.setParameterValueById('kouzhao', 0.0);
-        model.internalModel.coreModel.setParameterValueById('Param105', 0.0);
-        model.internalModel.coreModel.setParameterValueById('Param78', 0.0);
-        model.internalModel.coreModel.setParameterValueById('Param97', 0.0);
-    }
-
-    let expressions_map = {
-        "手柄+": add_controller,
-        "手柄-": remove_controller,
-        "舌头+": add_tongue,
-        "舌头-": remove_tongue,
-        "眼泪+": add_tears,
-        "眼泪-": remove_tears,
-        "口罩+": add_mask,
-        "口罩-": remove_mask,
-        "星星眼+": add_stars,
-        "星星眼-": remove_stars,
-        "爱心+": add_hearts,
-        "爱心-": remove_hearts,
-        "生气+": add_anger,
-        "生气-": remove_anger,
-        "-": remove_all,
-    }*/
-
-    window.PIXI = PIXI;
-    const cubism4Model = "{{model_path}}";  
-    const {Live2DModel} = PIXI.live2d;
-    
-    // 加载用户偏好
-    async function loadUserPreferences() {
-        try {
-            const response = await fetch('/api/preferences');
-            if (response.ok) {
-                return await response.json();
-            }
-        } catch (error) {
-            console.warn('加载用户偏好失败:', error);
-        }
-        return [];
-    }
-    
-    (async function () {
-        // 帧率控制函数
-        function setupFrameSkipping() {
-            // 停止默认的ticker
-            pixi_app.ticker.stop();
-
-            // 创建一个新的ticker
-            let frameCount = 0;
-            const frameSkip = 0; // 跳1帧，即每2帧渲染一次
-
-            // 使用PIXI的shared ticker
-            PIXI.Ticker.shared.add(() => {
-                frameCount++;
-                // 当frameCount是frameSkip+1的倍数时渲染
-                // 例如，frameSkip=1时，每当frameCount为2、4、6...时渲染
-                if (frameCount % (frameSkip + 1) === 0) {
-                    pixi_app.render();
-                }
-            });
-
-            // 启动shared ticker
-            PIXI.Ticker.shared.start();
-        }
-
-
-        const pixi_app = new PIXI.Application({
-            view: document.getElementById('live2d-canvas'),
-            resizeTo: document.getElementById('live2d-container'),
-            transparent: true,
-            backgroundAlpha: 0
-        });
-        
-        // 加载用户偏好
-        const preferences = await loadUserPreferences();
-        
-        const model = await Live2DModel.from(cubism4Model);
-        if (window.innerWidth <= 768){  //移动端
-            // 应用用户偏好或使用默认值
-            if (preferences.length > 0 && preferences[0].scale && preferences[0].position) {
-                model.scale.set(preferences[0].scale.x, preferences[0].scale.y);
-                model.x = preferences[0].position.x;
-                model.y = preferences[0].position.y;
-            } else {
-                const scale = Math.min(
-                    0.5,
-                  window.innerHeight * 1.3 / 4000,
-                  window.innerWidth * 1.2 / 2000
-                );
-                model.scale.set(scale);
-                model.x = pixi_app.renderer.width*0.5;
-                model.y = pixi_app.renderer.height*0.28;
-            }
-            model.anchor.set(0.5, 0.1);
-            pixi_app.stage.addChild(model);
-            window.addEventListener('resize', () => {
-                // 更新模型位置
-                if (preferences.length > 0 && preferences[0].position) {
-                    model.x = preferences[0].position.x;
-                    model.y = preferences[0].position.y;
-                } else {
-                    model.x = pixi_app.renderer.width*0.5;
-                    model.y = pixi_app.renderer.height*0.28;
-                }
-            });
-        }
-        else {
-            // 应用用户偏好或使用默认值
-            if (preferences.length > 0 && preferences[0].scale && preferences[0].position) {
-                model.scale.set(preferences[0].scale.x, preferences[0].scale.y);
-                model.x = preferences[0].position.x;
-                model.y = preferences[0].position.y;
-            } else {
-                const scale = Math.min(
-                    0.5,
-                  (window.innerHeight * 0.75) / 7000,
-                  (window.innerWidth * 0.6) / 7000
-                );
-                model.scale.set(scale);
-                model.x = pixi_app.renderer.width;
-                model.y = pixi_app.renderer.height;
-            }
-            model.anchor.set(0.65, 0.75);
-            pixi_app.stage.addChild(model);
-
-            window.addEventListener('resize', () => {
-                // 更新模型位置
-                if (preferences.length > 0 && preferences[0].position) {
-                    model.x = preferences[0].position.x;
-                    model.y = preferences[0].position.y;
-                } else {
-                    model.x = pixi_app.renderer.width;
-                    model.y = pixi_app.renderer.height;
-                }
-            });
-            // setupFrameSkipping();
-        }
-        window.LanLan1 = window.LanLan1 || {};
-        window.LanLan1.live2dModel = model;
-        /*for (const func in expressions_map) {
-            originalFunc = expressions_map[func];
-            expressions_map[func] = (function(originalFunc, model) {
-                return function() {
-                  return originalFunc(model);
-                };
-              })(expressions_map[func], model);
-        }
-        window.LanLan1.registered_expressions = expressions_map*/
-    })();
-
-
-</script>
 <script>
     // 从模板变量中注入值
     const lanlan_config = {
         lanlan_name: "{{lanlan_name}}"
     };
+    const cubism4Model = "{{model_path}}";  
 </script>
 <script>
-// Beacon功能 - 页面关闭时发送信号给服务器
-let beaconSent = false;
+    // Beacon功能 - 页面关闭时发送信号给服务器
+    let beaconSent = false;
 
-function sendBeacon() {
-    if (beaconSent) return; // 防止重复发送
-    beaconSent = true;
-    
-    try {
-        // 使用navigator.sendBeacon确保信号不被拦截
-        const success = navigator.sendBeacon('/api/beacon/shutdown', JSON.stringify({
-            timestamp: Date.now(),
-            action: 'shutdown'
-        }));
+    function sendBeacon() {
+        if (beaconSent) return; // 防止重复发送
+        beaconSent = true;
         
-        if (success) {
-            console.log('Beacon信号已发送');
-        } else {
-            console.warn('Beacon发送失败，尝试使用fetch');
-            // 备用方案：使用fetch
-            fetch('/api/beacon/shutdown', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    timestamp: Date.now(),
-                    action: 'shutdown'
-                }),
-                keepalive: true // 确保请求在页面关闭时仍能发送
-            }).catch(err => console.log('备用beacon发送失败:', err));
+        try {
+            // 使用navigator.sendBeacon确保信号不被拦截
+            const success = navigator.sendBeacon('/api/beacon/shutdown', JSON.stringify({
+                timestamp: Date.now(),
+                action: 'shutdown'
+            }));
+            
+            if (success) {
+                console.log('Beacon信号已发送');
+            } else {
+                console.warn('Beacon发送失败，尝试使用fetch');
+                // 备用方案：使用fetch
+                fetch('/api/beacon/shutdown', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        timestamp: Date.now(),
+                        action: 'shutdown'
+                    }),
+                    keepalive: true // 确保请求在页面关闭时仍能发送
+                }).catch(err => console.log('备用beacon发送失败:', err));
+            }
+        } catch (e) {
+            console.log('Beacon发送异常:', e);
         }
-    } catch (e) {
-        console.log('Beacon发送异常:', e);
     }
-}
 
-// 监听页面关闭事件
-window.addEventListener('beforeunload', sendBeacon);
-window.addEventListener('unload', sendBeacon);
+    // 监听页面关闭事件
+    window.addEventListener('beforeunload', sendBeacon);
+    window.addEventListener('unload', sendBeacon);
 </script>
+<script src="/static/libs/live2dcubismcore.min.js"></script>  <!-- Cubism 4核心库（支持Cubism 3/4模型） -->
+<script src="/static/libs/live2d.min.js"></script>  <!-- Cubism 2.1核心库（支持旧模型） -->
+<script src="/static/libs/pixi.min.js"></script>  <!-- PixiJS v7 CDN -->
+<script src="/static/libs/index.min.js"></script>  <!-- pixi-live2d-display v0.5.0-ls-6（RaSan147 fork，支持v7） -->
+<script src="/static/common_ui.js"></script>
+<script src="/static/live2d.js"></script>
 <script src="/static/app.js"></script>
-<script src="/static/a2942.js"></script>
 </body>
 </html>
