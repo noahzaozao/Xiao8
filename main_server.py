@@ -15,14 +15,14 @@ from main_helper import core as core, cross_server as cross_server
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse
 from utils.preferences import load_user_preferences, update_model_preferences, validate_model_preferences, move_model_to_top
-from utils.frontend_utils import find_models, load_characters, save_characters
+from utils.frontend_utils import find_models
 from multiprocessing import Process, Queue, Event
 import atexit
 import dashscope
 from dashscope.audio.tts_v2 import VoiceEnrollmentService
 import requests
 templates = Jinja2Templates(directory="./")
-from config import get_character_data, MAIN_SERVER_PORT, CORE_API_KEY
+from config import get_character_data, MAIN_SERVER_PORT, CORE_API_KEY, load_characters, save_characters
 
 # Configure logging
 def setup_logging():

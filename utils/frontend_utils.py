@@ -17,7 +17,6 @@ import regex
 import os
 import logging
 import json
-from config import CHARACTER_JSON_PATH
 from pathlib import Path
 import requests
 
@@ -185,17 +184,6 @@ def find_models():
                 break
                 
     return found_models
-
-def load_characters(character_json_path=CHARACTER_JSON_PATH):
-    try:
-        with open(character_json_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
-        return {"主人": {}, "猫娘": {}}
-
-def save_characters(data, character_json_path=CHARACTER_JSON_PATH):
-    with open(character_json_path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
 
 # --- 工具函数 ---
 def get_upload_policy(api_key, model_name):

@@ -13,7 +13,8 @@ CHARACTER_JSON_PATH = os.path.join(os.path.dirname(__file__), 'characters.json')
 _default_master = {"档案名": "哥哥", "性别": "男", "昵称": "哥哥"}
 _default_lanlan = {"test": {"性别": "女", "年龄": 15, "昵称": "T酱, 小T", "live2d": "mao_pro", "voice_id": "", "system_prompt": lanlan_prompt}}
 
-def get_character_data():
+
+def load_characters(character_json_path=CHARACTER_JSON_PATH):
     try:
         with open(CHARACTER_JSON_PATH, 'r', encoding='utf-8') as f:
             character_data = json.load(f)
@@ -23,7 +24,14 @@ def get_character_data():
     except Exception as e:
         logger.error(f"💥 读取猫娘配置文件出错: {e}，使用默认人设。")
         character_data = {"主人": _default_master, "猫娘": _default_lanlan}
+    return character_data
 
+def save_characters(data, character_json_path=CHARACTER_JSON_PATH):
+    with open(character_json_path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def get_character_data():
+    character_data = load_characters()
     # MASTER_NAME 必须始终存在，取档案名
     MASTER_NAME = character_data.get('主人', {}).get('档案名', _default_master['档案名'])
     # 获取所有猫娘名
