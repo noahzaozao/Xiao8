@@ -83,6 +83,8 @@
 <body>
 
 <div id="sidebar">
+    <button id="fullscreenBtn" class="side-btn">🖥️ 全屏</button>
+    <button id="exitFullscreenBtn" class="side-btn" style="display:none;">❌ 退出全屏</button>
     <button id="changeModelBtn" class="side-btn">🔄️ 更换模型</button>
     <div id="model-list-container"></div>
     <button id="savePreferencesBtn" class="save-btn" disabled>💾 保存设置</button>
@@ -367,6 +369,44 @@
         setupModelList();
 
     })();
+
+    // 全屏/退出全屏按钮逻辑
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const exitFullscreenBtn = document.getElementById('exitFullscreenBtn');
+    fullscreenBtn.onclick = function() {
+        if (document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen();
+        } else if (document.documentElement.webkitRequestFullscreen) {
+            document.documentElement.webkitRequestFullscreen();
+        } else if (document.documentElement.mozRequestFullScreen) {
+            document.documentElement.mozRequestFullScreen();
+        } else if (document.documentElement.msRequestFullscreen) {
+            document.documentElement.msRequestFullscreen();
+        }
+    };
+    exitFullscreenBtn.onclick = function() {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        } else if (document.mozCancelFullScreen) {
+            document.mozCancelFullScreen();
+        } else if (document.msExitFullscreen) {
+            document.msExitFullscreen();
+        }
+    };
+    // 监听全屏状态变化，切换按钮显示
+    function updateFullscreenButtons() {
+        const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement;
+        fullscreenBtn.style.display = isFullscreen ? 'none' : '';
+        exitFullscreenBtn.style.display = isFullscreen ? '' : 'none';
+    }
+    document.addEventListener('fullscreenchange', updateFullscreenButtons);
+    document.addEventListener('webkitfullscreenchange', updateFullscreenButtons);
+    document.addEventListener('mozfullscreenchange', updateFullscreenButtons);
+    document.addEventListener('MSFullscreenChange', updateFullscreenButtons);
+    // 初始化按钮状态
+    updateFullscreenButtons();
 </script>
 
 </body>

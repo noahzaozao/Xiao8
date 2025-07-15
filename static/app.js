@@ -439,6 +439,12 @@ function init_app(){
             workletNode.port.onmessage = (event) => {
                 const audioData = event.data;
 
+                // 新增逻辑：focus_mode为true且正在播放语音时，不回传麦克风音频
+                if (typeof focus_mode !== 'undefined' && focus_mode === true && isPlaying === true) {
+                    // 处于focus_mode且语音播放中，跳过回传
+                    return;
+                }
+
                 if (isRecording && socket.readyState === WebSocket.OPEN) {
                     socket.send(JSON.stringify({
                         action: 'stream_data',
@@ -514,43 +520,6 @@ function init_app(){
     }
 
 
-// 处理Base64编码的音频数据
-    async function handleBase64Audio(base64AudioData, isNewMessage) {
-        try {
-            // 确保音频上下文已初始化
-            if (!audioPlayerContext) {
-                audioPlayerContext = new (window.AudioContext || window.webkitAudioContext)();
-            }
-
-            // 如果上下文被暂停，则恢复它
-            if (audioPlayerContext.state === 'suspended') {
-                await audioPlayerContext.resume();
-            }
-
-            // 将Base64转换为ArrayBuffer
-            const binaryString = window.atob(base64AudioData);
-            const len = binaryString.length;
-            const bytes = new Uint8Array(len);
-            for (let i = 0; i < len; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-            }
-
-            // 解码音频数据
-            const audioBuffer = await audioPlayerContext.decodeAudioData(bytes.buffer);
-
-            // 将解码后的音频添加到队列
-            audioBufferQueue.push(audioBuffer);
-
-            // 如果当前没有播放，开始播放
-            if (!isPlaying) {
-                playNextInQueue();
-            }
-        } catch (error) {
-            console.error('处理音频失败:', error);
-        }
-    }
-
-
     function scheduleAudioChunks() {
         const scheduleAheadTime = 5;
 
@@ -604,6 +573,7 @@ function init_app(){
                             stopLipSync(window.LanLan1.live2dModel);
                         }
                         lipSyncActive = false;
+                        isPlaying = false; // 新增：所有音频播放完毕，重置isPlaying
                     }
                 };
 
@@ -660,76 +630,6 @@ function init_app(){
             isPlaying = true;
             scheduleAudioChunks(); // 开始调度循环
         }
-    }
-
-    // 播放队列中的下一个音频
-    function playNextInQueue() {
-        if (audioBufferQueue.length === 0) {
-            console.warn('缓冲区空了，发生underrun');
-                underrunCount++;
-
-                // 如果经常发生underrun，增加缓冲
-                if (underrunCount > 2) {
-                    adaptiveBufferSize = Math.min(adaptiveBufferSize + 1, 8);
-                    // console.log(`增加缓冲大小到: ${adaptiveBufferSize}`);
-                    underrunCount = 0;
-            }
-
-            isPlaying = false;
-            return;
-        }
-
-        stablePlayCount++;
-
-        if (stablePlayCount > 50 && adaptiveBufferSize > 2) {
-            adaptiveBufferSize--;
-            // console.log(`减少缓冲大小到: ${adaptiveBufferSize}`);
-            stablePlayCount = 0;
-        }
-
-        // 获取队列中的下一个音频缓冲区
-        const { buffer: nextBuffer } = audioBufferQueue.shift();
-
-        // 创建音频源节点
-        const source = audioPlayerContext.createBufferSource();
-        source.buffer = nextBuffer;
-
-        // 连接到音频输出
-        source.connect(audioPlayerContext.destination);
-
-        // 假设 audioPlayerContext 已经是你的 AudioContext
-        // const analyser = audioPlayerContext.createAnalyser();
-        // analyser.fftSize = 2048;
-        // source.connect(analyser);
-        // analyser.connect(audioPlayerContext.destination);
-        // if (window.LanLan1 && window.LanLan1.live2dModel) {
-        //     startLipSync(window.LanLan1.live2dModel, analyser)
-        // }
-        source.connect(audioPlayerContext.destination);
-
-        // 添加到计划源列表
-        scheduledSources.push(source);
-
-        // 设置播放结束回调
-        source.onended = () => {
-            // 从计划源列表中移除
-            const index = scheduledSources.indexOf(source);
-            if (index !== -1) {
-                scheduledSources.splice(index, 1);
-            }
-            if (window.LanLan1 && window.LanLan1.live2dModel) {
-                stopLipSync(window.LanLan1.live2dModel)
-            }
-
-            // 继续调度下一个
-            playNextInQueue();
-        };
-
-        // 关键改动：使用精确时间调度而不是立即播放
-        source.start(nextStartTime);
-
-        // 更新下一个音频的开始时间
-        nextStartTime += nextBuffer.duration;
     }
 
     function startScreenVideoStreaming(stream, input_type) {

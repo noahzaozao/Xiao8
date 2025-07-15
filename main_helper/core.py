@@ -565,6 +565,10 @@ class LLMSessionManager:
                     return
                 except web_exceptions.ConnectionClosedError as e:
                     logger.error(f"💥 Stream: Error sending audio data to session: {e}")
+                    if '1011' in str(e):
+                        print(f"💥 备注：检测到1011错误。该错误为网络和API服务器错误，不是本地错误")
+                    if '1007' in str(e):
+                        print(f"💥 备注：检测到1007错误。该错误大概率是欠费导致。")
                     await self.disconnected_by_server()
                     return
                 except Exception as e:

@@ -113,7 +113,25 @@ async def get_default_index(request: Request):
     return templates.TemplateResponse("templates/index.html", {
         "request": request,
         "lanlan_name": her_name,
-        "model_path": model_path
+        "model_path": model_path,
+        "focus_mode": False
+    })
+
+@app.get("/focus", response_class=HTMLResponse)
+async def get_default_focus_index(request: Request):
+    # 每次动态获取角色数据
+    _, her_name, _, lanlan_basic_config, _, _, _, _, _, _ = get_character_data()
+    # 获取live2d字段
+    live2d = lanlan_basic_config.get(her_name, {}).get('live2d', 'mao_pro')
+    # 查找所有模型
+    models = find_models()
+    # 根据live2d字段查找对应的model path
+    model_path = next((m["path"] for m in models if m["name"] == live2d), f"/static/{live2d}/{live2d}.model3.json")
+    return templates.TemplateResponse("templates/index.html", {
+        "request": request,
+        "lanlan_name": her_name,
+        "model_path": model_path,
+        "focus_mode": True
     })
 
 @app.get("/api/preferences")
@@ -410,6 +428,12 @@ async def update_catgirl(name: str, request: Request):
     if name not in characters.get('猫娘', {}):
         return JSONResponse({'success': False, 'error': '猫娘不存在'}, status_code=404)
     # 只更新前端传来的字段，未传字段保留原值，且不允许通过此接口修改 system_prompt
+    removed_fields = []
+    for k, v in characters['猫娘'][name].items():
+        if k not in data and k not in ('档案名', 'system_prompt', 'voice_id', 'live2d'):
+            removed_fields.append(k)
+    for k in removed_fields:
+        characters['猫娘'][name].pop(k)
     for k, v in data.items():
         if k not in ('档案名') and v:
             characters['猫娘'][name][k] = v
@@ -591,7 +615,25 @@ async def get_index(request: Request, lanlan_name: str):
     return templates.TemplateResponse("templates/index.html", {
         "request": request,
         "lanlan_name": lanlan_name,
-        "model_path": model_path
+        "model_path": model_path,
+        "focus_mode": False
+    })
+
+@app.get("/focus/{lanlan_name}", response_class=HTMLResponse)
+async def get_focus_index(request: Request, lanlan_name: str):
+    # 每次动态获取角色数据
+    _, _, _, lanlan_basic_config, _, _, _, _, _, _ = get_character_data()
+    # 获取live2d字段
+    live2d = lanlan_basic_config.get(lanlan_name, {}).get('live2d', 'mao_pro')
+    # 查找所有模型
+    models = find_models()
+    # 根据live2d字段查找对应的model path
+    model_path = next((m["path"] for m in models if m["name"] == live2d), f"/static/{live2d}/{live2d}.model3.json")
+    return templates.TemplateResponse("templates/index.html", {
+        "request": request,
+        "lanlan_name": lanlan_name,
+        "model_path": model_path,
+        "focus_mode": True
     })
 
 
