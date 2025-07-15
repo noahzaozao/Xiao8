@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>记忆编辑</title>
+    <style>
+        body { background: #f7f8fa; margin:0; font-family: 'Segoe UI', Arial, sans-serif; }
+        .container { max-width: 900px; margin: 30px auto; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); padding: 24px 24px 18px 24px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+        .title { font-size: 1.4em; font-weight: bold; }
+        .close-btn { background: #e74c3c; color: #fff; border: none; border-radius: 6px; padding: 6px 16px; font-size: 1em; cursor: pointer; }
+        .close-btn:active { background: #c0392b; }
+        .main { display: flex; gap: 24px; min-height: 400px; }
+        .file-list { width: 180px; }
+        .file-list-title { font-weight: bold; margin-bottom: 8px; }
+        .file-list ul { list-style: none; padding: 0; margin: 0; }
+        .file-list li { cursor: pointer; padding: 4px 0; border-radius: 4px; }
+        .editor { flex: 1; display: flex; flex-direction: column; }
+        .editor-title { font-weight: bold; margin-bottom: 8px; }
+        #memory-file-content { width: 100%; height: 320px; font-family: monospace; font-size: 1em; padding: 8px; border-radius: 6px; border: 1px solid #ccc; resize: vertical; }
+        .editor-actions { margin-top: 10px; text-align: right; }
+        .btn { padding: 8px 18px; border-radius: 6px; border: none; background: #4f8cff; color: #fff; font-size: 1em; cursor: pointer; margin-right: 8px; transition: background 0.2s; }
+        .btn:active { background: #2662c8; }
+    </style>
+    <style>
+.cat-btn {
+    display: block;
+    width: 80%;
+    /* margin: 0 auto 6px auto; */
+    padding: 6px 0;
+    background: #e6f0ff;
+    border: 1px solid #4f8cff;
+    border-radius: 6px;
+    color: #2662c8;
+    font-size: 1em;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+.cat-btn:hover, .file-list li.selected .cat-btn {
+    background: #4f8cff;
+    color: #fff;
+    box-shadow: none;
+    outline: none;
+}
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <span class="title">记忆编辑</span>
+        <button class="close-btn" onclick="closeMemoryBrowser()">关闭</button>
+    </div>
+    <div class="main">
+        <div class="file-list">
+            <div class="file-list-title">猫娘记忆库</div>
+            <ul id="memory-file-list"></ul>
+        </div>
+        <div class="editor">
+            <div class="editor-title">聊天记录</div>
+            <div id="memory-chat-edit"></div>
+            <div style="margin-top:10px;" id="save-row" style="display:none;">
+                <button class="btn" id="save-memory-btn">保存</button>
+                <button class="btn" id="clear-memory-btn" style="background:#e74c3c; margin-right:0;">清空</button>
+                <span id="save-status" style="margin-left:16px;font-size:1em;"></span>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+let currentMemoryFile = null;
+async function loadMemoryFileList() {
+    const ul = document.getElementById('memory-file-list');
+    ul.innerHTML = '<li style="color:#888;">加载中...</li>';
+    try {
+        const resp = await fetch('/api/memory/recent_files');
+        const data = await resp.json();
+        ul.innerHTML = '';
+        if (data.files && data.files.length) {
+            data.files.forEach(f => {
+                // 提取猫娘名
+                let match = f.match(/^recent_(.+)\.json$/);
+                let catName = match ? match[1] : f;
+                const li = document.createElement('li');
+                // 按钮样式
+                li.innerHTML = `<button class="cat-btn" data-filename="${f}" data-catname="${catName}">${catName}</button>`;
+                li.onclick = () => selectMemoryFile(f, li, catName);
+                ul.appendChild(li);
+            });
+        } else {
+            ul.innerHTML = '<li style="color:#888;">无文件</li>';
+        }
+    } catch (e) {
+        ul.innerHTML = '<li style="color:#e74c3c;">加载失败</li>';
+    }
+}
+
+let chatData = [];
+let currentCatName = '';
+
+function renderChatEdit() {
+    const div = document.getElementById('memory-chat-edit');
+    div.innerHTML = chatData.map((msg, i) => {
+        if (msg.role === 'system') {
+            let text = msg.text || '';
+            // 去掉前缀“先前对话的备忘录: ”
+            if (text.startsWith('先前对话的备忘录: ')) {
+                text = text.slice('先前对话的备忘录: '.length);
+            }
+            return `
+                <div style="margin-bottom:12px;">
+                    <span style="color:#888;">先前对话的备忘录: </span><br>
+                    <textarea style="width:90%;min-height:96px;max-width:98%;font-size:1em;padding:6px 8px;border-radius:6px;border:1px solid #ccc;resize:vertical;box-sizing:border-box;" onchange="updateSystemContent(${i}, this.value)">${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea>
+                </div>
+            `;
+        } else if (msg.role === 'ai') {
+            // 提取时间戳和正文，健壮处理
+            const m = msg.text.match(/^(\[[^\]]+\])([\s\S]*)$/);
+            let timeHtml = '', content = msg.text;
+            if (m) {
+                timeHtml = `<div style="color:#888;font-size:0.95em;margin-bottom:2px;">${m[1]}</div>`;
+                content = (m[2] || '').trim();
+            } else {
+                content = msg.text;
+            }
+            // 用猫娘名替换AI:
+            const catLabel = currentCatName ? currentCatName : 'AI';
+            return `
+                <div style="margin-bottom:12px;">
+                    ${timeHtml}
+                    <b>${catLabel}：</b>
+                    <input type="text" value="${content.replace(/"/g,'&quot;')}" style="width:60%;" onchange="updateAIContent(${i}, this.value)">
+                    <button onclick="deleteChat(${i})" style="margin-left:8px;">删除</button>
+                </div>
+            `;
+        } else {
+            return `
+                <div style="margin-bottom:12px;">
+                    <b>我：</b>
+                    <input type="text" value="${msg.text.replace(/"/g,'&quot;')}" style="width:60%;" onchange="chatData[${i}].text=this.value">
+                    <button onclick="deleteChat(${i})" style="margin-left:8px;">删除</button>
+                </div>
+            `;
+        }
+    }).join('');
+}
+
+function deleteChat(idx) {
+    chatData.splice(idx, 1);
+    renderChatEdit();
+}
+// 新增：AI输入框内容变更时，自动拼接时间戳
+function updateAIContent(idx, value) {
+    const msg = chatData[idx];
+    const m = msg.text.match(/^(\[[^\]]+\])/);
+    if(m) {
+        chatData[idx].text = m[1] + value;
+    } else {
+        chatData[idx].text = value;
+    }
+}
+function updateSystemContent(idx, value) {
+    // 存储时加上前缀
+    chatData[idx].text = '先前对话的备忘录: ' + value;
+}
+async function selectMemoryFile(filename, li, catName) {
+    currentMemoryFile = filename;
+    currentCatName = catName || (li ? li.getAttribute('data-catname') : '');
+    Array.from(document.getElementById('memory-file-list').children).forEach(x => x.classList.remove('selected'));
+    if (li) li.classList.add('selected');
+    const editDiv = document.getElementById('memory-chat-edit');
+    editDiv.innerHTML = '加载中...';
+    document.getElementById('save-row').style.display = '';
+    try {
+        // 直接获取原始JSON内容
+        const resp = await fetch('/api/memory/recent_file?filename=' + encodeURIComponent(filename));
+        const data = await resp.json();
+        if (data.content) {
+            let arr = [];
+            try { arr = JSON.parse(data.content); } catch (e) { arr = []; }
+            chatData = arr.map(item => {
+                if (item.type === 'system') {
+                    return { role: 'system', text: item.data && item.data.content ? item.data.content : '' };
+                } else if (item.type === 'ai' || item.type === 'human') {
+                    let text = '';
+                    const content = item.data && item.data.content;
+                    if (Array.isArray(content) && content[0] && content[0].type === 'text') {
+                        text = content[0].text;
+                    }
+                    return { role: item.type, text };
+                } else {
+                    return null;
+                }
+            }).filter(Boolean);
+            console.log(chatData);
+            renderChatEdit();
+        } else {
+            chatData = [];
+            editDiv.innerHTML = '无聊天内容';
+        }
+    } catch (e) {
+        chatData = [];
+        editDiv.innerHTML = '加载失败';
+    }
+}
+document.getElementById('save-memory-btn').onclick = async function() {
+    if(!currentMemoryFile) { showSaveStatus('请先选择文件', false); return; }
+    // 处理备忘录为空的情况
+    chatData.forEach(msg => {
+        if(msg.role === 'system') {
+            let text = msg.text || '';
+            if (text.startsWith('先前对话的备忘录: ')) {
+                text = text.slice('先前对话的备忘录: '.length);
+            }
+            if (!text.trim()) {
+                msg.text = '先前对话的备忘录: 无。';
+            }
+        }
+    });
+    try {
+        const resp = await fetch('/api/memory/recent_file/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: currentMemoryFile, chat: chatData })
+        });
+        const data = await resp.json();
+        if(data.success) {
+            showSaveStatus('保存成功', true);
+        } else {
+            showSaveStatus('保存失败：' + (data.error || '未知错误'), false);
+        }
+    } catch(e) {
+        showSaveStatus('保存失败', false);
+    }
+};
+document.getElementById('clear-memory-btn').onclick = function() {
+    // 只保留 system 类型（备忘录），其余全部清除
+    chatData = chatData.filter(msg => msg.role === 'system');
+    renderChatEdit();
+    showSaveStatus('已清空近期记忆，未保存', false);
+};
+function showSaveStatus(msg, success) {
+    const el = document.getElementById('save-status');
+    el.textContent = msg;
+    el.style.color = success ? '#27ae60' : '#e74c3c';
+    if(success) {
+        setTimeout(() => { el.textContent = ''; }, 3000);
+    }
+}
+function closeMemoryBrowser() {
+    if(window.parent) {
+        window.parent.postMessage({type:'close_memory_browser'}, '*');
+    } else {
+        window.close();
+    }
+}
+// 页面加载时隐藏保存按钮
+window.onload = function() {
+    loadMemoryFileList();
+    document.getElementById('save-row').style.display = 'none';
+    // 只有iframe环境下才显示关闭按钮
+    if (window.parent === window) {
+        var closeBtn = document.querySelector('.close-btn');
+        if (closeBtn) closeBtn.style.display = 'none';
+    }
+};
+</script>
+</body>
+</html> 

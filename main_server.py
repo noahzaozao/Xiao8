@@ -9,7 +9,7 @@ import logging
 from datetime import datetime
 import webbrowser
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, File, UploadFile, Form
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, File, UploadFile, Form, Body
 from fastapi.staticfiles import StaticFiles
 from main_helper import core as core, cross_server as cross_server
 from fastapi.templating import Jinja2Templates
@@ -23,6 +23,7 @@ from dashscope.audio.tts_v2 import VoiceEnrollmentService
 import requests
 templates = Jinja2Templates(directory="./")
 from config import get_character_data, MAIN_SERVER_PORT, CORE_API_KEY, load_characters, save_characters
+import glob
 
 # Configure logging
 def setup_logging():
@@ -602,22 +603,61 @@ async def rename_catgirl(old_name: str, request: Request):
     save_characters(characters)
     return {"success": True}
 
-@app.get("/{lanlan_name}", response_class=HTMLResponse)
-async def get_index(request: Request, lanlan_name: str):
-    # 每次动态获取角色数据
-    _, _, _, lanlan_basic_config, _, _, _, _, _, _ = get_character_data()
-    # 获取live2d字段
-    live2d = lanlan_basic_config.get(lanlan_name, {}).get('live2d', 'mao_pro')
-    # 查找所有模型
-    models = find_models()
-    # 根据live2d字段查找对应的model path
-    model_path = next((m["path"] for m in models if m["name"] == live2d), f"/static/{live2d}/{live2d}.model3.json")
-    return templates.TemplateResponse("templates/index.html", {
-        "request": request,
-        "lanlan_name": lanlan_name,
-        "model_path": model_path,
-        "focus_mode": False
-    })
+@app.get('/api/memory/recent_files')
+async def get_recent_files():
+    """获取 memory/store 下所有 recent*.json 文件名列表"""
+    files = glob.glob('memory/store/recent*.json')
+    file_names = [os.path.basename(f) for f in files]
+    return {"files": file_names}
+
+@app.get('/api/memory/recent_file')
+async def get_recent_file(filename: str):
+    """获取指定 recent*.json 文件内容"""
+    file_path = os.path.join('memory/store', filename)
+    if not (filename.startswith('recent') and filename.endswith('.json')):
+        return JSONResponse({"success": False, "error": "文件名不合法"}, status_code=400)
+    if not os.path.exists(file_path):
+        return JSONResponse({"success": False, "error": "文件不存在"}, status_code=404)
+    with open(file_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    return {"content": content}
+
+@app.post('/api/memory/recent_file/save')
+async def save_recent_file(request: Request):
+    import os, json
+    data = await request.json()
+    filename = data.get('filename')
+    chat = data.get('chat')
+    file_path = os.path.join('memory/store', filename)
+    if not (filename and filename.startswith('recent') and filename.endswith('.json')):
+        return JSONResponse({"success": False, "error": "文件名不合法"}, status_code=400)
+    arr = []
+    for msg in chat:
+        t = msg.get('role')
+        text = msg.get('text', '')
+        arr.append({
+            "type": t,
+            "data": {
+                "content": text if t == "system" else [{"type": "text", "text": text}],
+                "additional_kwargs": {},
+                "response_metadata": {},
+                "type": t,
+                "name": None,
+                "id": None,
+                "example": False,
+                **({"tool_calls": [], "invalid_tool_calls": [], "usage_metadata": None} if t == "ai" else {})
+            }
+        })
+    try:
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(arr, f, ensure_ascii=False, indent=2)
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get('/memory_browser', response_class=HTMLResponse)
+async def memory_browser(request: Request):
+    return templates.TemplateResponse('templates/memory_browser.html', {"request": request})
 
 @app.get("/focus/{lanlan_name}", response_class=HTMLResponse)
 async def get_focus_index(request: Request, lanlan_name: str):
@@ -634,6 +674,23 @@ async def get_focus_index(request: Request, lanlan_name: str):
         "lanlan_name": lanlan_name,
         "model_path": model_path,
         "focus_mode": True
+    })
+
+@app.get("/{lanlan_name}", response_class=HTMLResponse)
+async def get_index(request: Request, lanlan_name: str):
+    # 每次动态获取角色数据
+    _, _, _, lanlan_basic_config, _, _, _, _, _, _ = get_character_data()
+    # 获取live2d字段
+    live2d = lanlan_basic_config.get(lanlan_name, {}).get('live2d', 'mao_pro')
+    # 查找所有模型
+    models = find_models()
+    # 根据live2d字段查找对应的model path
+    model_path = next((m["path"] for m in models if m["name"] == live2d), f"/static/{live2d}/{live2d}.model3.json")
+    return templates.TemplateResponse("templates/index.html", {
+        "request": request,
+        "lanlan_name": lanlan_name,
+        "model_path": model_path,
+        "focus_mode": False
     })
 
 
