@@ -39,6 +39,9 @@
             font-weight: bold;
             color: #333;
         }
+        .field-row label em {
+            font-weight: normal;
+        }
         .field-row input {
             flex: 1;
             padding: 10px 12px;
@@ -220,7 +223,7 @@
         
         <form id="api-key-form">
             <div class="field-row">
-                <label>API Key</label>
+                <label>核心API Key</label>
                 <input type="text" id="apiKeyInput" placeholder="请输入您的API Key" required>
             </div>
             
@@ -232,6 +235,43 @@
         
         <div id="current-api-key" class="status info" style="display: none;"></div>
         <div id="status" class="status"></div>
+    </div>
+
+    <div id="advanced-section" class="section" style="margin-top: 0;">
+        <div style="margin-bottom: 8px; cursor: pointer; user-select: none; display: flex; align-items: center;" onclick="toggleAdvancedOptions()">
+            <span id="advanced-arrow" style="font-size: 1.2em; margin-right: 6px; transition: transform 0.2s;">▶</span>
+            <span style="font-weight: bold; color: #333;">高级选项（可选）</span>
+        </div>
+        <div id="advanced-options" style="display: none; padding: 12px 0 0 0; border-top: 1px solid #eee;">
+            <div class="field-row">
+                <label for="coreApiSelect">核心API</label>
+                <select id="coreApiSelect" style="flex:1; padding: 10px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 1rem;">
+                    <option value="qwen">Qwen-Omni（阿里）</option>
+                    <option value="openai">4o-realtime（OpenAI）</option>
+                    <option value="glm">GLM-realtime（智谱）</option>
+                </select>
+            </div>
+            <div class="field-row">
+                <label for="assistApiSelect">辅助API<em>（只有阿里支持自定义语音）</em></label>
+                <select id="assistApiSelect" style="flex:1; padding: 10px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 1rem;">
+                    <option value="qwen">阿里（推荐）</option>
+                    <option value="openai">OpenAI</option>
+                    <option value="glm">智谱</option>
+                </select>
+            </div>
+            <div class="field-row">
+                <label for="assistApiKeyInputQwen">辅助API Key - 阿里<em>（仅当辅助API为阿里时需要填写）</em></label>
+                <input type="text" id="assistApiKeyInputQwen" placeholder="可选，默认为核心API Key" value="">
+            </div>
+            <div class="field-row">
+                <label for="assistApiKeyInputOpenai">辅助API Key - OpenAI<em>（仅当辅助API为OpenAI时需要填写）</em></label>
+                <input type="text" id="assistApiKeyInputOpenai" placeholder="可选，默认为核心API Key" value="">
+            </div>
+            <div class="field-row">
+                <label for="assistApiKeyInputGlm">辅助API Key - 智谱<em>（仅当辅助API为智谱时需要填写）</em></label>
+                <input type="text" id="assistApiKeyInputGlm" placeholder="可选，默认为核心API Key" value="">
+            </div>
+        </div>
     </div>
 </div>
 
@@ -297,11 +337,30 @@ async function loadCurrentApiKey() {
         const response = await fetch('/api/config/core_api');
         if (response.ok) {
             const data = await response.json();
-            if (data.api_key && data.api_key.startsWith('sk')) {
-                // 显示完整的API Key在固定区域
+            // 设置API Key显示
+            if (data.api_key) {
                 showCurrentApiKey(`📋 当前API Key: ${data.api_key}`);
             } else {
                 showCurrentApiKey('📋 当前暂未设置API Key');
+            }
+            // 设置高级设定的值
+            if (data.coreApi && document.getElementById('coreApiSelect')) {
+                document.getElementById('coreApiSelect').value = data.coreApi;
+            }
+            if (data.assistApi && document.getElementById('assistApiSelect')) {
+                document.getElementById('assistApiSelect').value = data.assistApi;
+            }
+            if (typeof data.assistApiKeyQwen === 'string' && document.getElementById('assistApiKeyInputQwen')) {
+                document.getElementById('assistApiKeyInputQwen').value = data.assistApiKeyQwen;
+                document.getElementById('assistApiKeyInputQwen').placeholder = data.assistApiKeyQwen || '可选，默认为核心API Key';
+            }
+            if (typeof data.assistApiKeyOpenai === 'string' && document.getElementById('assistApiKeyInputOpenai')) {
+                document.getElementById('assistApiKeyInputOpenai').value = data.assistApiKeyOpenai;
+                document.getElementById('assistApiKeyInputOpenai').placeholder = data.assistApiKeyOpenai || '可选，默认为核心API Key';
+            }
+            if (typeof data.assistApiKeyGlm === 'string' && document.getElementById('assistApiKeyInputGlm')) {
+                document.getElementById('assistApiKeyInputGlm').value = data.assistApiKeyGlm;
+                document.getElementById('assistApiKeyInputGlm').placeholder = data.assistApiKeyGlm || '可选，默认为核心API Key';
             }
         } else {
             showCurrentApiKey('📋 获取当前API Key失败');
@@ -319,31 +378,31 @@ document.getElementById('api-key-form').addEventListener('submit', async functio
     
     const apiKeyInput = document.getElementById('apiKeyInput');
     const apiKey = apiKeyInput.value ? apiKeyInput.value.trim() : '';
-    
+    // 获取高级设定的值
+    const coreApi = document.getElementById('coreApiSelect') ? document.getElementById('coreApiSelect').value : '';
+    const assistApi = document.getElementById('assistApiSelect') ? document.getElementById('assistApiSelect').value : '';
+    const assistApiKeyQwen = document.getElementById('assistApiKeyInputQwen') ? document.getElementById('assistApiKeyInputQwen').value.trim() : '';
+    const assistApiKeyOpenai = document.getElementById('assistApiKeyInputOpenai') ? document.getElementById('assistApiKeyInputOpenai').value.trim() : '';
+    const assistApiKeyGlm = document.getElementById('assistApiKeyInputGlm') ? document.getElementById('assistApiKeyInputGlm').value.trim() : '';
+
     if (!apiKey) {
         showStatus('请输入API Key', 'error');
         return;
     }
     
-    // 验证API Key格式
-    if (!apiKey.startsWith('sk-')) {
-        showStatus('❌ API Key格式不正确！API Key应该以"sk-"开头', 'error');
-        return;
-    }
-    
     // 检查是否已有API Key，如果有则显示警告
     const currentApiKeyDiv = document.getElementById('current-api-key');
-    if (currentApiKeyDiv.style.display !== 'none' && currentApiKeyDiv.textContent.includes('sk-')) {
+    if (currentApiKeyDiv.style.display !== 'none') {
         // 已有API Key，显示警告弹窗
-        pendingApiKey = apiKey;
+        pendingApiKey = { apiKey, coreApi, assistApi, assistApiKeyQwen, assistApiKeyOpenai, assistApiKeyGlm };
         showWarningModal();
     } else {
         // 没有现有API Key，直接保存
-        await saveApiKey(apiKey);
+        await saveApiKey({ apiKey, coreApi, assistApi, assistApiKeyQwen, assistApiKeyOpenai, assistApiKeyGlm });
     }
 });
 
-async function saveApiKey(apiKey) {
+async function saveApiKey({ apiKey, coreApi, assistApi, assistApiKeyQwen, assistApiKeyOpenai, assistApiKeyGlm }) {
     // 确保apiKey是有效的字符串
     if (!apiKey || typeof apiKey !== 'string') {
         showStatus('API Key无效', 'error');
@@ -357,7 +416,12 @@ async function saveApiKey(apiKey) {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                coreApiKey: apiKey
+                coreApiKey: apiKey,
+                coreApi: coreApi || undefined,
+                assistApi: assistApi || undefined,
+                assistApiKeyQwen: assistApiKeyQwen || undefined,
+                assistApiKeyOpenai: assistApiKeyOpenai || undefined,
+                assistApiKeyGlm: assistApiKeyGlm || undefined
             })
         });
         
@@ -369,7 +433,6 @@ async function saveApiKey(apiKey) {
                 
                 // 清除本地Voice ID记录
                 await clearVoiceIds();
-                
                 // 通知其他页面API Key已更改
                 if (window.parent !== window) {
                     window.parent.postMessage({
@@ -416,7 +479,7 @@ function closeWarningModal() {
 }
 
 function confirmApiKeyChange() {
-    if (pendingApiKey && typeof pendingApiKey === 'string') {
+    if (pendingApiKey && typeof pendingApiKey === 'object') {
         const apiKeyToSave = pendingApiKey; // 保存当前值
         closeWarningModal();
         pendingApiKey = null; // 清空全局变量
@@ -425,6 +488,18 @@ function confirmApiKeyChange() {
         showStatus('API Key无效，请重新输入', 'error');
         closeWarningModal();
         pendingApiKey = null; // 清空全局变量
+    }
+}
+
+function toggleAdvancedOptions() {
+    const adv = document.getElementById('advanced-options');
+    const arrow = document.getElementById('advanced-arrow');
+    if (adv.style.display === 'none') {
+        adv.style.display = 'block';
+        arrow.style.transform = 'rotate(90deg)';
+    } else {
+        adv.style.display = 'none';
+        arrow.style.transform = 'rotate(0deg)';
     }
 }
 

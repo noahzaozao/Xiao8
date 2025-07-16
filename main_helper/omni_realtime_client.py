@@ -89,7 +89,8 @@ class OmniRealtimeClient:
         self._current_item_id = None
         self._is_responding = False
         # Track printing state for input and output transcripts
-        self._is_first_chunk = False
+        self._is_first_text_chunk = False
+        self._is_first_transcript_chunk = False
         self._print_input_transcript = False
         self._output_transcript_buffer = ""
         self._modalities = ["text", "audio"]
@@ -101,7 +102,7 @@ class OmniRealtimeClient:
         url = f"{self.base_url}?model={self.model}"
         headers = {
             "Authorization": f"Bearer {self.api_key}"
-        } if "qwen" in self.model else {
+        } if "gpt" not in self.model else {
             "Authorization": f"Bearer {self.api_key}",
             "OpenAI-Beta": "realtime=v1"
         }
@@ -112,24 +113,44 @@ class OmniRealtimeClient:
             raise NotImplementedError("Manual turn detection is not supported")
         elif self.turn_detection_mode == TurnDetectionMode.SERVER_VAD:
             self._modalities = ["text", "audio"] if native_audio else ["text"]
-            await self.update_session({
-                "instructions": instructions,
-                "modalities": self._modalities ,
-                "voice": self.voice if "qwen" in self.model else "sage",
-                "input_audio_format": "pcm16",
-                "output_audio_format": "pcm16",
-                "input_audio_transcription": {
-                    "model": "gummy-realtime-v1" if "qwen" in self.model else "gpt-4o-mini-transcribe"
-                },
-                "turn_detection": {
-                    "type": "server_vad",
-                    "threshold": 0.5,
-                    "prefix_padding_ms":300,
-                    "silence_duration_ms": 500
-                },
-                "temperature": 0.3 if "qwen" in self.model else 0.7,
-                "speed": 1. # OpenAI Only
-            })
+            if 'glm' in self.model:
+                await self.update_session({
+                    "instructions": instructions,
+                    "modalities": self._modalities ,
+                    "voice": "tongtong",
+                    "input_audio_format": "pcm16",
+                    "output_audio_format": "pcm",
+                    "turn_detection": {
+                        "type": "server_vad",
+                    },
+                    "input_audio_noise_reduction": {
+                        "type": "far_field",
+                    },
+                    "beta_fields":{
+                        "chat_mode": "video_passive",
+                        "auto_search": True,
+                    },
+                    "temperature": 0.7
+                })
+            else:
+                await self.update_session({
+                    "instructions": instructions,
+                    "modalities": self._modalities ,
+                    "voice": self.voice if "qwen" in self.model else "sage",
+                    "input_audio_format": "pcm16",
+                    "output_audio_format": "pcm16",
+                    "input_audio_transcription": {
+                        "model": "gummy-realtime-v1" if "qwen" in self.model else "gpt-4o-mini-transcribe"
+                    },
+                    "turn_detection": {
+                        "type": "server_vad",
+                        "threshold": 0.5,
+                        "prefix_padding_ms":300,
+                        "silence_duration_ms": 500
+                    },
+                    "temperature": 0.3 if "qwen" in self.model else 0.7,
+                    "speed": 1. # OpenAI Only
+                })
         else:
             raise ValueError(f"Invalid turn detection mode: {self.turn_detection_mode}")
 
@@ -160,10 +181,18 @@ class OmniRealtimeClient:
     async def stream_image(self, image_b64: str) -> None:
         """Stream raw image data to the API."""
         if self._audio_in_buffer:
-            append_event = {
-                "type": "input_image_buffer.append",
-                "image": image_b64
-            }
+            if "qwen" in self.model:
+                append_event = {
+                    "type": "input_image_buffer.append" ,
+                    "image": image_b64
+                }
+            elif "glm" in self.model:
+                append_event = {
+                    "type": "input_audio_buffer.append_video_frame",
+                    "video_frame": image_b64
+                }
+            else:
+                raise ValueError(f"Model does not support video streaming: {self.model}")
             await self.send_event(append_event)
 
     async def create_response(self, instructions: str, skipped: bool = False) -> None:
@@ -213,9 +242,9 @@ class OmniRealtimeClient:
                 event_type = event.get("type")
                 
                 # if event_type not in ["response.audio.delta", "response.audio_transcript.delta"]:
-                #     logger.debug(f"Received event: {event}")
+                #     print(f"Received event: {event}")
                 # else:
-                #     logger.debug(f"Event type: {event_type}")
+                #     print(f"Event type: {event_type}")
                 if event_type == "error":
                     logger.error(f"API Error: {event['error']}")
                     continue
@@ -229,7 +258,7 @@ class OmniRealtimeClient:
                 elif event_type == "response.created":
                     self._current_response_id = event.get("response", {}).get("id")
                     self._is_responding = True
-                    self._is_first_chunk = True
+                    self._is_first_text_chunk = self._is_first_transcript_chunk = True
                 elif event_type == "response.output_item.added":
                     self._current_item_id = event.get("item", {}).get("id")
                 # Handle interruptions
@@ -253,8 +282,8 @@ class OmniRealtimeClient:
                 if not self._skip_until_next_response:
                     if event_type == "response.text.delta":
                         if self.on_text_delta:
-                            await self.on_text_delta(event["delta"], self._is_first_chunk)
-                            self._is_first_chunk = False
+                            await self.on_text_delta(event["delta"], self._is_first_text_chunk)
+                            self._is_first_text_chunk = False
                     elif event_type == "response.audio.delta":
                         if self.on_audio_delta:
                             audio_bytes = base64.b64decode(event["delta"])
@@ -273,11 +302,11 @@ class OmniRealtimeClient:
                             else:
                                 if self._output_transcript_buffer:
                                     # logger.info(f"{self._output_transcript_buffer} is_first_chunk: True")
-                                    await self.on_output_transcript(self._output_transcript_buffer, self._is_first_chunk)
-                                    self._is_first_chunk = False
+                                    await self.on_output_transcript(self._output_transcript_buffer, self._is_first_transcript_chunk)
+                                    self._is_first_transcript_chunk = False
                                     self._output_transcript_buffer = ""
-                                await self.on_output_transcript(delta, self._is_first_chunk)
-                                self._is_first_chunk = False
+                                await self.on_output_transcript(delta, self._is_first_transcript_chunk)
+                                self._is_first_transcript_chunk = False
                     
                     elif event_type in self.extra_event_handlers:
                         await self.extra_event_handlers[event_type](event)

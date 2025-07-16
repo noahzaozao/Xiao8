@@ -136,31 +136,20 @@ async function loadUserPreferences() {
     const model = await Live2DModel.from(cubism4Model);  // cubism4Model 是模板变量，在index.html中定义
     if (window.innerWidth <= 768){  //移动端
         // 应用用户偏好或使用默认值
-        if (preferences.length > 0 && preferences[0].scale && preferences[0].position) {
-            model.scale.set(preferences[0].scale.x, preferences[0].scale.y);
-            model.x = preferences[0].position.x;
-            model.y = preferences[0].position.y;
-        } else {
-            const scale = Math.min(
-                0.5,
-                window.innerHeight * 1.3 / 4000,
-                window.innerWidth * 1.2 / 2000
-            );
-            model.scale.set(scale);
-            model.x = pixi_app.renderer.width*0.5;
-            model.y = pixi_app.renderer.height*0.28;
-        }
+        const scale = Math.min(
+            0.5,
+            window.innerHeight * 1.3 / 4000,
+            window.innerWidth * 1.2 / 2000
+        );
+        model.scale.set(scale);
+        model.x = pixi_app.renderer.width*0.5;
+        model.y = pixi_app.renderer.height*0.28;
         model.anchor.set(0.5, 0.1);
         pixi_app.stage.addChild(model);
         window.addEventListener('resize', () => {
             // 更新模型位置
-            if (preferences.length > 0 && preferences[0].position) {
-                model.x = preferences[0].position.x;
-                model.y = preferences[0].position.y;
-            } else {
-                model.x = pixi_app.renderer.width*0.5;
-                model.y = pixi_app.renderer.height*0.28;
-            }
+            model.x = pixi_app.renderer.width*0.5;
+            model.y = pixi_app.renderer.height*0.28;
         });
     }
     else {

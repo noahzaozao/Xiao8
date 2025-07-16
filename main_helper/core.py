@@ -126,7 +126,8 @@ class LLMSessionManager:
             self.tts_request_queue.put((self.current_speech_id, text))
             await self.send_lanlan_response(text, is_first_chunk)
         else:
-            logger.info(f"\nAssistant: {text}")
+            pass
+            # logger.info(f"\nAssistant: {text}")
 
     async def handle_response_complete(self):
         """Qwen完成回调：用于处理Core API的响应完成事件，包含TTS和热切换逻辑"""

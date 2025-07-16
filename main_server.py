@@ -202,6 +202,11 @@ async def get_core_config():
         
         return {
             "api_key": api_key,
+            "coreApi": core_cfg.get('coreApi', 'qwen'),
+            "assistApi": core_cfg.get('assistApi', 'qwen'),
+            "assistApiKeyQwen": core_cfg.get('assistApiKeyQwen', ''),
+            "assistApiKeyOpenai": core_cfg.get('assistApiKeyOpenai', ''),
+            "assistApiKeyGlm": core_cfg.get('assistApiKeyGlm', ''),
             "success": True
         }
     except Exception as e:
@@ -235,6 +240,16 @@ async def update_core_config(request: Request):
         
         # 保存到core_config.json
         core_cfg = {"coreApiKey": api_key}
+        if 'coreApi' in data:
+            core_cfg['coreApi'] = data['coreApi']
+        if 'assistApi' in data:
+            core_cfg['assistApi'] = data['assistApi']
+        if 'assistApiKeyQwen' in data:
+            core_cfg['assistApiKeyQwen'] = data['assistApiKeyQwen']
+        if 'assistApiKeyOpenai' in data:
+            core_cfg['assistApiKeyOpenai'] = data['assistApiKeyOpenai']
+        if 'assistApiKeyGlm' in data:
+            core_cfg['assistApiKeyGlm'] = data['assistApiKeyGlm']
         with open('./config/core_config.json', 'w', encoding='utf-8') as f:
             json.dump(core_cfg, f, indent=2, ensure_ascii=False)
         
