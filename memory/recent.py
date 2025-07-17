@@ -1,17 +1,21 @@
 from datetime import datetime
 from config import get_character_data, SUMMARY_MODEL, OPENROUTER_API_KEY, OPENROUTER_URL
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, messages_to_dict, messages_from_dict
+from langchain_core.messages import SystemMessage, messages_to_dict, messages_from_dict, HumanMessage, AIMessage
 import json
 import os
 
-from config.prompts_sys import recent_history_manager_prompt, detailed_recent_history_manager_prompt, further_summarize_prompt
+from config.api import CORRECTION_MODEL
+from config.prompts_sys import recent_history_manager_prompt, detailed_recent_history_manager_prompt, further_summarize_prompt, history_review_prompt
 
 class CompressedRecentHistoryManager:
     def __init__(self, max_history_length=10):
         # 通过get_character_data获取相关变量
         _, _, _, _, name_mapping, _, _, _, _, recent_log = get_character_data()
-        self.llm = ChatOpenAI(model=SUMMARY_MODEL, base_url=OPENROUTER_URL, api_key=OPENROUTER_API_KEY, temperature=0.4)
+        # 修复API key类型问题
+        api_key = OPENROUTER_API_KEY if OPENROUTER_API_KEY and OPENROUTER_API_KEY != '' else None
+        self.llm = ChatOpenAI(model=SUMMARY_MODEL, base_url=OPENROUTER_URL, api_key=api_key, temperature=0.3)
+        self.review_llm = ChatOpenAI(model=CORRECTION_MODEL, base_url=OPENROUTER_URL, api_key=api_key, temperature=0.1)
         self.max_history_length = max_history_length
         self.log_file_path = recent_log
         self.name_mapping = name_mapping
@@ -63,6 +67,9 @@ class CompressedRecentHistoryManager:
             try:
                 # 尝试将响应内容解析为JSON
                 response_content = self.llm.invoke(prompt).content
+                # 修复类型问题：确保response_content是字符串
+                if isinstance(response_content, list):
+                    response_content = str(response_content)
                 if response_content.startswith("```"):
                     response_content = response_content.replace('```json','').replace('```', '')
                 summary_json = json.loads(response_content)
@@ -92,6 +99,9 @@ class CompressedRecentHistoryManager:
             try:
                 # 尝试将响应内容解析为JSON
                 response_content = self.llm.invoke(further_summarize_prompt % initial_summary).content
+                # 修复类型问题：确保response_content是字符串
+                if isinstance(response_content, list):
+                    response_content = str(response_content)
                 if response_content.startswith("```"):
                     response_content = response_content.replace('```json', '').replace('```', '')
                 summary_json = json.loads(response_content)
@@ -112,6 +122,93 @@ class CompressedRecentHistoryManager:
             with open(self.log_file_path[lanlan_name], encoding='utf-8') as f:
                 self.user_histories[lanlan_name] = messages_from_dict(json.load(f))
         return self.user_histories[lanlan_name]
+
+    def review_history(self, lanlan_name):
+        """
+        审阅历史记录，寻找并修正矛盾、冗余、逻辑混乱或复读的部分
+        """
+        # 获取当前历史记录
+        current_history = self.get_recent_history(lanlan_name)
+        
+        if not current_history:
+            print(f"💡 {lanlan_name} 的历史记录为空，无需审阅")
+            return False
+        
+        # 将消息转换为可读的文本格式
+        name_mapping = self.name_mapping.copy()
+        name_mapping['ai'] = lanlan_name
+        
+        history_text = ""
+        for msg in current_history:
+            if hasattr(msg, 'type') and msg.type in name_mapping:
+                role = name_mapping[msg.type]
+            else:
+                role = "unknown"
+            
+            if hasattr(msg, 'content'):
+                if isinstance(msg.content, str):
+                    content = msg.content
+                elif isinstance(msg.content, list):
+                    content = "\n".join([str(i) if isinstance(i, str) else i.get("text", str(i)) for i in msg.content])
+                else:
+                    content = str(msg.content)
+            else:
+                content = str(msg)
+            
+            history_text += f"{role}: {content}\n\n"
+        
+        try:
+            # 使用LLM审阅历史记录
+            print(f"💡 开始审阅记忆：{history_text}")
+            prompt = history_review_prompt % history_text
+            response_content = self.llm.invoke(prompt).content
+            
+            # 确保response_content是字符串
+            if isinstance(response_content, list):
+                response_content = str(response_content)
+            
+            # 清理响应内容
+            if response_content.startswith("```"):
+                response_content = response_content.replace('```json', '').replace('```', '')
+            
+            # 解析JSON响应
+            review_result = json.loads(response_content)
+            
+            if '修正说明' in review_result and '修正后的对话' in review_result:
+                print(f"💡 记忆审阅结果：{review_result['修正说明']}")
+                
+                # 将修正后的对话转换回消息格式
+                corrected_messages = []
+                for msg_data in review_result['修正后的对话']:
+                    role = msg_data.get('role', 'user')
+                    content = msg_data.get('content', '')
+                    
+                    if role == 'user':
+                        corrected_messages.append(HumanMessage(content=content))
+                    elif role == 'ai':
+                        corrected_messages.append(AIMessage(content=content))
+                    else:
+                        # 默认作为用户消息处理
+                        corrected_messages.append(HumanMessage(content=content))
+                
+                # 更新历史记录
+                self.user_histories[lanlan_name] = corrected_messages
+                
+                # 保存到文件
+                with open(self.log_file_path[lanlan_name], "w", encoding='utf-8') as f:
+                    json.dump(messages_to_dict(corrected_messages), f, indent=2, ensure_ascii=False)
+                
+                print(f"✅ {lanlan_name} 的记忆已修正并保存")
+                return True
+            else:
+                print(f"❌ 审阅响应格式错误：{response_content}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ 历史记录审阅失败：{e}")
+            import traceback
+            traceback.print_exc()
+            return False
 
     def clear_history(self, lanlan_name):
         """
