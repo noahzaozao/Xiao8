@@ -60,23 +60,26 @@ try:
         logger.warning("coreApiKey in core_config.json is updated. Overwriting CORE_API_KEY.")
         CORE_API_KEY = core_cfg['coreApiKey']
     if 'coreApi' in core_cfg and core_cfg['coreApi']:
+        logger.warning("coreApi: " + core_cfg['coreApi'])
         if core_cfg['coreApi'] == 'qwen':
             CORE_URL = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
             CORE_MODEL = "qwen-omni-turbo-realtime-2025-05-08"
+        elif core_cfg['coreApi'] == 'glm':
+            CORE_URL = "wss://open.bigmodel.cn/api/paas/v4/realtime"
+            CORE_MODEL = "glm-realtime-air" 
+        elif core_cfg['coreApi'] == 'openai':
+            CORE_URL = "wss://api.openai.com/v1/realtime"
+            CORE_MODEL = "gpt-4o-realtime-preview"
         else:
-            logger.warning("coreApi: " + core_cfg['coreApi'])
-            if core_cfg['coreApi'] == 'glm':
-                CORE_URL = "wss://open.bigmodel.cn/api/paas/v4/realtime"
-                CORE_MODEL = "glm-realtime-air" 
-            elif core_cfg['coreApi'] == 'openai':
-                CORE_URL = "wss://api.openai.com/v1/realtime"
-                CORE_MODEL = "gpt-4o-realtime-preview"
-            else:
-                logger.error("💥 Unknown coreApi: " + core_cfg['coreApi'])
+            logger.error("💥 Unknown coreApi: " + core_cfg['coreApi'])
+    else:
+        CORE_URL = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
+        CORE_MODEL = "qwen-omni-turbo-realtime-2025-05-08"
     ASSIST_API_KEY_QWEN = core_cfg['assistApiKeyQwen'] if 'assistApiKeyQwen' in core_cfg and core_cfg['assistApiKeyQwen'] != '' else CORE_API_KEY
     ASSIST_API_KEY_OPENAI = core_cfg['assistApiKeyOpenai'] if 'assistApiKeyOpenai' in core_cfg and core_cfg['assistApiKeyOpenai'] != '' else CORE_API_KEY
     ASSIST_API_KEY_GLM = core_cfg['assistApiKeyGlm'] if 'assistApiKeyGlm' in core_cfg and core_cfg['assistApiKeyGlm'] != '' else CORE_API_KEY
     if 'assistApi' in core_cfg and core_cfg['assistApi']:
+        logger.warning("assistApi: " + core_cfg['assistApi'])
         if core_cfg['assistApi'] == 'qwen':
             logger.warning("assistApi: " + core_cfg['assistApi'])
             OPENROUTER_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -90,14 +93,17 @@ try:
             CORRECTION_MODEL = "o4-mini"
             AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_OPENAI
         elif core_cfg['assistApi'] == 'glm':
-            logger.warning("assistApi: " + core_cfg['assistApi'])
             OPENROUTER_URL = "https://open.bigmodel.cn/api/paas/v4"
             SUMMARY_MODEL = "glm-4-air-250414"
             CORRECTION_MODEL = "glm-z1-air"
             AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_GLM
         else:
-            logger.error("💥 Unknown assistApi: " + core_cfg['assistApi'])  
-    
+            logger.error("💥 Unknown assistApi: " + core_cfg['assistApi']) 
+    else:
+        OPENROUTER_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        SUMMARY_MODEL = "qwen-plus"
+        CORRECTION_MODEL = "qwen-max"
+        AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_QWEN
 
 except FileNotFoundError:
     pass
