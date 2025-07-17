@@ -42,6 +42,71 @@
     box-shadow: none;
     outline: none;
 }
+
+.review-toggle {
+    margin-top: 16px;
+    padding: 12px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+}
+
+.review-toggle-title {
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: #495057;
+}
+
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 24px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .toggle-slider {
+    background-color: #4f8cff;
+}
+
+input:checked + .toggle-slider:before {
+    transform: translateX(26px);
+}
+
+.toggle-label {
+    margin-left: 12px;
+    font-size: 0.9em;
+    color: #6c757d;
+}
 </style>
 </head>
 <body>
@@ -54,6 +119,16 @@
         <div class="file-list">
             <div class="file-list-title">猫娘记忆库</div>
             <ul id="memory-file-list"></ul>
+            <div class="review-toggle">
+                <div class="review-toggle-title">自动记忆审阅</div>
+                <div style="display: flex; align-items: center;">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="review-toggle" onchange="toggleReview(this.checked)">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="toggle-label" id="review-status">加载中...</span>
+                </div>
+            </div>
         </div>
         <div class="editor">
             <div class="editor-title">聊天记录</div>
@@ -185,6 +260,8 @@ async function selectMemoryFile(filename, li, catName) {
                     const content = item.data && item.data.content;
                     if (Array.isArray(content) && content[0] && content[0].type === 'text') {
                         text = content[0].text;
+                    } else if (typeof content === 'string') {
+                        text = content;
                     }
                     return { role: item.type, text };
                 } else {
@@ -256,6 +333,7 @@ function closeMemoryBrowser() {
 // 页面加载时隐藏保存按钮
 window.onload = function() {
     loadMemoryFileList();
+    loadReviewConfig();
     document.getElementById('save-row').style.display = 'none';
     // 只有iframe环境下才显示关闭按钮
     if (window.parent === window) {
@@ -263,6 +341,48 @@ window.onload = function() {
         if (closeBtn) closeBtn.style.display = 'none';
     }
 };
+
+async function loadReviewConfig() {
+    try {
+        const resp = await fetch('/api/memory/review_config');
+        const data = await resp.json();
+        const toggle = document.getElementById('review-toggle');
+        const status = document.getElementById('review-status');
+        
+        toggle.checked = data.enabled;
+        status.textContent = data.enabled ? '已开启' : '已关闭';
+    } catch (e) {
+        console.error('加载审阅配置失败:', e);
+        document.getElementById('review-status').textContent = '加载失败';
+    }
+}
+
+async function toggleReview(enabled) {
+    try {
+        const resp = await fetch('/api/memory/review_config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: enabled })
+        });
+        const data = await resp.json();
+        
+        if (data.success) {
+            const status = document.getElementById('review-status');
+            status.textContent = enabled ? '已开启' : '已关闭';
+        } else {
+            // 如果保存失败，恢复原来的状态
+            const toggle = document.getElementById('review-toggle');
+            toggle.checked = !enabled;
+            document.getElementById('review-status').textContent = '保存失败';
+        }
+    } catch (e) {
+        console.error('更新审阅配置失败:', e);
+        // 如果请求失败，恢复原来的状态
+        const toggle = document.getElementById('review-toggle');
+        toggle.checked = !enabled;
+        document.getElementById('review-status').textContent = '保存失败';
+    }
+}
 </script>
 </body>
 </html> 

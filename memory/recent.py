@@ -127,7 +127,20 @@ class CompressedRecentHistoryManager:
         """
         审阅历史记录，寻找并修正矛盾、冗余、逻辑混乱或复读的部分
         """
+        # 检查配置文件中是否禁用自动审阅
+        try:
+            config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'core_config.json')
+            if os.path.exists(config_path):
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config_data = json.load(f)
+                    if 'recent_memory_auto_review' in config_data and not config_data['recent_memory_auto_review']:
+                        print(f"💡 {lanlan_name} 的自动记忆审阅已禁用，跳过审阅")
+                        return False
+        except Exception as e:
+            print(f"⚠️ 读取配置文件失败：{e}，继续执行审阅")
+        
         # 获取当前历史记录
+        
         current_history = self.get_recent_history(lanlan_name)
         
         if not current_history:
@@ -159,8 +172,7 @@ class CompressedRecentHistoryManager:
         
         try:
             # 使用LLM审阅历史记录
-            print(f"💡 开始审阅记忆：{history_text}")
-            prompt = history_review_prompt % history_text
+            prompt = history_review_prompt % (self.name_mapping['human'], name_mapping['ai'], history_text, self.name_mapping['human'], name_mapping['ai'])
             response_content = self.llm.invoke(prompt).content
             
             # 确保response_content是字符串
@@ -183,10 +195,12 @@ class CompressedRecentHistoryManager:
                     role = msg_data.get('role', 'user')
                     content = msg_data.get('content', '')
                     
-                    if role == 'user':
+                    if role in ['user', 'human', name_mapping['human']]:
                         corrected_messages.append(HumanMessage(content=content))
-                    elif role == 'ai':
+                    elif role in ['ai', 'assistant', name_mapping['ai']]:
                         corrected_messages.append(AIMessage(content=content))
+                    elif role in ['system', 'system_message', name_mapping['system']]:
+                        corrected_messages.append(SystemMessage(content=content))
                     else:
                         # 默认作为用户消息处理
                         corrected_messages.append(HumanMessage(content=content))

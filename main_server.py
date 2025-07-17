@@ -616,12 +616,81 @@ async def rename_catgirl(old_name: str, request: Request):
     save_characters(characters)
     return {"success": True}
 
+@app.post('/api/characters/catgirl/{name}/unregister_voice')
+async def unregister_voice(name: str):
+    """解除猫娘的声音注册"""
+    try:
+        characters = load_characters()
+        if name not in characters.get('猫娘', {}):
+            return JSONResponse({'success': False, 'error': '猫娘不存在'}, status_code=404)
+        
+        # 检查是否已有voice_id
+        if not characters['猫娘'][name].get('voice_id'):
+            return JSONResponse({'success': False, 'error': '该猫娘未注册声音'}, status_code=400)
+        
+        # 删除voice_id字段
+        if 'voice_id' in characters['猫娘'][name]:
+            characters['猫娘'][name].pop('voice_id')
+        save_characters(characters)
+        
+        logger.info(f"已解除猫娘 '{name}' 的声音注册")
+        return {"success": True, "message": "声音注册已解除"}
+        
+    except Exception as e:
+        logger.error(f"解除声音注册时出错: {e}")
+        return JSONResponse({'success': False, 'error': f'解除注册失败: {str(e)}'}, status_code=500)
+
 @app.get('/api/memory/recent_files')
 async def get_recent_files():
     """获取 memory/store 下所有 recent*.json 文件名列表"""
     files = glob.glob('memory/store/recent*.json')
     file_names = [os.path.basename(f) for f in files]
     return {"files": file_names}
+
+@app.get('/api/memory/review_config')
+async def get_review_config():
+    """获取记忆审阅配置"""
+    try:
+        config_path = './config/core_config.json'
+        if os.path.exists(config_path):
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config_data = json.load(f)
+                # 如果配置中没有这个键，默认返回True（开启）
+                return {"enabled": config_data.get('recent_memory_auto_review', True)}
+        else:
+            # 如果配置文件不存在，默认返回True（开启）
+            return {"enabled": True}
+    except Exception as e:
+        logger.error(f"读取记忆审阅配置失败: {e}")
+        return {"enabled": True}
+
+@app.post('/api/memory/review_config')
+async def update_review_config(request: Request):
+    """更新记忆审阅配置"""
+    try:
+        data = await request.json()
+        enabled = data.get('enabled', True)
+        
+        config_path = './config/core_config.json'
+        config_data = {}
+        
+        # 读取现有配置
+        if os.path.exists(config_path):
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config_data = json.load(f)
+        
+        # 更新配置
+        config_data['recent_memory_auto_review'] = enabled
+        
+        # 保存配置
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(config_data, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"记忆审阅配置已更新: enabled={enabled}")
+        return {"success": True, "enabled": enabled}
+    except Exception as e:
+        logger.error(f"更新记忆审阅配置失败: {e}")
+        return {"success": False, "error": str(e)}
 
 @app.get('/api/memory/recent_file')
 async def get_recent_file(filename: str):
@@ -651,7 +720,7 @@ async def save_recent_file(request: Request):
         arr.append({
             "type": t,
             "data": {
-                "content": text if t == "system" else [{"type": "text", "text": text}],
+                "content": text,
                 "additional_kwargs": {},
                 "response_metadata": {},
                 "type": t,
