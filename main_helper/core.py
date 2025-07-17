@@ -489,13 +489,13 @@ class LLMSessionManager:
             logger.info("Final Swap Sequence: Hot swap completed successfully.")
 
         except asyncio.CancelledError:
-            logger.error("Final Swap Sequence: Task cancelled.")
+            logger.info("Final Swap Sequence: Task cancelled.")
             # If cancelled mid-swap, state could be inconsistent. Prioritize cleaning pending.
             await self._cleanup_pending_session_resources()
             self._reset_preparation_state(clear_main_cache=False)  # Don't clear cache if swap didn't complete
             # The old main session listener might have been cancelled, needs robust restart if still active
             if self.is_active and self.session and hasattr(self.session, 'handle_messages') and (not self.message_handler_task or self.message_handler_task.done()):
-                logger.error(
+                logger.info(
                     "Final Swap Sequence: Task cancelled, ensuring main listener is running for potentially old session.")
                 self.message_handler_task = asyncio.create_task(self.session.handle_messages())
 
@@ -634,7 +634,7 @@ class LLMSessionManager:
             except asyncio.TimeoutError:
                 logger.warning("End Session: Warning: Listener task cancellation timeout.")
             except Exception as e:
-                logger.error(f"End Session: Error during listener task cancellation: {e}")
+                logger.error(f"💥 End Session: Error during listener task cancellation: {e}")
             self.message_handler_task = None
 
         if self.session:

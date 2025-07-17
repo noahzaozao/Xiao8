@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import mimetypes
+mimetypes.add_type("application/javascript", ".js")
 import asyncio
 import json
 import traceback
@@ -21,9 +23,10 @@ import atexit
 import dashscope
 from dashscope.audio.tts_v2 import VoiceEnrollmentService
 import requests
-templates = Jinja2Templates(directory="./")
 from config import get_character_data, MAIN_SERVER_PORT, CORE_API_KEY, load_characters, save_characters
 import glob
+
+templates = Jinja2Templates(directory="./")
 
 # Configure logging
 def setup_logging():
@@ -73,10 +76,6 @@ lock = asyncio.Lock()
 # --- FastAPI App Setup ---
 app = FastAPI()
 
-# *** CORRECTED STATIC FILE MOUNTING ***
-# Mount the 'static' directory under the URL path '/static'
-# When a request comes in for /static/app.js, FastAPI will look for the file 'static/app.js'
-# relative to where the server is running (gemini-live-app/).
 class CustomStaticFiles(StaticFiles):
     async def get_response(self, path, scope):
         response = await super().get_response(path, scope)
@@ -100,7 +99,6 @@ def set_start_config(config):
     """设置启动配置到 app.state"""
     app.state.start_config = config
 
-# *** CORRECTED ROOT PATH TO SERVE index.html ***
 @app.get("/", response_class=HTMLResponse)
 async def get_default_index(request: Request):
     # 每次动态获取角色数据

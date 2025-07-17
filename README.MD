@@ -64,11 +64,9 @@ Lanlan（兰兰）是一个新手友好、开箱即用的，具有听觉、视�
 
 ## A. 高优先级
 
-1. 添加前端UI用于记忆管理（记忆检索和纠错）。
+1. 兼容工具调用或MCP（本质是工具调用，不强求兼容MCP）。
 
 1. 支持L2D表情控制和动作控制。
-
-1. 兼容工具调用或MCP（本质是工具调用，不强求兼容MCP）。
 
 ## B. 中等优先级
 
@@ -114,7 +112,7 @@ OpenAI官方的Realtime API支持`tool calling`功能，因此，本项目与MCP
 
 > *本项目支持哪些语言模型？*
 
-本项目依赖于实时全模态API。直播版本使用的是Gemini Live API，开源版本使用的是[OpenAI Realtime API](https://platform.openai.com/docs/guides/realtime)。Gemini Live具有更好的效果，但目前**只支持谷歌**。OpenAI Realtime目前**有OpenAI，阿里云，智谱 三家服务商**支持，未来可能兼容更多模型。开源版只支持`Qwen-Omni-Realtime`和`GPT-4o-Realtime`两个模型。
+本项目依赖于实时全模态API。直播版本使用的是Gemini Live API，开源版本使用的是[OpenAI Realtime API](https://platform.openai.com/docs/guides/realtime)。Gemini Live接口具有更好的效果，但目前**只支持谷歌**。OpenAI Realtime接口规范目前**有OpenAI，阿里云，智谱 三家服务商**支持，未来可能兼容更多模型。开源版支持`Qwen-Omni-Realtime`,`GLM-Realtime`和`GPT-4o-Realtime`三个模型。
 
 **已知其他支持实时模式但不兼容OpenAI Realtime的模型：**(字节跳动)豆包实时语音交互，(商汤)SenseNova V6 Omni，(科大讯飞)星火认知超拟人
 
