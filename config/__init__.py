@@ -84,7 +84,7 @@ try:
             logger.warning("assistApi: " + core_cfg['assistApi'])
             OPENROUTER_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
             SUMMARY_MODEL = "qwen-plus"
-            CORRECTION_MODEL = "qwen-max"
+            CORRECTION_MODEL = "qwen3-235b-a22b"
             AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_QWEN
         elif core_cfg['assistApi'] == 'openai':
             logger.warning("assistApi: " + core_cfg['assistApi'])
@@ -102,7 +102,7 @@ try:
     else:
         OPENROUTER_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
         SUMMARY_MODEL = "qwen-plus"
-        CORRECTION_MODEL = "qwen-max"
+        CORRECTION_MODEL = "qwen3-235b-a22b"
         AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_QWEN
 
 except FileNotFoundError:

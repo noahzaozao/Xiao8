@@ -14,7 +14,7 @@
             font-family: 'Segoe UI', Arial, sans-serif;
         }
         .container {
-            max-width: 600px;
+            max-width: 800px;
             margin: 40px auto 0 auto;
             background: #fff;
             border-radius: 12px;
@@ -31,24 +31,30 @@
         }
         .field-row {
             display: flex;
-            align-items: center;
+            flex-direction: column;
+            align-items: flex-start;
             margin-bottom: 16px;
         }
         .field-row label {
-            min-width: 120px;
+            min-width: auto;
             font-weight: bold;
             color: #333;
+            margin-bottom: 8px;
         }
         .field-row label em {
             font-weight: normal;
         }
         .field-row input {
-            flex: 1;
+            width: 100%;
             padding: 10px 12px;
             border-radius: 6px;
             border: 1px solid #ccc;
             font-size: 1rem;
             font-family: 'Courier New', monospace;
+        }
+        .field-row input::placeholder {
+            font-size: 0.9rem;
+            color: #999;
         }
         .field-row input:focus {
             outline: none;
@@ -116,7 +122,7 @@
             background: #f8f9fa;
             border: 1px solid #e9ecef;
             border-radius: 8px;
-            padding: 16px;
+            padding: 20px;
             margin-bottom: 20px;
         }
         .api-key-info h3 {
@@ -182,18 +188,70 @@
             margin-left: 10px;
         }
 
-        @media (max-width: 600px) {
+        /* 悬浮提示窗样式 */
+        .tooltip-container {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .tooltip-icon {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            background: #4f8cff;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 16px;
+            font-size: 12px;
+            cursor: help;
+            margin-left: 8px;
+            font-weight: bold;
+        }
+        
+        .tooltip-content {
+            position: absolute;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            line-height: 1.4;
+            z-index: 1001;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s, visibility 0.3s;
+            width: 500px;
+            white-space: normal;
+        }
+        
+        .tooltip-content::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #333 transparent transparent transparent;
+        }
+        
+        .tooltip-container:hover .tooltip-content {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        @media (max-width: 800px) {
             .container { 
                 padding: 20px 16px; 
                 margin: 20px 16px;
             }
-            .field-row {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-            .field-row label {
-                min-width: auto;
-                margin-bottom: 8px;
+            .tooltip-content {
+                width: 350px;
+                font-size: 0.8em;
             }
         }
     </style>
@@ -205,9 +263,9 @@
     <div class="api-key-info">
         <h3>📋 获取API Key步骤</h3>
         <ul>
-            <li>1. 访问 <a href="https://bailian.console.aliyun.com/" target="_blank">阿里云百炼平台</a></li>
-            <li>2. 注册账号并完成实名认证</li>
-            <li>3. 访问 <a href="https://bailian.console.aliyun.com/api-key?tab=model#/api-key" target="_blank">API Key管理页面</a></li>
+            <li>1. 在阿里云注册账号并 <a href="https://myaccount.console.aliyun.com/overview" target="_blank">完成实名认证</a></li>
+            <li>2. 访问 <a href="https://bailian.console.aliyun.com/" target="_blank">阿里云百炼平台</a> 并领取新人福利</li>
+            <li>3. 访问阿里云百炼平台 <a href="https://bailian.console.aliyun.com/api-key?tab=model#/api-key" target="_blank">API Key管理页面</a></li>
             <li>4. 创建新的API Key并复制</li>
             <li>5. 将API Key粘贴到下方输入框中</li>
         </ul>
@@ -224,7 +282,7 @@
         <form id="api-key-form">
             <div class="field-row">
                 <label>核心API Key</label>
-                <input type="text" id="apiKeyInput" placeholder="请输入您的API Key" required>
+                <input type="text" id="apiKeyInput" placeholder="请输入您的API Key" required style="max-width: 600px;">
             </div>
             
             <div style="margin-top: 20px;">
@@ -237,23 +295,64 @@
         <div id="status" class="status"></div>
     </div>
 
-    <div id="advanced-section" class="section" style="margin-top: 0;">
+            <div id="advanced-section" class="section" style="margin-top: 0;">
         <div style="margin-bottom: 8px; cursor: pointer; user-select: none; display: flex; align-items: center;" onclick="toggleAdvancedOptions()">
             <span id="advanced-arrow" style="font-size: 1.2em; margin-right: 6px; transition: transform 0.2s;">▶</span>
             <span style="font-weight: bold; color: #333;">高级选项（可选）</span>
+            <div class="tooltip-container">
+                <span class="tooltip-icon">?</span>
+                <div class="tooltip-content">
+                    <strong>API服务商说明：</strong><br>
+                    • <strong>核心API</strong>：负责对话功能<br>
+                    • <strong>辅助API</strong>：负责记忆管理和自定义语音<br><br>
+                    <strong>各服务商特点：</strong><br>
+                    • <strong>阿里</strong>：有免费限额，支持自定义语音<br>
+                    • <strong>智谱</strong>：完全免费，不支持自定义语音<br>
+                    • <strong>OpenAI</strong>：需要翻墙，价格贵，智能水平高，不支持视频和自定义语音
+                </div>
+            </div>
         </div>
         <div id="advanced-options" style="display: none; padding: 12px 0 0 0; border-top: 1px solid #eee;">
+            <div style="background: #e7f3ff; border: 1px solid #b3d9ff; border-radius: 6px; padding: 16px; margin-bottom: 16px; font-size: 0.9em; color: #0d6efd; line-height: 1.5;">
+                <strong>💡 配置建议：</strong><br>
+                • <strong>核心API</strong>负责对话功能，建议根据预算和需求选择<br>
+                • <strong>辅助API</strong>负责记忆管理和自定义语音，<strong>只有阿里支持自定义语音</strong><br>
+                • 即使选择智谱或OpenAI作为核心API，仍然建议辅助API选择阿里以获得自定义语音功能
+            </div>
             <div class="field-row">
-                <label for="coreApiSelect">核心API</label>
-                <select id="coreApiSelect" style="flex:1; padding: 10px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 1rem;">
+                <label for="coreApiSelect">
+                    核心API
+                    <div class="tooltip-container">
+                        <span class="tooltip-icon">?</span>
+                        <div class="tooltip-content">
+                            <strong>核心API负责对话功能：</strong><br>
+                            • <strong>阿里</strong>：有免费限额，功能全面<br>
+                            • <strong>智谱</strong>：完全免费，性价比高<br>
+                            • <strong>OpenAI</strong>：智能水平最高，但需要翻墙且价格昂贵，不支持视频
+                        </div>
+                    </div>
+                </label>
+                <select id="coreApiSelect" style="width: 100%; padding: 10px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 1rem;">
                     <option value="qwen">Qwen-Omni（阿里）</option>
                     <option value="openai">4o-realtime（OpenAI）</option>
                     <option value="glm">GLM-realtime（智谱）</option>
                 </select>
             </div>
             <div class="field-row">
-                <label for="assistApiSelect">辅助API<em>（只有阿里支持自定义语音）</em></label>
-                <select id="assistApiSelect" style="flex:1; padding: 10px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 1rem;">
+                <label for="assistApiSelect">
+                    辅助API（记忆管理/自定义语音）
+                    <div class="tooltip-container">
+                        <span class="tooltip-icon">?</span>
+                        <div class="tooltip-content">
+                            <strong>辅助API负责记忆管理和自定义语音：</strong><br>
+                            • <strong>阿里</strong>：推荐选择，唯一支持自定义语音<br>
+                            • <strong>OpenAI</strong>：记忆管理能力强<br>
+                            • <strong>智谱</strong>：免费且稳定<br><br>
+                            <strong>注意：</strong>只有阿里支持自定义语音功能
+                        </div>
+                    </div>
+                </label>
+                <select id="assistApiSelect" style="width: 100%; padding: 10px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 1rem;">
                     <option value="qwen">阿里（推荐）</option>
                     <option value="openai">OpenAI</option>
                     <option value="glm">智谱</option>
@@ -261,15 +360,15 @@
             </div>
             <div class="field-row">
                 <label for="assistApiKeyInputQwen">辅助API Key - 阿里<em>（仅当辅助API为阿里时需要填写）</em></label>
-                <input type="text" id="assistApiKeyInputQwen" placeholder="可选，默认为核心API Key" value="">
+                <input type="text" id="assistApiKeyInputQwen" placeholder="可选，默认为核心API Key" value="" style="max-width: 600px;">
             </div>
             <div class="field-row">
                 <label for="assistApiKeyInputOpenai">辅助API Key - OpenAI<em>（仅当辅助API为OpenAI时需要填写）</em></label>
-                <input type="text" id="assistApiKeyInputOpenai" placeholder="可选，默认为核心API Key" value="">
+                <input type="text" id="assistApiKeyInputOpenai" placeholder="可选，默认为核心API Key" value="" style="max-width: 600px;">
             </div>
             <div class="field-row">
                 <label for="assistApiKeyInputGlm">辅助API Key - 智谱<em>（仅当辅助API为智谱时需要填写）</em></label>
-                <input type="text" id="assistApiKeyInputGlm" placeholder="可选，默认为核心API Key" value="">
+                <input type="text" id="assistApiKeyInputGlm" placeholder="可选，默认为核心API Key" value="" style="max-width: 600px;">
             </div>
         </div>
     </div>
@@ -503,6 +602,41 @@ function toggleAdvancedOptions() {
     }
 }
 
+// 根据核心API选择更新辅助API的提示和建议
+function updateAssistApiRecommendation() {
+    const coreApiSelect = document.getElementById('coreApiSelect');
+    const assistApiSelect = document.getElementById('assistApiSelect');
+    
+    if (!coreApiSelect || !assistApiSelect) return;
+    
+    const selectedCoreApi = coreApiSelect.value;
+    let recommendation = '';
+    
+    switch (selectedCoreApi) {
+        case 'qwen':
+            recommendation = '阿里作为核心API时，建议辅助API也选择阿里以获得最佳的自定义语音体验';
+            break;
+        case 'glm':
+            recommendation = '智谱作为核心API时，建议辅助API选择阿里以支持自定义语音功能';
+            break;
+        case 'openai':
+            recommendation = 'OpenAI作为核心API时，建议辅助API选择阿里以支持自定义语音功能';
+            break;
+    }
+    
+    // 更新辅助API选择框的提示
+    const assistApiTooltip = assistApiSelect.parentElement.querySelector('label .tooltip-content');
+    if (assistApiTooltip) {
+        assistApiTooltip.innerHTML = `
+            <strong>辅助API负责记忆管理和自定义语音：</strong><br>
+            • <strong>阿里</strong>：推荐选择，唯一支持自定义语音<br>
+            • <strong>OpenAI</strong>：记忆管理能力强<br>
+            • <strong>智谱</strong>：免费且稳定<br><br>
+            <strong>当前建议：</strong>${recommendation}
+        `;
+    }
+}
+
 // Beacon功能 - 页面关闭时发送信号给服务器（仅在直接打开时发送，iframe中不发送）
 let beaconSent = false;
 
@@ -549,7 +683,17 @@ if (window.parent === window) {
 }
 
 // 页面加载时尝试获取当前API Key
-window.addEventListener('load', loadCurrentApiKey);
+window.addEventListener('load', function() {
+    loadCurrentApiKey();
+    
+    // 添加核心API选择变化的事件监听器
+    const coreApiSelect = document.getElementById('coreApiSelect');
+    if (coreApiSelect) {
+        coreApiSelect.addEventListener('change', updateAssistApiRecommendation);
+        // 初始化时也更新一次建议
+        updateAssistApiRecommendation();
+    }
+});
 
 // 关闭API Key设置页面
 function closeApiKeySettings() {

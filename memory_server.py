@@ -85,6 +85,7 @@ def process_conversation_for_renew(request: HistoryRequest, lanlan_name: str):
         # settings_manager.extract_and_update_settings(input_history, lanlan_name)
         # semantic_manager.store_conversation(uid, input_history, lanlan_name)
         time_manager.store_conversation(uid, input_history, lanlan_name)
+        recent_history_manager.review_history(lanlan_name)
         return {"status": "processed"}
     except Exception as e:
         return {"status": "error", "message": str(e)}

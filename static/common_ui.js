@@ -185,7 +185,7 @@ if (!isMobileDevice()) {
 //     }
 // });
 
-// PC端：鼠标离开 sidebar 时延迟3秒收缩
+// PC端：鼠标离开 sidebar 时延迟5秒收缩
 sidebar.addEventListener('mouseleave', () => {
     if (!sidebar.classList.contains('minimized') && !isMobileDevice()) {
         setTimeout(() => {
@@ -193,7 +193,7 @@ sidebar.addEventListener('mouseleave', () => {
                 toggleSidebarBtn.click();
                 autoMinimized = true;
             }
-        }, 3000);
+        }, 5000);
     }
 });
 
