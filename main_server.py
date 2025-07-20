@@ -23,7 +23,7 @@ import atexit
 import dashscope
 from dashscope.audio.tts_v2 import VoiceEnrollmentService
 import requests
-from config import get_character_data, MAIN_SERVER_PORT, CORE_API_KEY, load_characters, save_characters
+from config import get_character_data, MAIN_SERVER_PORT, CORE_API_KEY, AUDIO_API_KEY, load_characters, save_characters
 import glob
 
 templates = Jinja2Templates(directory="./")
@@ -531,7 +531,7 @@ async def tmpfiles_voice_clone(file: UploadFile = File(...), prefix: str = Form(
             else:
                 tmp_url = page_url  # 兜底
         # 2. 用直链注册音色
-        dashscope.api_key = CORE_API_KEY
+        dashscope.api_key = AUDIO_API_KEY
         service = VoiceEnrollmentService()
         target_model = "cosyvoice-v2"
         voice_id = service.create_voice(target_model=target_model, prefix=prefix, url=tmp_url)
