@@ -134,6 +134,30 @@ async function loadUserPreferences() {
     const preferences = await loadUserPreferences();
     
     const model = await Live2DModel.from(cubism4Model);  // cubism4Model 是模板变量，在index.html中定义
+
+    // 配置渲染纹理数量以支持更多蒙版
+    if (model.internalModel && model.internalModel._clippingManager) {
+        // 设置渲染纹理数量为2，支持最多64个蒙版
+        model.internalModel._clippingManager._renderTextureCount = 2;
+        // 重新初始化蒙版管理器（有些库需要）
+        if (typeof model.internalModel._clippingManager.initialize === 'function') {
+            model.internalModel._clippingManager.initialize(
+                model.internalModel.coreModel,
+                model.internalModel.coreModel.getDrawableCount(),
+                model.internalModel.coreModel.getDrawableMasks(),
+                model.internalModel.coreModel.getDrawableMaskCounts(),
+                2 // renderTextureCount
+            );
+        }
+        console.log('渲染纹理数量已设置为2');
+    }
+
+    // （可选）如果你还需要设置缓冲区大小，可以保留
+    if (model.internalModel && model.internalModel.setClippingMaskBufferSize) {
+        model.internalModel.setClippingMaskBufferSize(512); // 例如512
+        console.log('蒙版缓冲区大小已设置为512');
+    }
+    
     if (window.innerWidth <= 768){  //移动端
         // 应用用户偏好或使用默认值
         const scale = Math.min(
