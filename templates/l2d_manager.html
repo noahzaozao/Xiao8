@@ -266,6 +266,24 @@
             try {
                 const model = await PIXI.live2d.Live2DModel.from(modelInfo.path);
                 currentModel = model;
+                window.currentModel = model;
+
+                // 配置渲染纹理数量以支持更多蒙版
+                if (model.internalModel && model.internalModel.renderer && model.internalModel.renderer._clippingManager) {
+                    // 设置渲染纹理数量为2，支持最多64个蒙版
+                    model.internalModel.renderer._clippingManager._renderTextureCount = 3;
+                    // 重新初始化蒙版管理器（有些库需要）
+                    if (typeof model.internalModel.renderer._clippingManager.initialize === 'function') {
+                        model.internalModel.renderer._clippingManager.initialize(
+                            model.internalModel.coreModel,
+                            model.internalModel.coreModel.getDrawableCount(),
+                            model.internalModel.coreModel.getDrawableMasks(),
+                            model.internalModel.coreModel.getDrawableMaskCounts(),
+                            3 // renderTextureCount
+                        );
+                    }
+                    console.log('渲染纹理数量已设置为3');
+                }
                 
                 // 应用用户偏好或使用默认设置
                 console.log('应用偏好设置:', preferences);
