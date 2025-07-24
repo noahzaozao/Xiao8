@@ -116,4 +116,4 @@ if  OPENROUTER_API_KEY == '':
     OPENROUTER_API_KEY = CORE_API_KEY
 
 if not CORE_API_KEY.startswith('sk'):
-    logger.error("💥 请检查Core API Key是否正确，通常以'sk-'开头。请在设置页面中重新设置。")
+    logger.warning("⚠️ 请检查Core API Key是否正确，通常以'sk-'开头（智谱例外）。请在设置页面中重新设置。")
