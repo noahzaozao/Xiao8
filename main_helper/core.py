@@ -753,15 +753,26 @@ def speech_synthesis_worker(request_queue, response_queue, audio_api_key, voice_
     class Callback(ResultCallback):
         def __init__(self, response_queue):
             self.response_queue = response_queue
+            self.cache = np.zeros(0).astype(np.float32)
         def on_open(self): pass
-        def on_complete(self): pass
+        def on_complete(self): 
+            if len(self.cache)>0:
+                data = (resample(self.cache, orig_sr=24000, target_sr=48000)*32768.).clip(-32768, 32767).astype(np.int16).tobytes()
+                self.response_queue.put(data)
+                self.cache = np.zeros(0).astype(np.float32)
         def on_error(self, message: str): print(f"TTS Error: {message}")
         def on_close(self): pass
         def on_event(self, message): pass
         def on_data(self, data: bytes) -> None:
             audio = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
-            data = (resample(audio, orig_sr=24000, target_sr=48000)*32767.).clip(-32767, 32766).astype(np.int16).tobytes()
-            self.response_queue.put(data)
+            self.cache = np.concatenate([self.cache, audio])
+            if len(self.cache)>=8000:
+                data = self.cache[:8000]
+                data = (resample(data, orig_sr=24000, target_sr=48000)*32768.).clip(-32768, 32767).astype(np.int16).tobytes()
+                self.response_queue.put(data)
+                self.cache = self.cache[8000:]
+            
+            
     callback = Callback(response_queue)
     current_speech_id = None
     synthesizer = None
