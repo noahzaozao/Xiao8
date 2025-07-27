@@ -10,6 +10,8 @@ import uuid
 import logging
 from datetime import datetime
 import webbrowser
+import pathlib
+BASE_DIR = pathlib.Path(__file__).parent
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, File, UploadFile, Form, Body
 from fastapi.staticfiles import StaticFiles
@@ -82,7 +84,7 @@ class CustomStaticFiles(StaticFiles):
         if path.endswith('.js'):
             response.headers['Content-Type'] = 'application/javascript'
         return response
-app.mount("/static", CustomStaticFiles(directory="static"), name="static")
+app.mount("/static", CustomStaticFiles(directory=BASE_DIR / "static"), name="static")
 
 # 使用 FastAPI 的 app.state 来管理启动配置
 def get_start_config():
