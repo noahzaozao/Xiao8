@@ -36,7 +36,18 @@ def get_character_data():
     MASTER_NAME = character_data.get('主人', {}).get('档案名', _default_master['档案名'])
     # 获取所有猫娘名
     catgirl_names = list(character_data['猫娘'].keys()) if character_data['猫娘'] and len(character_data['猫娘']) > 0 else list(_default_lanlan.keys())
-    her_name = catgirl_names[0] if catgirl_names else ''
+    
+    # 获取当前猫娘，如果没有设置则使用第一个猫娘
+    current_catgirl = character_data.get('当前猫娘', '')
+    if current_catgirl and current_catgirl in catgirl_names:
+        her_name = current_catgirl
+    else:
+        her_name = catgirl_names[0] if catgirl_names else ''
+        # 如果没有设置当前猫娘，自动设置第一个猫娘为当前猫娘
+        if her_name and not current_catgirl:
+            character_data['当前猫娘'] = her_name
+            save_characters(character_data)
+    
     master_basic_config = character_data.get('主人', _default_master)
     lanlan_basic_config = character_data['猫娘'] if catgirl_names else _default_lanlan
 
