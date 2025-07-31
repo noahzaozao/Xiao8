@@ -25,6 +25,7 @@ from dashscope.audio.tts_v2 import VoiceEnrollmentService
 import requests
 from openai import AsyncOpenAI
 from config import get_character_data, MAIN_SERVER_PORT, CORE_API_KEY, AUDIO_API_KEY, EMOTION_MODEL, OPENROUTER_API_KEY, OPENROUTER_URL, load_characters, save_characters
+from config.prompts_sys import emotion_analysis_prompt
 import glob
 
 templates = Jinja2Templates(directory="./")
@@ -909,7 +910,7 @@ async def emotion_analysis(request: Request):
         messages = [
             {
                 "role": "system", 
-                "content": "你是一个情感分析专家。请分析用户输入的文本情感，并返回以下格式的JSON：{\"emotion\": \"情感类型\", \"confidence\": 置信度(0-1), \"reason\": \"分析原因\"}。情感类型包括：happy(开心), sad(悲伤), angry(愤怒), neutral(中性),surprised(惊讶)。"
+                "content": emotion_analysis_prompt
             },
             {
                 "role": "user", 

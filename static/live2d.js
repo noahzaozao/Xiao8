@@ -533,7 +533,17 @@ class Live2DManager {
 
     // 设置情感并播放对应的表情和动作
     async setEmotion(emotion) {
-        if (this.currentEmotion === emotion) return; // 避免重复播放
+        // 如果情感相同，有一定概率随机播放motion
+        if (this.currentEmotion === emotion) {
+            // 30% 的概率随机播放motion
+            if (Math.random() < 0.3) {
+                console.log(`情感相同 (${emotion})，随机播放motion`);
+                await this.playMotion(emotion);
+            } else {
+                console.log(`情感相同 (${emotion})，跳过播放`);
+                return;
+            }
+        }
         
         // 防止快速连续点击
         if (this.isEmotionChanging) {
