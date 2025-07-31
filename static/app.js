@@ -49,6 +49,7 @@ function init_app(){
 
             try {
                 const response = JSON.parse(event.data);
+                console.log('WebSocket收到消息:', response);
 
                 if (response.type === 'gemini_response') {
                     // 检查是否是新消息的开始
@@ -117,6 +118,20 @@ function init_app(){
                     }
                 } else if (response.type === 'expression') {
                     window.LanLan1.registered_expressions[response.message]();
+                } else if (response.type === 'system' && response.data === 'turn end') {
+                    console.log('收到turn end事件，开始情感分析');
+                    console.log('当前currentGeminiMessage:', currentGeminiMessage);
+                    // 消息完成时进行情感分析
+                    if (currentGeminiMessage) {
+                        const fullText = currentGeminiMessage.textContent.replace(/^\[\d{2}:\d{2}:\d{2}\] 🎀 /, '');
+                        setTimeout(async () => {
+                            const emotionResult = await analyzeEmotion(fullText);
+                            if (emotionResult && emotionResult.emotion) {
+                                console.log('消息完成，情感分析结果:', emotionResult);
+                                applyEmotion(emotionResult.emotion);
+                            }
+                        }, 100);
+                    }
                 }
             } catch (error) {
                 console.error('处理消息失败:', error);
@@ -411,6 +426,50 @@ function init_app(){
         stopButton.disabled = true;
         resetSessionButton.disabled = true;
     });
+
+    // 情感分析功能
+    async function analyzeEmotion(text) {
+        console.log('analyzeEmotion被调用，文本:', text);
+        try {
+            const response = await fetch('/api/emotion/analysis', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    text: text
+                })
+            });
+
+            if (!response.ok) {
+                console.warn('情感分析请求失败:', response.status);
+                return null;
+            }
+
+            const result = await response.json();
+            console.log('情感分析API返回结果:', result);
+            
+            if (result.error) {
+                console.warn('情感分析错误:', result.error);
+                return null;
+            }
+
+            return result;
+        } catch (error) {
+            console.error('情感分析请求异常:', error);
+            return null;
+        }
+    }
+
+    // 应用情感到Live2D模型
+    function applyEmotion(emotion) {
+        if (window.LanLan1 && window.LanLan1.setEmotion) {
+            console.log('调用window.LanLan1.setEmotion:', emotion);
+            window.LanLan1.setEmotion(emotion);
+        } else {
+            console.warn('情感功能未初始化');
+        }
+    }
 
     // 使用AudioWorklet开始音频处理
     async function startAudioWorklet(stream) {

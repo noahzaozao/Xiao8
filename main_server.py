@@ -25,7 +25,8 @@ import atexit
 import dashscope
 from dashscope.audio.tts_v2 import VoiceEnrollmentService
 import requests
-from config import get_character_data, MAIN_SERVER_PORT, CORE_API_KEY, AUDIO_API_KEY, load_characters, save_characters
+from openai import AsyncOpenAI
+from config import get_character_data, MAIN_SERVER_PORT, CORE_API_KEY, AUDIO_API_KEY, EMOTION_MODEL, OPENROUTER_API_KEY, OPENROUTER_URL, load_characters, save_characters
 import glob
 
 templates = Jinja2Templates(directory="./")
@@ -706,6 +707,119 @@ async def get_recent_file(filename: str):
         content = f.read()
     return {"content": content}
 
+@app.get('/api/live2d/emotion_mapping/{model_name}')
+async def get_emotion_mapping(model_name: str):
+    """获取指定Live2D模型的情感映射配置"""
+    try:
+        # 动态加载Live2D情感映射配置文件
+        mapping_file_path = os.path.join(os.path.dirname(__file__), 'config', 'live2d_emotion_mapping.json')
+        
+        try:
+            with open(mapping_file_path, 'r', encoding='utf-8') as f:
+                emotion_mapping_data = json.load(f)
+        except FileNotFoundError:
+            logger.info(f"未找到Live2D映射配置文件: {mapping_file_path}，使用默认配置。")
+            emotion_mapping_data = {}
+        except Exception as e:
+            logger.error(f"💥 读取Live2D映射配置文件出错: {e}，使用默认配置。")
+            emotion_mapping_data = {}
+        
+        # 获取指定模型的映射配置
+        mapping = emotion_mapping_data.get(model_name, {})
+        return {"success": True, "mapping": mapping}
+    except Exception as e:
+        logger.error(f"获取情感映射配置失败: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.get('/api/live2d/emotion_mapping')
+async def get_all_emotion_mappings():
+    """获取所有Live2D模型的情感映射配置"""
+    try:
+        # 动态加载Live2D情感映射配置文件
+        mapping_file_path = os.path.join(os.path.dirname(__file__), 'config', 'live2d_emotion_mapping.json')
+        
+        try:
+            with open(mapping_file_path, 'r', encoding='utf-8') as f:
+                emotion_mapping_data = json.load(f)
+        except FileNotFoundError:
+            logger.info(f"未找到Live2D映射配置文件: {mapping_file_path}，使用默认配置。")
+            emotion_mapping_data = {}
+        except Exception as e:
+            logger.error(f"💥 读取Live2D映射配置文件出错: {e}，使用默认配置。")
+            emotion_mapping_data = {}
+        
+        return {"success": True, "mappings": emotion_mapping_data}
+    except Exception as e:
+        logger.error(f"获取所有情感映射配置失败: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.post('/api/live2d/emotion_mapping')
+async def update_emotion_mapping(request: Request):
+    """更新Live2D模型的情感映射配置"""
+    try:
+        data = await request.json()
+        if not data:
+            return {"success": False, "error": "请求体不能为空"}
+        
+        # 动态加载Live2D情感映射配置文件
+        mapping_file_path = os.path.join(os.path.dirname(__file__), 'config', 'live2d_emotion_mapping.json')
+        
+        # 读取现有配置
+        try:
+            with open(mapping_file_path, 'r', encoding='utf-8') as f:
+                emotion_mapping_data = json.load(f)
+        except FileNotFoundError:
+            emotion_mapping_data = {}
+        except Exception as e:
+            logger.error(f"💥 读取Live2D映射配置文件出错: {e}，使用空配置。")
+            emotion_mapping_data = {}
+        
+        # 更新配置
+        emotion_mapping_data.update(data)
+        
+        # 保存配置
+        with open(mapping_file_path, 'w', encoding='utf-8') as f:
+            json.dump(emotion_mapping_data, f, ensure_ascii=False, indent=2)
+        
+        logger.info("Live2D情感映射配置已更新")
+        return {"success": True, "message": "配置已更新"}
+    except Exception as e:
+        logger.error(f"更新情感映射配置失败: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.delete('/api/live2d/emotion_mapping/{model_name}')
+async def delete_emotion_mapping(model_name: str):
+    """删除指定Live2D模型的情感映射配置"""
+    try:
+        # 动态加载Live2D情感映射配置文件
+        mapping_file_path = os.path.join(os.path.dirname(__file__), 'config', 'live2d_emotion_mapping.json')
+        
+        # 读取现有配置
+        try:
+            with open(mapping_file_path, 'r', encoding='utf-8') as f:
+                emotion_mapping_data = json.load(f)
+        except FileNotFoundError:
+            return {"success": False, "error": "配置文件不存在"}
+        except Exception as e:
+            logger.error(f"💥 读取Live2D映射配置文件出错: {e}")
+            return {"success": False, "error": str(e)}
+        
+        # 删除指定模型配置
+        if model_name in emotion_mapping_data:
+            del emotion_mapping_data[model_name]
+            
+            # 保存配置
+            with open(mapping_file_path, 'w', encoding='utf-8') as f:
+                json.dump(emotion_mapping_data, f, ensure_ascii=False, indent=2)
+            
+            logger.info(f"已删除模型 {model_name} 的情感映射配置")
+            return {"success": True, "message": f"已删除模型 {model_name} 的配置"}
+        else:
+            return {"success": False, "error": f"模型 {model_name} 不存在"}
+    except Exception as e:
+        logger.error(f"删除情感映射配置失败: {e}")
+        return {"success": False, "error": str(e)}
+
 @app.post('/api/memory/recent_file/save')
 async def save_recent_file(request: Request):
     import os, json
@@ -738,6 +852,85 @@ async def save_recent_file(request: Request):
         return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+@app.post('/api/emotion/analysis')
+async def emotion_analysis(request: Request):
+    try:
+        data = await request.json()
+        if not data or 'text' not in data:
+            return {"error": "请求体中必须包含text字段"}
+        
+        text = data['text']
+        api_key = data.get('api_key')
+        model = data.get('model')
+        
+        # 使用参数或默认配置
+        api_key = api_key or OPENROUTER_API_KEY
+        model = model or EMOTION_MODEL
+        
+        if not api_key:
+            return {"error": "API密钥未提供且配置中未设置默认密钥"}
+        
+        if not model:
+            return {"error": "模型名称未提供且配置中未设置默认模型"}
+        
+        # 创建异步客户端
+        client = AsyncOpenAI(api_key=api_key, base_url=OPENROUTER_URL)
+        
+        # 构建请求消息
+        messages = [
+            {
+                "role": "system", 
+                "content": "你是一个情感分析专家。请分析用户输入的文本情感，并返回以下格式的JSON：{\"emotion\": \"情感类型\", \"confidence\": 置信度(0-1), \"reason\": \"分析原因\"}。情感类型包括：happy(开心), sad(悲伤), angry(愤怒), neutral(中性),surprised(惊讶)。"
+            },
+            {
+                "role": "user", 
+                "content": text
+            }
+        ]
+        
+        # 异步调用模型
+        response = await client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.3,
+            max_tokens=100,
+            extra_body={"enable_thinking": False}
+        )
+        
+        # 解析响应
+        result_text = response.choices[0].message.content.strip()
+        
+        # 尝试解析JSON响应
+        try:
+            import json
+            result = json.loads(result_text)
+            # 获取emotion和confidence
+            emotion = result.get("emotion", "neutral")
+            confidence = result.get("confidence", 0.5)
+            
+            # 当confidence小于0.3时，自动将emotion设置为neutral
+            if confidence < 0.3:
+                emotion = "neutral"
+            
+            return {
+                "emotion": emotion,
+                "confidence": confidence
+            }
+        except json.JSONDecodeError:
+            # 如果JSON解析失败，返回简单的情感判断
+            return {
+                "emotion": "neutral",
+                "confidence": 0.5
+            }
+            
+    except Exception as e:
+        logger.error(f"情感分析失败: {e}")
+        return {
+            "error": f"情感分析失败: {str(e)}",
+            "emotion": "neutral",
+            "confidence": 0.0
+        }
 
 @app.get('/memory_browser', response_class=HTMLResponse)
 async def memory_browser(request: Request):

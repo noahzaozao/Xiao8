@@ -104,93 +104,32 @@
 <script src="/static/libs/live2d.min.js"></script>  <!-- Cubism 2.1核心库（支持旧模型） -->
 <script src="/static/libs/pixi.min.js"></script>  <!-- PixiJS v7 CDN -->
 <script src="/static/libs/index.min.js"></script>  <!-- pixi-live2d-display v0.5.0-ls-6（RaSan147 fork，支持v7） -->
+<script src="/static/live2d.js"></script>  <!-- 使用重构后的 Live2D 管理器 -->
 
 <script>
     // 注入后端传来的 lanlan_name 变量
     const lanlanName = "{{ lanlan_name | default('') }}";
-    // 你可以在后续 JS 逻辑中用 lanlanName 变量
+    
     (async function () {
-        const app = new PIXI.Application({
-            view: document.getElementById('live2d-canvas'), resizeTo: document.getElementById('live2d-container'),
-            autoStart: true, transparent: true, backgroundAlpha: 0
-        });
-        window.PIXI = PIXI;
         const statusDiv = document.getElementById('status');
-        let currentModel = null;
         let currentModelInfo = null;
 
-        // 加载用户偏好
-        async function loadUserPreferences() {
-            try {
-                const response = await fetch('/api/preferences');
-                if (response.ok) {
-                    const data = await response.json();
-                    // 确保返回的是数组，如果不是则返回空数组
-                    return Array.isArray(data) ? data : [];
-                }
-            } catch (error) {
-                console.warn('加载用户偏好失败:', error);
-            }
-            return [];
-        }
+        // 初始化 Live2D 管理器
+        await window.live2dManager.initPIXI('live2d-canvas', 'live2d-container');
 
-        // 保存用户偏好
-        async function saveUserPreferences() {
-            if (!currentModel || !currentModelInfo) {
-                statusDiv.innerText = "没有可保存的设置";
-                return;
+        // 设置模型加载回调
+        window.live2dManager.onModelLoaded = (model, modelPath) => {
+            console.log('模型加载完成:', modelPath);
+            if (currentModelInfo) {
+                statusDiv.innerText = `加载成功: ${currentModelInfo.name}。您可以拖拽和滚轮缩放模型。`;
             }
-            try {
-                const preferences = {
-                    model_path: currentModelInfo.path,
-                    position: {
-                        x: currentModel.x,
-                        y: currentModel.y
-                    },
-                    scale: {
-                        x: currentModel.scale.x,
-                        y: currentModel.scale.y
-                    }
-                };
-                const response = await fetch('/api/preferences', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(preferences)
-                });
-                const result = await response.json();
-                if (result.success) {
-                    statusDiv.innerText = "设置已保存！";
-                    setTimeout(() => {
-                        if (currentModelInfo) {
-                            statusDiv.innerText = `当前模型: ${currentModelInfo.name}`;
-                        }
-                    }, 2000);
-                } else {
-                    statusDiv.innerText = `保存失败: ${result.error}`;
-                }
-            } catch (error) {
-                console.error("保存偏好失败:", error);
-                statusDiv.innerText = "保存失败，请检查网络连接";
-            }
-            // 保存 live2d 字段到后端
-            if (lanlanName && currentModelInfo && currentModelInfo.name) {
-                try {
-                    const resp = await fetch(`/api/characters/catgirl/l2d/${lanlanName}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ live2d: currentModelInfo.name })
-                    });
-                    const result = await resp.json();
-                    if (!result.success) {
-                        statusDiv.innerText += `\n后端保存live2d失败: ${result.error}`;
-                    }
-                } catch (e) {
-                    statusDiv.innerText += '\n后端保存live2d失败，请检查网络';
-                }
-            }
-        }
+            document.getElementById('savePreferencesBtn').disabled = false;
+        };
+
+        // 设置状态更新回调
+        window.live2dManager.onStatusUpdate = (message) => {
+            statusDiv.innerText = message;
+        };
 
         async function setupModelList() {
             try {
@@ -206,7 +145,7 @@
                         btn.innerText = modelInfo.name;
                         btn.className = 'model-select-btn';
                         btn.onclick = async () => { 
-                            const preferences = await loadUserPreferences();
+                            const preferences = await window.live2dManager.loadUserPreferences();
                             // 查找该模型的历史偏好
                             const modelPreferences = preferences.find(pref => pref && pref.model_path === modelInfo.path);
                             await loadModel(modelInfo, modelPreferences || null); 
@@ -229,7 +168,7 @@
                     });
                     
                     // 加载用户偏好
-                    const preferences = await loadUserPreferences();
+                    const preferences = await window.live2dManager.loadUserPreferences();
                     console.log('加载的用户偏好:', preferences);
                     let modelToLoad = modelsFromServer[0]; // 默认加载第一个模型
                     let modelPreferences = null;
@@ -254,118 +193,96 @@
                 } else {
                     statusDiv.innerText = '服务器的 "static" 文件夹下未发现任何模型。';
                 }
-            } catch (error) { console.error("获取模型列表失败:", error); statusDiv.innerText = '获取模型列表失败，请检查后端服务是否正常运行。'; }
+            } catch (error) { 
+                console.error("获取模型列表失败:", error); 
+                statusDiv.innerText = '获取模型列表失败，请检查后端服务是否正常运行。'; 
+            }
         }
 
         async function loadModel(modelInfo, preferences = {}) {
-            if (!modelInfo || !modelInfo.path) { statusDiv.innerText = "错误：模型路径无效。"; return; }
-            if (currentModel) { app.stage.removeChild(currentModel); currentModel.destroy({ children: true }); }
+            if (!modelInfo || !modelInfo.path) { 
+                statusDiv.innerText = "错误：模型路径无效。"; 
+                return; 
+            }
             
             currentModelInfo = modelInfo;
             statusDiv.innerText = `正在加载模型: ${modelInfo.name}...`;
+            
             try {
-                const model = await PIXI.live2d.Live2DModel.from(modelInfo.path);
-                currentModel = model;
-                window.currentModel = model;
-
-                // 配置渲染纹理数量以支持更多蒙版
-                if (model.internalModel && model.internalModel.renderer && model.internalModel.renderer._clippingManager) {
-                    // 设置渲染纹理数量为2，支持最多64个蒙版
-                    model.internalModel.renderer._clippingManager._renderTextureCount = 3;
-                    // 重新初始化蒙版管理器（有些库需要）
-                    if (typeof model.internalModel.renderer._clippingManager.initialize === 'function') {
-                        model.internalModel.renderer._clippingManager.initialize(
-                            model.internalModel.coreModel,
-                            model.internalModel.coreModel.getDrawableCount(),
-                            model.internalModel.coreModel.getDrawableMasks(),
-                            model.internalModel.coreModel.getDrawableMaskCounts(),
-                            3 // renderTextureCount
-                        );
-                    }
-                    console.log('渲染纹理数量已设置为3');
-                }
-                
-                // 应用用户偏好或使用默认设置
-                console.log('应用偏好设置:', preferences);
-                if (preferences && preferences.scale && preferences.position && 
-                    preferences.scale.x !== undefined && preferences.scale.y !== undefined &&
-                    preferences.position.x !== undefined && preferences.position.y !== undefined) {
-                    // 使用保存的偏好设置
-                    console.log('使用保存的设置 - 缩放:', preferences.scale, '位置:', preferences.position);
-                    model.scale.set(preferences.scale.x, preferences.scale.y);
-                    model.x = preferences.position.x;
-                    model.y = preferences.position.y;
-                    model.anchor.set(0.65, 0.75); // 确保设置anchor
-                    statusDiv.innerText = `加载成功: ${modelInfo.name}，已应用保存的设置。`;
-                } else {
-                    console.log('使用默认设置');
-                    // 使用默认设置
-                    if (false) {
-                        const scale = Math.min(0.5, window.innerHeight * 1.3 / 4000, window.innerWidth * 1.2 / 2000);
-                        model.scale.set(scale);
-                        model.x = app.renderer.width * 0.5;
-                        model.y = app.renderer.height * 0.28;
-                        model.anchor.set(0.5, 0.1);
-                    } else {
-                        const scale = Math.min(0.5, (window.innerHeight * 0.75) / 7000, (window.innerWidth * 0.6) / 7000);
-                        model.scale.set(scale);
-                        model.x = app.renderer.width;
-                        model.y = app.renderer.height;
-                        model.anchor.set(0.65, 0.75);
-                    }
-                    statusDiv.innerText = `加载成功: ${modelInfo.name}，使用默认设置。`;
-                }
-
-                app.stage.addChild(model);
-
-                
-
-                model.interactive = true;
-                app.stage.interactive = true;
-                app.stage.hitArea = app.screen;
-                let isDragging = false;
-                let dragStartPos = new PIXI.Point();
-
-                model.on('pointerdown', (event) => {
-                    isDragging = true;
-                    // 记录鼠标点击位置相对于模型的偏移量
-                    const globalPos = event.data.global;
-                    dragStartPos.x = globalPos.x - model.x;
-                    dragStartPos.y = globalPos.y - model.y;
-
-                    document.getElementById('live2d-canvas').style.cursor = 'grabbing';
+                // 使用 Live2D 管理器加载模型
+                await window.live2dManager.loadModel(modelInfo.path, {
+                    preferences: preferences,
+                    dragEnabled: true,
+                    wheelEnabled: true,
+                    loadEmotionMapping: true
                 });
 
-                const onDragEnd = () => {
-                    if (isDragging) {
-                        isDragging = false;
-                        document.getElementById('live2d-canvas').style.cursor = 'grab';
-                    }
-                };
-                app.stage.on('pointerup', onDragEnd);
-                app.stage.on('pointerupoutside', onDragEnd);
-
-                app.stage.on('pointermove', (event) => {
-                    if (isDragging) {
-                        // 使用鼠标位置减去偏移量来设置模型位置
-                        const newPosition = event.data.global;
-                        model.x = newPosition.x - dragStartPos.x;
-                        model.y = newPosition.y - dragStartPos.y;
+                // 设置窗口大小变化监听
+                window.addEventListener('resize', () => {
+                    const model = window.live2dManager.getCurrentModel();
+                    if (model && preferences && preferences.position) {
+                        model.x = preferences.position.x;
+                        model.y = preferences.position.y;
+                    } else if (model) {
+                        model.x = window.live2dManager.getPIXIApp().renderer.width;
+                        model.y = window.live2dManager.getPIXIApp().renderer.height;
                     }
                 });
 
-                const onWheelScroll = (event) => { if (!currentModel) return; event.preventDefault(); const scaleFactor = 1.1; const oldScale = currentModel.scale.x; let newScale = event.deltaY < 0 ? oldScale * scaleFactor : oldScale / scaleFactor; currentModel.scale.set(newScale); };
-                const view = app.view;
-                if (view.lastWheelListener) { view.removeEventListener('wheel', view.lastWheelListener); }
-                view.addEventListener('wheel', onWheelScroll, { passive: false });
-                view.lastWheelListener = onWheelScroll;
-                
-                // 保持之前的状态信息，不覆盖偏好应用信息
-                if (!preferences || !preferences.scale || !preferences.position) {
-                    statusDiv.innerText = `加载成功: ${modelInfo.name}。您可以拖拽和滚轮缩放模型。`;
-                }
+                statusDiv.innerText = `加载成功: ${modelInfo.name}。您可以拖拽和滚轮缩放模型。`;
                 document.getElementById('savePreferencesBtn').disabled = false;
-            } catch (error) { console.error("加载模型失败:", error); statusDiv.innerText = `加载模型 "${modelInfo.name}" 失败。请检查路径或F12查看控制台错误。`; }
+            } catch (error) { 
+                console.error("加载模型失败:", error); 
+                statusDiv.innerText = `加载模型 "${modelInfo.name}" 失败。请检查路径或F12查看控制台错误。`; 
+            }
+        }
+
+        // 保存用户偏好
+        async function saveUserPreferences() {
+            const currentModel = window.live2dManager.getCurrentModel();
+            if (!currentModel || !currentModelInfo) {
+                statusDiv.innerText = "没有可保存的设置";
+                return;
+            }
+            
+            try {
+                const success = await window.live2dManager.saveUserPreferences(
+                    currentModelInfo.path,
+                    { x: currentModel.x, y: currentModel.y },
+                    { x: currentModel.scale.x, y: currentModel.scale.y }
+                );
+                
+                if (success) {
+                    statusDiv.innerText = "设置已保存！";
+                    setTimeout(() => {
+                        if (currentModelInfo) {
+                            statusDiv.innerText = `当前模型: ${currentModelInfo.name}`;
+                        }
+                    }, 2000);
+                } else {
+                    statusDiv.innerText = "保存失败";
+                }
+            } catch (error) {
+                console.error("保存偏好失败:", error);
+                statusDiv.innerText = "保存失败，请检查网络连接";
+            }
+            
+            // 保存 live2d 字段到后端
+            if (lanlanName && currentModelInfo && currentModelInfo.name) {
+                try {
+                    const resp = await fetch(`/api/characters/catgirl/l2d/${lanlanName}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ live2d: currentModelInfo.name })
+                    });
+                    const result = await resp.json();
+                    if (!result.success) {
+                        statusDiv.innerText += `\n后端保存live2d失败: ${result.error}`;
+                    }
+                } catch (e) {
+                    statusDiv.innerText += '\n后端保存live2d失败，请检查网络';
+                }
+            }
         }
 
         document.getElementById('changeModelBtn').addEventListener('click', () => {

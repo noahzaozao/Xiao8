@@ -22,7 +22,7 @@ import inflect
 import base64
 from io import BytesIO
 from PIL import Image
-from config import get_character_data, CORE_URL, CORE_MODEL, CORE_API_KEY, MEMORY_SERVER_PORT, AUDIO_API_KEY
+from config import get_character_data, CORE_URL, CORE_MODEL, EMOTION_MODEL, CORE_API_KEY, MEMORY_SERVER_PORT, AUDIO_API_KEY
 from multiprocessing import Process, Queue as MPQueue
 from uuid import uuid4
 import numpy as np
@@ -135,6 +135,13 @@ class LLMSessionManager:
             print("Response complete")
             self.tts_request_queue.put((None, None))
         self.sync_message_queue.put({'type': 'system', 'data': 'turn end'})
+        
+        # 直接向前端发送turn end消息
+        try:
+            if self.websocket and hasattr(self.websocket, 'client_state') and self.websocket.client_state == self.websocket.client_state.CONNECTED:
+                await self.websocket.send_json({'type': 'system', 'data': 'turn end'})
+        except Exception as e:
+            logger.error(f"💥 WS Send Turn End Error: {e}")
         
         # 如果正在热切换过程中，跳过所有热切换逻辑
         if self.is_hot_swap_imminent:

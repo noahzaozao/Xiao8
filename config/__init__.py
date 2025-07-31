@@ -53,6 +53,8 @@ def get_character_data():
 TIME_ORIGINAL_TABLE_NAME = "time_indexed_original"
 TIME_COMPRESSED_TABLE_NAME = "time_indexed_compressed"
 
+
+
 try:
     with open('./config/core_config.json', 'r', encoding='utf-8') as f:
         core_cfg = json.load(f)
@@ -83,26 +85,30 @@ try:
         if core_cfg['assistApi'] == 'qwen':
             logger.warning("assistApi: " + core_cfg['assistApi'])
             OPENROUTER_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-            SUMMARY_MODEL = "qwen-plus"
-            CORRECTION_MODEL = "qwen3-235b-a22b"
+            SUMMARY_MODEL = "qwen-plus-2025-07-14"
+            CORRECTION_MODEL = "qwen3-235b-a22b-instruct-2507"
+            EMOTION_MODEL = "qwen-turbo-2025-07-15"
             AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_QWEN
         elif core_cfg['assistApi'] == 'openai':
             logger.warning("assistApi: " + core_cfg['assistApi'])
             OPENROUTER_URL = "https://api.openai.com/v1"
             SUMMARY_MODEL= "gpt-4.1"
             CORRECTION_MODEL = "o4-mini"
+            EMOTION_MODEL = "gpt-4.1-nano"
             AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_OPENAI
         elif core_cfg['assistApi'] == 'glm':
             OPENROUTER_URL = "https://open.bigmodel.cn/api/paas/v4"
             SUMMARY_MODEL = "glm-4-air-250414" # glm-4-flash-250414 <-永久免费模型
             CORRECTION_MODEL = "glm-z1-air"  # glm-z1-flash <-永久免费模型
+            EMOTION_MODEL = "glm-4-flash-250414"
             AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_GLM
         else:
             logger.error("💥 Unknown assistApi: " + core_cfg['assistApi']) 
     else:
         OPENROUTER_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-        SUMMARY_MODEL = "qwen-plus"
-        CORRECTION_MODEL = "qwen3-235b-a22b"
+        SUMMARY_MODEL = "qwen-plus-2025-07-14"
+        CORRECTION_MODEL = "qwen3-235b-a22b-instruct-2507"
+        EMOTION_MODEL = "qwen-turbo-2025-07-15"
         AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_QWEN
 
 except FileNotFoundError:
