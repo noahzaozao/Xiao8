@@ -125,6 +125,8 @@
         @media (max-width: 600px) {
             .container { padding: 10px 2vw; }
         }
+        
+
     </style>
 </head>
 <body>
@@ -157,9 +159,11 @@
     <div class="section" id="catgirl-section">
         <div class="tips">🩷猫娘档案：进阶设定包含Live2D形象、语音ID等。</div>
         <div id="catgirl-list"></div>
-        <!-- <button class="btn add sm" id="add-catgirl-btn">➕ 新增猫娘</button> -->
+        <button class="btn add sm" id="add-catgirl-btn">➕ 新增猫娘</button>
     </div>
 </div>
+
+
 <script>
 // 折叠面板切换
 function toggleFold(fold) {
@@ -192,6 +196,7 @@ async function loadCharacterData() {
     characterData = await resp.json();
     renderMaster();
     renderCatgirls();
+    updateSwitchButtons();
 }
 
 // 渲染主人表单
@@ -273,6 +278,7 @@ function renderCatgirls() {
                 <span class="catgirl-expand" style="cursor:pointer;font-size:1.2em;margin-right:6px;user-select:none">▶</span>
                 <span class="catgirl-title" style="color:${color};">${key}</span>
                 <div class="catgirl-actions">
+                    <button class="btn sm" id="switch-btn-${key}" onclick="switchCatgirl('${key}')" style="background: #28a745;">切换猫娘</button>
                     <button class="btn sm delete" onclick="deleteCatgirl('${key}')">删除猫娘</button>
                 </div>
             </div>
@@ -306,11 +312,11 @@ function randomColor() {
     return `hsl(${h},${s}%,${l}%)`;
 }
 
-// // 新增猫娘
-// const addBtn = document.getElementById('add-catgirl-btn');
-// addBtn.onclick = function() {
-//     showCatgirlForm(null);
-// };
+// 新增猫娘
+const addBtn = document.getElementById('add-catgirl-btn');
+addBtn.onclick = function() {
+    showCatgirlForm(null);
+};
 
 // 编辑猫娘
 window.editCatgirl = function(key) {
@@ -387,6 +393,10 @@ function showCatgirlForm(key, container) {
     if (live2dLink) {
         live2dLink.onclick = function() {
             const catgirlName = form.querySelector('[name="档案名"]').value;
+            if (!catgirlName) {
+                alert('请先填写猫娘档案名，然后再设置Live2D模型');
+                return;
+            }
             const popup = window.open(
                 `/l2d?lanlan_name=${encodeURIComponent(catgirlName)}`,
                 '_blank',
@@ -421,12 +431,35 @@ function showCatgirlForm(key, container) {
             if (k && v) data[k] = v;
         }
         if (!data['档案名']) { alert('档案名为必填项'); return; }
-        await fetch('/api/characters/catgirl' + (isNew ? '' : '/' + encodeURIComponent(key)), {
-            method: isNew ? 'POST' : 'PUT',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(data)
-        });
-        await loadCharacterData();
+        
+        try {
+            console.log('提交数据:', data);
+            const response = await fetch('/api/characters/catgirl' + (isNew ? '' : '/' + encodeURIComponent(key)), {
+                method: isNew ? 'POST' : 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('API请求失败:', response.status, errorText);
+                alert('保存失败: ' + errorText);
+                return;
+            }
+            
+            const result = await response.json();
+            console.log('保存结果:', result);
+            
+            if (result.success === false) {
+                alert(result.error || '保存失败');
+                return;
+            }
+            
+            await loadCharacterData();
+        } catch (error) {
+            console.error('保存出错:', error);
+            alert('保存时发生错误: ' + error.message);
+        }
     };
     // 绑定"修改名称"按钮事件
     if (!isNew) {
@@ -451,11 +484,11 @@ function showCatgirlForm(key, container) {
             let oldForm = document.getElementById('catgirl-form-' + key);
             if (oldForm) oldForm.style.display = '';
         } else {
+            // 新增猫娘时，创建一个新的表单块
             const block = document.createElement('div');
             block.className = 'catgirl-block';
-            block.innerHTML = `<form id="catgirl-form-new"></form>`;
+            block.appendChild(form);
             list.prepend(block);
-            block.querySelector('form').replaceWith(form);
         }
     }
 }
@@ -619,6 +652,59 @@ window.addEventListener('message', function(event) {
 // 监听页面关闭事件
 window.addEventListener('beforeunload', sendBeacon);
 window.addEventListener('unload', sendBeacon);
+
+
+
+// 更新切换按钮状态
+function updateSwitchButtons() {
+    fetch('/api/characters/current_catgirl')
+        .then(response => response.json())
+        .then(data => {
+            const currentCatgirl = data.current_catgirl || '';
+            const catgirls = characterData['猫娘'] || {};
+            
+            Object.keys(catgirls).forEach(name => {
+                const switchBtn = document.getElementById(`switch-btn-${name}`);
+                if (switchBtn) {
+                    if (name === currentCatgirl) {
+                        switchBtn.textContent = '当前猫娘';
+                        switchBtn.style.background = '#4f8cff';
+                        switchBtn.disabled = true;
+                    } else {
+                        switchBtn.textContent = '切换猫娘';
+                        switchBtn.style.background = '#28a745';
+                        switchBtn.disabled = false;
+                    }
+                }
+            });
+        })
+        .catch(error => {
+            console.error('获取当前猫娘失败:', error);
+        });
+}
+
+// 切换猫娘
+async function switchCatgirl(catgirlName) {
+    try {
+        const response = await fetch('/api/characters/current_catgirl', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({catgirl_name: catgirlName})
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+            await loadCharacterData(); // 重新加载数据以更新按钮状态
+        } else {
+            alert(result.error || '切换失败');
+        }
+    } catch (error) {
+        console.error('切换猫娘失败:', error);
+        alert('切换猫娘时发生错误');
+    }
+}
+
+
 
 // 页面加载时拉取数据
 loadCharacterData();

@@ -10,8 +10,6 @@ import uuid
 import logging
 from datetime import datetime
 import webbrowser
-import pathlib
-BASE_DIR = pathlib.Path(__file__).parent
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, File, UploadFile, Form, Body
 from fastapi.staticfiles import StaticFiles
@@ -85,7 +83,7 @@ class CustomStaticFiles(StaticFiles):
         if path.endswith('.js'):
             response.headers['Content-Type'] = 'application/javascript'
         return response
-app.mount("/static", CustomStaticFiles(directory=BASE_DIR / "static"), name="static")
+app.mount("/static", CustomStaticFiles(directory="static"), name="static")
 
 # 使用 FastAPI 的 app.state 来管理启动配置
 def get_start_config():
@@ -408,6 +406,30 @@ async def api_key_settings(request: Request):
 async def get_characters():
     return JSONResponse(content=load_characters())
 
+@app.get('/api/characters/current_catgirl')
+async def get_current_catgirl():
+    """获取当前使用的猫娘名称"""
+    characters = load_characters()
+    current_catgirl = characters.get('当前猫娘', '')
+    return JSONResponse(content={'current_catgirl': current_catgirl})
+
+@app.post('/api/characters/current_catgirl')
+async def set_current_catgirl(request: Request):
+    """设置当前使用的猫娘"""
+    data = await request.json()
+    catgirl_name = data.get('catgirl_name', '') if data else ''
+    
+    if not catgirl_name:
+        return JSONResponse({'success': False, 'error': '猫娘名称不能为空'}, status_code=400)
+    
+    characters = load_characters()
+    if catgirl_name not in characters.get('猫娘', {}):
+        return JSONResponse({'success': False, 'error': '指定的猫娘不存在'}, status_code=404)
+    
+    characters['当前猫娘'] = catgirl_name
+    save_characters(characters)
+    return {"success": True}
+
 @app.post('/api/characters/master')
 async def update_master(request: Request):
     data = await request.json()
@@ -423,16 +445,22 @@ async def add_catgirl(request: Request):
     data = await request.json()
     if not data or not data.get('档案名'):
         return JSONResponse({'success': False, 'error': '档案名为必填项'}, status_code=400)
-    for field in ['live2d', 'voice_id', 'system_prompt']:
-        if not data.get(field):
-            return JSONResponse({'success': False, 'error': f'{field}为必填项'}, status_code=400)
+    
     characters = load_characters()
     key = data['档案名']
     if key in characters.get('猫娘', {}):
         return JSONResponse({'success': False, 'error': '该猫娘已存在'}, status_code=400)
+    
     if '猫娘' not in characters:
         characters['猫娘'] = {}
-    characters['猫娘'][key] = {k: v for k, v in data.items() if k != '档案名' and v}
+    
+    # 创建猫娘数据，只保存非空字段
+    catgirl_data = {}
+    for k, v in data.items():
+        if k != '档案名' and v:  # 只保存非空字段
+            catgirl_data[k] = v
+    
+    characters['猫娘'][key] = catgirl_data
     save_characters(characters)
     return {"success": True}
 
