@@ -22,7 +22,7 @@
 <div align="center">
 
 ### 功能演示 [![Bilibili](https://img.shields.io/badge/Bilibili-%E6%95%99%E7%A8%8B%E8%A7%86%E9%A2%91-blue)](https://www.bilibili.com/video/BV1mM32zXE46/)
-<video src="https://raw.githubusercontent.com/wehos/Xiao8/refs/heads/main/assets/demo.mp4" controls autoplay loop muted style="max-width: 720px;"></video>
+<video src="https://raw.githubusercontent.com/wehos/Xiao8/refs/heads/main/assets/demo.mp4" width="300" />
 
 </div>
 
