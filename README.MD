@@ -21,7 +21,7 @@
 
 ### 功能演示 [![Bilibili](https://img.shields.io/badge/Bilibili-%E6%95%99%E7%A8%8B%E8%A7%86%E9%A2%91-blue)](https://www.bilibili.com/video/BV1mM32zXE46/)
 
-https://raw.githubusercontent.com/wehos/Xiao8/refs/heads/main/assets/demo.mp4
+https://github.com/user-attachments/assets/9d9e01af-e2cc-46aa-add7-8eb1803f061c
 
 ---
 
