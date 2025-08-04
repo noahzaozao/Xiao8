@@ -22,6 +22,13 @@
 
 </div>
 
+<div align="center">
+
+### 功能演示 [![Bilibili](https://img.shields.io/badge/Bilibili-%E6%95%99%E7%A8%8B%E8%A7%86%E9%A2%91-blue)](https://www.bilibili.com/video/BV1mM32zXE46/)
+<video src="assets/demo.mp4" controls autoplay loop muted style="max-width: 720px;"></video>
+
+</div>
+
 ---
 
 # 项目简介
@@ -75,8 +82,6 @@ Lanlan（兰兰）是一个新手友好、开箱即用的，具有听觉、视�
 ## A. 高优先级
 
 1. 兼容工具调用或MCP（本质是工具调用，不强求兼容MCP）。
-
-1. 支持L2D表情控制和动作控制。
 
 ## B. 中等优先级
 

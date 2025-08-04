@@ -170,21 +170,7 @@ class Live2DManager {
         }
     }
 
-    // 加载情感映射配置
-    async loadEmotionMapping(modelName) {
-        try {
-            const response = await fetch(`/api/live2d/emotion_mapping/${modelName}`);
-            if (response.ok) {
-                const data = await response.json();
-                if (data.success) {
-                    return data.mapping;
-                }
-            }
-        } catch (error) {
-            console.warn('加载情感映射配置失败:', error);
-        }
-        return null;
-    }
+
 
     // 随机选择数组中的一个元素
     getRandomElement(array) {
@@ -208,18 +194,18 @@ class Live2DManager {
 
     // 播放表情
     async playExpression(emotion) {
-        if (!this.currentModel || !this.emotionMapping || !this.emotionMapping.expressions) {
+        if (!this.currentModel || !this.emotionMapping || !this.emotionMapping.Expressions) {
             console.warn('无法播放表情：模型或映射配置未加载');
             return;
         }
         
-        const expressions = this.emotionMapping.expressions[emotion];
+        const expressions = this.emotionMapping.Expressions.filter(e => e.Name.startsWith(emotion));
         if (!expressions || expressions.length === 0) {
-            console.warn(`未找到情感 ${emotion} 对应的表情`);
-            return;
+            console.log(`未找到情感 ${emotion} 对应的表情，将跳过表情播放`);
+            return; // Gracefully exit if no expression is found
         }
         
-        const expressionFile = this.getRandomElement(expressions);
+        const expressionFile = this.getRandomElement(expressions).File.split('/').pop();
         if (!expressionFile) return;
         
         try {
@@ -282,18 +268,18 @@ class Live2DManager {
 
     // 播放动作
     async playMotion(emotion) {
-        if (!this.currentModel || !this.emotionMapping || !this.emotionMapping.motions) {
+        if (!this.currentModel || !this.emotionMapping || !this.emotionMapping.Motions) {
             console.warn('无法播放动作：模型或映射配置未加载');
             return;
         }
         
-        const motions = this.emotionMapping.motions[emotion];
+        const motions = this.emotionMapping.Motions[emotion];
         if (!motions || motions.length === 0) {
             console.warn(`未找到情感 ${emotion} 对应的动作`);
             return;
         }
         
-        const motionFile = this.getRandomElement(motions);
+        const motionFile = this.getRandomElement(motions).File.split('/').pop();
         if (!motionFile) return;
         
         try {
@@ -645,7 +631,12 @@ class Live2DManager {
 
             // 加载情感映射
             if (options.loadEmotionMapping !== false) {
-                await this.loadModelEmotionMapping(modelPath);
+                if (model.internalModel && model.internalModel.settings && model.internalModel.settings.json && model.internalModel.settings.json.FileReferences) {
+                    this.emotionMapping = model.internalModel.settings.json.FileReferences;
+                    console.log("已从模型配置中提取情感映射:", this.emotionMapping);
+                } else {
+                    console.warn("模型配置中未找到FileReferences，无法加载情感映射");
+                }
             }
 
             // 调用回调函数
@@ -752,25 +743,7 @@ class Live2DManager {
         view.lastWheelListener = onWheelScroll;
     }
 
-    // 加载模型情感映射
-    async loadModelEmotionMapping(modelPath) {
-        try {
-            let modelName = 'mao_pro';
-            if (modelPath) {
-                const pathParts = modelPath.split('/');
-                modelName = pathParts[pathParts.length - 2] || pathParts[pathParts.length - 1].replace('.model3.json', '');
-            }
-            
-            this.emotionMapping = await this.loadEmotionMapping(modelName);
-            if (this.emotionMapping) {
-                console.log(`已加载模型 ${modelName} 的情感映射配置:`, this.emotionMapping);
-            } else {
-                console.warn(`未找到模型 ${modelName} 的情感映射配置`);
-            }
-        } catch (error) {
-            console.error('加载情感映射配置失败:', error);
-        }
-    }
+
 
     // 获取当前模型
     getCurrentModel() {

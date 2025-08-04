@@ -163,13 +163,36 @@ async def save_preferences(request: Request):
         return {"success": False, "error": str(e)}
 
 
+@app.get("/api/live2d/models")
+async def get_live2d_models(simple: bool = False):
+    """
+    获取Live2D模型列表
+    Args:
+        simple: 如果为True，只返回模型名称列表；如果为False，返回完整的模型信息
+    """
+    try:
+        models = find_models()
+        
+        if simple:
+            # 只返回模型名称列表
+            model_names = [model["name"] for model in models]
+            return {"success": True, "models": model_names}
+        else:
+            # 返回完整的模型信息（保持向后兼容）
+            return models
+    except Exception as e:
+        logger.error(f"获取Live2D模型列表失败: {e}")
+        if simple:
+            return {"success": False, "error": str(e)}
+        else:
+            return []
+
 @app.get("/api/models")
-async def get_models():
+async def get_models_legacy():
     """
-    API接口，调用扫描函数并以JSON格式返回找到的模型列表。
+    向后兼容的API端点，重定向到新的 /api/live2d/models
     """
-    models = find_models()
-    return models
+    return await get_live2d_models(simple=False)
 
 @app.post("/api/preferences/set-preferred")
 async def set_preferred_model(request: Request):
@@ -736,118 +759,97 @@ async def get_recent_file(filename: str):
         content = f.read()
     return {"content": content}
 
-@app.get('/api/live2d/emotion_mapping/{model_name}')
-async def get_emotion_mapping(model_name: str):
-    """获取指定Live2D模型的情感映射配置"""
+@app.get("/api/live2d/model_config/{model_name}")
+async def get_model_config(model_name: str):
+    """获取指定Live2D模型的model3.json配置"""
     try:
-        # 动态加载Live2D情感映射配置文件
-        mapping_file_path = os.path.join(os.path.dirname(__file__), 'config', 'live2d_emotion_mapping.json')
+        model_json_path = os.path.join('static', model_name, f'{model_name}.model3.json')
+        if not os.path.exists(model_json_path):
+            return JSONResponse(status_code=404, content={"success": False, "error": "模型配置文件不存在"})
         
-        try:
-            with open(mapping_file_path, 'r', encoding='utf-8') as f:
-                emotion_mapping_data = json.load(f)
-        except FileNotFoundError:
-            logger.info(f"未找到Live2D映射配置文件: {mapping_file_path}，使用默认配置。")
-            emotion_mapping_data = {}
-        except Exception as e:
-            logger.error(f"💥 读取Live2D映射配置文件出错: {e}，使用默认配置。")
-            emotion_mapping_data = {}
-        
-        # 获取指定模型的映射配置
-        mapping = emotion_mapping_data.get(model_name, {})
-        return {"success": True, "mapping": mapping}
+        with open(model_json_path, 'r', encoding='utf-8') as f:
+            config_data = json.load(f)
+            
+        return {"success": True, "config": config_data}
     except Exception as e:
-        logger.error(f"获取情感映射配置失败: {e}")
-        return {"success": False, "error": str(e)}
+        logger.error(f"获取模型配置失败: {e}")
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
-@app.get('/api/live2d/emotion_mapping')
-async def get_all_emotion_mappings():
-    """获取所有Live2D模型的情感映射配置"""
-    try:
-        # 动态加载Live2D情感映射配置文件
-        mapping_file_path = os.path.join(os.path.dirname(__file__), 'config', 'live2d_emotion_mapping.json')
-        
-        try:
-            with open(mapping_file_path, 'r', encoding='utf-8') as f:
-                emotion_mapping_data = json.load(f)
-        except FileNotFoundError:
-            logger.info(f"未找到Live2D映射配置文件: {mapping_file_path}，使用默认配置。")
-            emotion_mapping_data = {}
-        except Exception as e:
-            logger.error(f"💥 读取Live2D映射配置文件出错: {e}，使用默认配置。")
-            emotion_mapping_data = {}
-        
-        return {"success": True, "mappings": emotion_mapping_data}
-    except Exception as e:
-        logger.error(f"获取所有情感映射配置失败: {e}")
-        return {"success": False, "error": str(e)}
-
-@app.post('/api/live2d/emotion_mapping')
-async def update_emotion_mapping(request: Request):
-    """更新Live2D模型的情感映射配置"""
+@app.post("/api/live2d/model_config/{model_name}")
+async def update_model_config(model_name: str, request: Request):
+    """更新指定Live2D模型的model3.json配置"""
     try:
         data = await request.json()
-        if not data:
-            return {"success": False, "error": "请求体不能为空"}
         
-        # 动态加载Live2D情感映射配置文件
-        mapping_file_path = os.path.join(os.path.dirname(__file__), 'config', 'live2d_emotion_mapping.json')
+        model_json_path = os.path.join('static', model_name, f'{model_name}.model3.json')
+        if not os.path.exists(model_json_path):
+            return JSONResponse(status_code=404, content={"success": False, "error": "模型配置文件不存在"})
         
-        # 读取现有配置
-        try:
-            with open(mapping_file_path, 'r', encoding='utf-8') as f:
-                emotion_mapping_data = json.load(f)
-        except FileNotFoundError:
-            emotion_mapping_data = {}
-        except Exception as e:
-            logger.error(f"💥 读取Live2D映射配置文件出错: {e}，使用空配置。")
-            emotion_mapping_data = {}
-        
-        # 更新配置
-        emotion_mapping_data.update(data)
-        
-        # 保存配置
-        with open(mapping_file_path, 'w', encoding='utf-8') as f:
-            json.dump(emotion_mapping_data, f, ensure_ascii=False, indent=2)
-        
-        logger.info("Live2D情感映射配置已更新")
-        return {"success": True, "message": "配置已更新"}
+        # 为了安全，只允许修改 Motions 和 Expressions
+        with open(model_json_path, 'r', encoding='utf-8') as f:
+            current_config = json.load(f)
+            
+        if 'FileReferences' in data and 'Motions' in data['FileReferences']:
+            current_config['FileReferences']['Motions'] = data['FileReferences']['Motions']
+            
+        if 'FileReferences' in data and 'Expressions' in data['FileReferences']:
+            current_config['FileReferences']['Expressions'] = data['FileReferences']['Expressions']
+
+        with open(model_json_path, 'w', encoding='utf-8') as f:
+            json.dump(current_config, f, ensure_ascii=False, indent=4) # 使用 indent=4 保持格式
+            
+        return {"success": True, "message": "模型配置已更新"}
     except Exception as e:
-        logger.error(f"更新情感映射配置失败: {e}")
+        logger.error(f"更新模型配置失败: {e}")
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+@app.get('/api/live2d/model_files/{model_name}')
+async def get_model_files(model_name: str):
+    """获取指定Live2D模型的动作和表情文件列表"""
+    try:
+        # 构建模型目录路径
+        model_dir = os.path.join(os.path.dirname(__file__), 'static', model_name)
+        
+        if not os.path.exists(model_dir):
+            return {"success": False, "error": f"模型 {model_name} 不存在"}
+        
+        motion_files = []
+        expression_files = []
+        
+        # 查找动作文件
+        motions_dir = os.path.join(model_dir, 'motions')
+        if os.path.exists(motions_dir):
+            for file in os.listdir(motions_dir):
+                if file.endswith('.motion3.json'):
+                    motion_files.append(file)
+        
+        # 查找表情文件
+        expressions_dir = os.path.join(model_dir, 'expressions')
+        if os.path.exists(expressions_dir):
+            for file in os.listdir(expressions_dir):
+                if file.endswith('.exp3.json'):
+                    expression_files.append(file)
+        
+        logger.info(f"模型 {model_name} 文件统计: {len(motion_files)} 个动作文件, {len(expression_files)} 个表情文件")
+        return {
+            "success": True, 
+            "motion_files": motion_files,
+            "expression_files": expression_files
+        }
+    except Exception as e:
+        logger.error(f"获取模型文件列表失败: {e}")
         return {"success": False, "error": str(e)}
 
-@app.delete('/api/live2d/emotion_mapping/{model_name}')
-async def delete_emotion_mapping(model_name: str):
-    """删除指定Live2D模型的情感映射配置"""
+@app.get('/live2d_emotion_manager', response_class=HTMLResponse)
+async def live2d_emotion_manager(request: Request):
+    """Live2D情感映射管理器页面"""
     try:
-        # 动态加载Live2D情感映射配置文件
-        mapping_file_path = os.path.join(os.path.dirname(__file__), 'config', 'live2d_emotion_mapping.json')
-        
-        # 读取现有配置
-        try:
-            with open(mapping_file_path, 'r', encoding='utf-8') as f:
-                emotion_mapping_data = json.load(f)
-        except FileNotFoundError:
-            return {"success": False, "error": "配置文件不存在"}
-        except Exception as e:
-            logger.error(f"💥 读取Live2D映射配置文件出错: {e}")
-            return {"success": False, "error": str(e)}
-        
-        # 删除指定模型配置
-        if model_name in emotion_mapping_data:
-            del emotion_mapping_data[model_name]
-            
-            # 保存配置
-            with open(mapping_file_path, 'w', encoding='utf-8') as f:
-                json.dump(emotion_mapping_data, f, ensure_ascii=False, indent=2)
-            
-            logger.info(f"已删除模型 {model_name} 的情感映射配置")
-            return {"success": True, "message": f"已删除模型 {model_name} 的配置"}
-        else:
-            return {"success": False, "error": f"模型 {model_name} 不存在"}
+        with open('templates/live2d_emotion_manager.html', 'r', encoding='utf-8') as f:
+            content = f.read()
+        return HTMLResponse(content=content)
     except Exception as e:
-        logger.error(f"删除情感映射配置失败: {e}")
-        return {"success": False, "error": str(e)}
+        logger.error(f"加载Live2D情感映射管理器页面失败: {e}")
+        return HTMLResponse(content=f"<h1>页面加载失败: {str(e)}</h1>", status_code=500)
 
 @app.post('/api/memory/recent_file/save')
 async def save_recent_file(request: Request):
