@@ -783,9 +783,20 @@ if (typeof cubism4Model !== 'undefined' && cubism4Model) {
             // 加载用户偏好
             const preferences = await window.live2dManager.loadUserPreferences();
             
+            // 根据模型路径找到对应的偏好设置
+            let modelPreferences = null;
+            if (preferences && preferences.length > 0) {
+                modelPreferences = preferences.find(p => p && p.model_path === cubism4Model);
+                if (modelPreferences) {
+                    console.log('找到模型偏好设置:', modelPreferences);
+                } else {
+                    console.log('未找到模型偏好设置，将使用默认设置');
+                }
+            }
+            
             // 加载模型
             await window.live2dManager.loadModel(cubism4Model, {
-                preferences: preferences.length > 0 ? preferences[0] : null,
+                preferences: modelPreferences,
                 isMobile: window.innerWidth <= 768
             });
 

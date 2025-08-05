@@ -101,6 +101,23 @@ def set_start_config(config):
     """设置启动配置到 app.state"""
     app.state.start_config = config
 
+def find_model_config_file(model_name: str) -> str:
+    """
+    在模型目录中查找.model3.json配置文件
+    返回相对于static目录的路径
+    """
+    model_dir = os.path.join('static', model_name)
+    if not os.path.exists(model_dir):
+        return f"/static/{model_name}/{model_name}.model3.json"  # 默认路径
+    
+    # 查找.model3.json文件
+    for file in os.listdir(model_dir):
+        if file.endswith('.model3.json'):
+            return f"/static/{model_name}/{file}"
+    
+    # 如果没找到，返回默认路径
+    return f"/static/{model_name}/{model_name}.model3.json"
+
 @app.get("/", response_class=HTMLResponse)
 async def get_default_index(request: Request):
     # 每次动态获取角色数据
@@ -110,7 +127,7 @@ async def get_default_index(request: Request):
     # 查找所有模型
     models = find_models()
     # 根据live2d字段查找对应的model path
-    model_path = next((m["path"] for m in models if m["name"] == live2d), f"/static/{live2d}/{live2d}.model3.json")
+    model_path = next((m["path"] for m in models if m["name"] == live2d), find_model_config_file(live2d))
     return templates.TemplateResponse("templates/index.html", {
         "request": request,
         "lanlan_name": her_name,
@@ -127,7 +144,7 @@ async def get_default_focus_index(request: Request):
     # 查找所有模型
     models = find_models()
     # 根据live2d字段查找对应的model path
-    model_path = next((m["path"] for m in models if m["name"] == live2d), f"/static/{live2d}/{live2d}.model3.json")
+    model_path = next((m["path"] for m in models if m["name"] == live2d), find_model_config_file(live2d))
     return templates.TemplateResponse("templates/index.html", {
         "request": request,
         "lanlan_name": her_name,
@@ -410,6 +427,57 @@ async def get_l2d_manager(request: Request, lanlan_name: str = ""):
         "lanlan_name": lanlan_name
     })
 
+@app.get('/api/characters/current_live2d_model')
+async def get_current_live2d_model(catgirl_name: str = ""):
+    """获取指定角色或当前角色的Live2D模型信息"""
+    try:
+        characters = load_characters()
+        
+        # 如果没有指定角色名称，使用当前猫娘
+        if not catgirl_name:
+            catgirl_name = characters.get('当前猫娘', '')
+        
+        # 查找指定角色的Live2D模型
+        live2d_model_name = None
+        model_info = None
+        
+        # 在猫娘列表中查找
+        if '猫娘' in characters and catgirl_name in characters['猫娘']:
+            catgirl_data = characters['猫娘'][catgirl_name]
+            live2d_model_name = catgirl_data.get('live2d')
+        
+        # 如果找到了模型名称，获取模型信息
+        if live2d_model_name:
+            try:
+                # 检查模型是否存在
+                model_dir = os.path.join(os.path.dirname(__file__), 'static', live2d_model_name)
+                if os.path.exists(model_dir):
+                    # 查找模型配置文件
+                    model_files = [f for f in os.listdir(model_dir) if f.endswith('.model3.json')]
+                    if model_files:
+                        model_file = model_files[0]
+                        model_path = f'/static/{live2d_model_name}/{model_file}'
+                        model_info = {
+                            'name': live2d_model_name,
+                            'path': model_path
+                        }
+            except Exception as e:
+                logger.warning(f"获取模型信息失败: {e}")
+        
+        return JSONResponse(content={
+            'success': True,
+            'catgirl_name': catgirl_name,
+            'model_name': live2d_model_name,
+            'model_info': model_info
+        })
+        
+    except Exception as e:
+        logger.error(f"获取角色Live2D模型失败: {e}")
+        return JSONResponse(content={
+            'success': False,
+            'error': str(e)
+        })
+
 @app.get('/chara_manager', response_class=HTMLResponse)
 async def chara_manager(request: Request):
     """渲染主控制页面"""
@@ -511,16 +579,45 @@ async def update_catgirl(name: str, request: Request):
 
 @app.put('/api/characters/catgirl/l2d/{name}')
 async def update_catgirl_l2d(name: str, request: Request):
-    data = await request.json()
-    if not data:
-        return JSONResponse({'success': False, 'error': '无数据'}, status_code=400)
-    characters = load_characters()
-    if name not in characters.get('猫娘', {}):
-        return JSONResponse({'success': False, 'error': '猫娘不存在'}, status_code=404)
-    if 'live2d' in data:
-        characters['猫娘'][name]['live2d'] = data['live2d']
-    save_characters(characters)
-    return {"success": True}
+    """更新指定猫娘的Live2D模型设置"""
+    try:
+        data = await request.json()
+        live2d_model = data.get('live2d')
+        
+        if not live2d_model:
+            return JSONResponse(content={
+                'success': False,
+                'error': '未提供Live2D模型名称'
+            })
+        
+        # 加载当前角色配置
+        characters = load_characters()
+        
+        # 确保猫娘配置存在
+        if '猫娘' not in characters:
+            characters['猫娘'] = {}
+        
+        # 确保指定猫娘的配置存在
+        if name not in characters['猫娘']:
+            characters['猫娘'][name] = {}
+        
+        # 更新Live2D模型设置
+        characters['猫娘'][name]['live2d'] = live2d_model
+        
+        # 保存配置
+        save_characters(characters)
+        
+        return JSONResponse(content={
+            'success': True,
+            'message': f'已更新角色 {name} 的Live2D模型为 {live2d_model}'
+        })
+        
+    except Exception as e:
+        logger.error(f"更新角色Live2D模型失败: {e}")
+        return JSONResponse(content={
+            'success': False,
+            'error': str(e)
+        })
 
 @app.put('/api/characters/catgirl/voice_id/{name}')
 async def update_catgirl_voice_id(name: str, request: Request):
@@ -763,12 +860,47 @@ async def get_recent_file(filename: str):
 async def get_model_config(model_name: str):
     """获取指定Live2D模型的model3.json配置"""
     try:
-        model_json_path = os.path.join('static', model_name, f'{model_name}.model3.json')
-        if not os.path.exists(model_json_path):
+        # 在模型目录中查找.model3.json文件
+        model_dir = os.path.join('static', model_name)
+        if not os.path.exists(model_dir):
+            return JSONResponse(status_code=404, content={"success": False, "error": "模型目录不存在"})
+        
+        # 查找.model3.json文件
+        model_json_path = None
+        for file in os.listdir(model_dir):
+            if file.endswith('.model3.json'):
+                model_json_path = os.path.join(model_dir, file)
+                break
+        
+        if not model_json_path or not os.path.exists(model_json_path):
             return JSONResponse(status_code=404, content={"success": False, "error": "模型配置文件不存在"})
         
         with open(model_json_path, 'r', encoding='utf-8') as f:
             config_data = json.load(f)
+        
+        # 检查并自动添加缺失的配置
+        config_updated = False
+        
+        # 确保FileReferences存在
+        if 'FileReferences' not in config_data:
+            config_data['FileReferences'] = {}
+            config_updated = True
+        
+        # 确保Motions存在
+        if 'Motions' not in config_data['FileReferences']:
+            config_data['FileReferences']['Motions'] = {}
+            config_updated = True
+        
+        # 确保Expressions存在
+        if 'Expressions' not in config_data['FileReferences']:
+            config_data['FileReferences']['Expressions'] = []
+            config_updated = True
+        
+        # 如果配置有更新，保存到文件
+        if config_updated:
+            with open(model_json_path, 'w', encoding='utf-8') as f:
+                json.dump(config_data, f, ensure_ascii=False, indent=4)
+            logger.info(f"已为模型 {model_name} 自动添加缺失的配置项")
             
         return {"success": True, "config": config_data}
     except Exception as e:
@@ -781,8 +913,19 @@ async def update_model_config(model_name: str, request: Request):
     try:
         data = await request.json()
         
-        model_json_path = os.path.join('static', model_name, f'{model_name}.model3.json')
-        if not os.path.exists(model_json_path):
+        # 在模型目录中查找.model3.json文件
+        model_dir = os.path.join('static', model_name)
+        if not os.path.exists(model_dir):
+            return JSONResponse(status_code=404, content={"success": False, "error": "模型目录不存在"})
+        
+        # 查找.model3.json文件
+        model_json_path = None
+        for file in os.listdir(model_dir):
+            if file.endswith('.model3.json'):
+                model_json_path = os.path.join(model_dir, file)
+                break
+        
+        if not model_json_path or not os.path.exists(model_json_path):
             return JSONResponse(status_code=404, content={"success": False, "error": "模型配置文件不存在"})
         
         # 为了安全，只允许修改 Motions 和 Expressions
@@ -816,19 +959,30 @@ async def get_model_files(model_name: str):
         motion_files = []
         expression_files = []
         
-        # 查找动作文件
-        motions_dir = os.path.join(model_dir, 'motions')
-        if os.path.exists(motions_dir):
-            for file in os.listdir(motions_dir):
-                if file.endswith('.motion3.json'):
-                    motion_files.append(file)
+        # 递归搜索所有子文件夹
+        def search_files_recursive(directory, target_ext, result_list):
+            """递归搜索指定扩展名的文件"""
+            try:
+                for item in os.listdir(directory):
+                    item_path = os.path.join(directory, item)
+                    if os.path.isfile(item_path):
+                        if item.endswith(target_ext):
+                            # 计算相对于模型根目录的路径
+                            relative_path = os.path.relpath(item_path, model_dir)
+                            # 转换为正斜杠格式（跨平台兼容）
+                            relative_path = relative_path.replace('\\', '/')
+                            result_list.append(relative_path)
+                    elif os.path.isdir(item_path):
+                        # 递归搜索子目录
+                        search_files_recursive(item_path, target_ext, result_list)
+            except Exception as e:
+                logger.warning(f"搜索目录 {directory} 时出错: {e}")
         
-        # 查找表情文件
-        expressions_dir = os.path.join(model_dir, 'expressions')
-        if os.path.exists(expressions_dir):
-            for file in os.listdir(expressions_dir):
-                if file.endswith('.exp3.json'):
-                    expression_files.append(file)
+        # 搜索动作文件
+        search_files_recursive(model_dir, '.motion3.json', motion_files)
+        
+        # 搜索表情文件
+        search_files_recursive(model_dir, '.exp3.json', expression_files)
         
         logger.info(f"模型 {model_name} 文件统计: {len(motion_files)} 个动作文件, {len(expression_files)} 个表情文件")
         return {
@@ -847,6 +1001,51 @@ async def live2d_emotion_manager(request: Request):
         with open('templates/live2d_emotion_manager.html', 'r', encoding='utf-8') as f:
             content = f.read()
         return HTMLResponse(content=content)
+    except Exception as e:
+        logger.error(f"加载Live2D情感映射管理器页面失败: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.get('/api/live2d/emotion_mapping')
+async def get_emotion_mapping():
+    """获取情绪映射配置"""
+    try:
+        mapping_file_path = os.path.join('config', 'live2d_emotion_mapping.json')
+        
+        if not os.path.exists(mapping_file_path):
+            # 如果文件不存在，返回空配置
+            return {"success": True, "config": {}}
+        
+        with open(mapping_file_path, 'r', encoding='utf-8') as f:
+            config_data = json.load(f)
+            
+        return {"success": True, "config": config_data}
+    except Exception as e:
+        logger.error(f"获取情绪映射配置失败: {e}")
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+@app.post('/api/live2d/emotion_mapping')
+async def update_emotion_mapping(request: Request):
+    """更新情绪映射配置"""
+    try:
+        data = await request.json()
+        
+        if not data:
+            return JSONResponse(status_code=400, content={"success": False, "error": "无效的数据"})
+        
+        mapping_file_path = os.path.join('config', 'live2d_emotion_mapping.json')
+        
+        # 确保config目录存在
+        os.makedirs(os.path.dirname(mapping_file_path), exist_ok=True)
+        
+        # 保存配置到文件
+        with open(mapping_file_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            
+        logger.info("情绪映射配置已更新")
+        return {"success": True, "message": "情绪映射配置已保存"}
+    except Exception as e:
+        logger.error(f"更新情绪映射配置失败: {e}")
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
     except Exception as e:
         logger.error(f"加载Live2D情感映射管理器页面失败: {e}")
         return HTMLResponse(content=f"<h1>页面加载失败: {str(e)}</h1>", status_code=500)
@@ -976,7 +1175,7 @@ async def get_focus_index(request: Request, lanlan_name: str):
     # 查找所有模型
     models = find_models()
     # 根据live2d字段查找对应的model path
-    model_path = next((m["path"] for m in models if m["name"] == live2d), f"/static/{live2d}/{live2d}.model3.json")
+    model_path = next((m["path"] for m in models if m["name"] == live2d), find_model_config_file(live2d))
     return templates.TemplateResponse("templates/index.html", {
         "request": request,
         "lanlan_name": lanlan_name,
@@ -993,7 +1192,7 @@ async def get_index(request: Request, lanlan_name: str):
     # 查找所有模型
     models = find_models()
     # 根据live2d字段查找对应的model path
-    model_path = next((m["path"] for m in models if m["name"] == live2d), f"/static/{live2d}/{live2d}.model3.json")
+    model_path = next((m["path"] for m in models if m["name"] == live2d), find_model_config_file(live2d))
     return templates.TemplateResponse("templates/index.html", {
         "request": request,
         "lanlan_name": lanlan_name,
