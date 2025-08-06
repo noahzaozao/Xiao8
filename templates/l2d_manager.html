@@ -153,7 +153,7 @@
     <div class="control-group">
         <div style="display:flex; gap: 10px;">
             <button id="emotion-manager-btn" class="btn btn-secondary" disabled style="flex:1;">⚙️ 情感配置</button>
-            <button id="save-position-btn" class="btn btn-success" disabled style="flex:1;">💾 保存位置</button>
+            <button id="save-position-btn" class="btn btn-success" disabled style="flex:1;">💾 保存设置</button>
         </div>
     </div>
     
@@ -204,6 +204,9 @@
         await window.live2dManager.initPIXI('live2d-canvas', 'live2d-container');
         showStatus('PIXI 初始化完成');
 
+        // 加载当前角色的模型
+        await loadCurrentCharacterModel();
+
         try {
             const response = await fetch('/api/live2d/models');
             availableModels = await response.json();
@@ -223,6 +226,43 @@
             showStatus('加载模型列表失败');
         }
 
+        // 保存模型设置到角色的函数
+        async function saveModelToCharacter(modelName) {
+            try {
+                // 从URL参数中获取角色名称
+                const urlParams = new URLSearchParams(window.location.search);
+                const lanlanName = urlParams.get('lanlan_name') || '';
+                
+                if (!lanlanName) {
+                    showStatus('无法保存：未指定角色名称');
+                    return false;
+                }
+                
+                const response = await fetch(`/api/characters/catgirl/l2d/${encodeURIComponent(lanlanName)}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ live2d: modelName })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showStatus(`已保存模型设置: ${lanlanName} -> ${modelName}`, 2000);
+                    return true;
+                } else {
+                    showStatus(`保存失败: ${result.error}`, 3000);
+                    return false;
+                }
+            } catch (error) {
+                console.error('保存模型设置失败:', error);
+                showStatus('保存模型设置失败', 3000);
+                return false;
+            }
+        }
+
+        // 修改模型选择事件，自动保存模型设置
         modelSelect.addEventListener('change', async (e) => {
             const modelName = e.target.value;
             if (!modelName) return;
@@ -230,6 +270,16 @@
             currentModelInfo = availableModels.find(m => m.name === modelName);
             if (!currentModelInfo) return;
 
+            await loadModel(modelName, currentModelInfo);
+            
+            // 自动保存模型设置到角色
+            await saveModelToCharacter(modelName);
+        });
+
+        // 加载模型的函数
+        async function loadModel(modelName, modelInfo) {
+            if (!modelName || !modelInfo) return;
+            
             showStatus(`正在加载模型: ${modelName}...`);
             setControlsDisabled(true);
 
@@ -241,7 +291,7 @@
                 currentModelFiles = filesData;
 
                 // 2. Fetch model config
-                const modelJsonUrl = currentModelInfo.path;
+                const modelJsonUrl = modelInfo.path;
                 const modelConfigRes = await fetch(modelJsonUrl);
                 if (!modelConfigRes.ok) throw new Error(`无法获取模型配置: ${modelConfigRes.statusText}`);
                 const modelConfig = await modelConfigRes.json();
@@ -254,19 +304,25 @@
 
                 // Motions
                 if (!modelConfig.FileReferences.Motions) modelConfig.FileReferences.Motions = {};
-                modelConfig.FileReferences.Motions.PreviewAll = currentModelFiles.motion_files.map(file => ({
-                    File: `motions/${file}`
-                }));
+                // 只有当模型有动作文件时才添加PreviewAll组
+                if (currentModelFiles.motion_files.length > 0) {
+                    modelConfig.FileReferences.Motions.PreviewAll = currentModelFiles.motion_files.map(file => ({
+                        File: file  // 直接使用API返回的完整路径
+                    }));
+                }
 
                 // Expressions: Overwrite with all available expression files for preview purposes.
                 modelConfig.FileReferences.Expressions = currentModelFiles.expression_files.map(file => ({
-                    Name: file.replace('.exp3.json', ''),
-                    File: `expressions/${file}`
+                    Name: file.split('/').pop().replace('.exp3.json', ''),  // 从路径中提取文件名作为名称
+                    File: file  // 直接使用API返回的完整路径
                 }));
                 
                 // 5. Load preferences
                 const preferences = await window.live2dManager.loadUserPreferences();
-                const modelPreferences = preferences.find(p => p && p.model_path === currentModelInfo.path) || null;
+                console.log('加载的偏好设置:', preferences);
+                console.log('当前模型路径:', modelInfo.path);
+                const modelPreferences = preferences.find(p => p && p.model_path === modelInfo.path) || null;
+                console.log('匹配的模型偏好:', modelPreferences);
 
                 // 6. Load model FROM THE MODIFIED OBJECT
                 await window.live2dManager.loadModel(modelConfig, {
@@ -279,27 +335,58 @@
 
                 updateSelectWithOptions(motionSelect, currentModelFiles.motion_files, '选择动作');
                 updateSelectWithOptions(expressionSelect, currentModelFiles.expression_files, '选择表情');
+                
+                // 如果没有动作文件，禁用动作相关控件
+                if (currentModelFiles.motion_files.length === 0) {
+                    motionSelect.disabled = true;
+                    playMotionBtn.disabled = true;
+                    motionSelect.innerHTML = '<option value="">该模型没有动作文件</option>';
+                }
                 setControlsDisabled(false);
                 showStatus(`模型 ${modelName} 加载成功`);
 
             } catch (error) {
                 showStatus(`加载模型 ${modelName} 失败`);
                 console.error(error);
+                setControlsDisabled(false);
             }
-        });
+        }
 
         playMotionBtn.addEventListener('click', () => {
             if (!live2dModel || !motionSelect.value) return;
+            
+            // 检查是否有动作文件
+            if (currentModelFiles.motion_files.length === 0) {
+                showStatus('该模型没有动作文件', 2000);
+                return;
+            }
+            
             const motionIndex = currentModelFiles.motion_files.indexOf(motionSelect.value);
             if (motionIndex > -1) {
-                live2dModel.motion('PreviewAll', motionIndex, 3);
+                try {
+                    live2dModel.motion('PreviewAll', motionIndex, 3);
+                    showStatus(`播放动作: ${motionSelect.value}`, 1000);
+                } catch (error) {
+                    console.error('播放动作失败:', error);
+                    showStatus(`播放动作失败: ${motionSelect.value}`, 2000);
+                }
+            } else {
+                showStatus('动作文件不存在', 2000);
             }
         });
 
         playExpressionBtn.addEventListener('click', () => {
             if (!live2dModel || !expressionSelect.value) return;
-            const expressionName = expressionSelect.value.replace('.exp3.json', '');
-            live2dModel.expression(expressionName);
+            // 从完整路径中提取表情名称（去掉路径和扩展名）
+            const expressionName = expressionSelect.value.split('/').pop().replace('.exp3.json', '');
+            console.log('播放表情:', expressionName); // 添加调试信息
+            try {
+                live2dModel.expression(expressionName);
+                showStatus(`播放表情: ${expressionName}`, 1000);
+            } catch (error) {
+                console.error('播放表情失败:', error);
+                showStatus(`播放表情失败: ${expressionName}`, 2000);
+            }
         });
 
         emotionManagerBtn.addEventListener('click', () => {
@@ -309,16 +396,31 @@
 
         savePositionBtn.addEventListener('click', async () => {
             if (!currentModelInfo || !live2dModel) return;
-            showStatus('正在保存位置...');
-            const success = await window.live2dManager.saveUserPreferences(
+            showStatus('正在保存设置...');
+            
+            // 添加调试信息
+            console.log('保存设置 - 模型路径:', currentModelInfo.path);
+            console.log('保存设置 - 当前位置:', { x: live2dModel.x, y: live2dModel.y });
+            console.log('保存设置 - 当前缩放:', { x: live2dModel.scale.x, y: live2dModel.scale.y });
+            
+            // 保存位置和缩放
+            const positionSuccess = await window.live2dManager.saveUserPreferences(
                 currentModelInfo.path,
                 { x: live2dModel.x, y: live2dModel.y },
                 { x: live2dModel.scale.x, y: live2dModel.scale.y }
             );
-            if (success) {
-                showStatus('位置保存成功!', 2000);
+            
+            // 保存模型设置到角色
+            const modelSuccess = await saveModelToCharacter(currentModelInfo.name);
+            
+            if (positionSuccess && modelSuccess) {
+                showStatus('位置和模型设置保存成功!', 2000);
+            } else if (positionSuccess) {
+                showStatus('位置保存成功，模型设置保存失败!', 2000);
+            } else if (modelSuccess) {
+                showStatus('模型设置保存成功，位置保存失败!', 2000);
             } else {
-                showStatus('位置保存失败!', 2000);
+                showStatus('保存失败!', 2000);
             }
         });
         
@@ -348,7 +450,17 @@
             options.forEach(opt => {
                 const option = document.createElement('option');
                 option.value = opt;
-                option.textContent = opt;
+                // 为表情文件提供更友好的显示名称
+                if (defaultText.includes('表情')) {
+                    const displayName = opt.split('/').pop().replace('.exp3.json', '');
+                    option.textContent = displayName;
+                } else if (defaultText.includes('动作')) {
+                    // 为动作文件提供更友好的显示名称（去掉路径和扩展名）
+                    const displayName = opt.split('/').pop().replace('.motion3.json', '');
+                    option.textContent = displayName;
+                } else {
+                    option.textContent = opt;
+                }
                 select.appendChild(option);
             });
         }
@@ -390,6 +502,52 @@
             iframeContainer.appendChild(iframe);
             modal.appendChild(iframeContainer);
             document.body.appendChild(modal);
+        }
+
+        // 加载当前角色模型的函数
+        async function loadCurrentCharacterModel() {
+            try {
+                // 从URL参数中获取角色名称
+                const urlParams = new URLSearchParams(window.location.search);
+                const lanlanName = urlParams.get('lanlan_name') || '';
+                
+                let apiUrl = '/api/characters/current_live2d_model';
+                if (lanlanName) {
+                    apiUrl += `?catgirl_name=${encodeURIComponent(lanlanName)}`;
+                }
+                
+                const currentModelResponse = await fetch(apiUrl);
+                const currentModelData = await currentModelResponse.json();
+                
+                if (!currentModelData.success) {
+                    console.log('无法获取当前角色模型信息:', currentModelData.error);
+                    return;
+                }
+                
+                const { catgirl_name, model_name, model_info } = currentModelData;
+                
+                if (model_name && model_info) {
+                    // 如果角色有设置的模型，自动加载
+                    console.log(`自动加载角色 ${catgirl_name} 的模型: ${model_name}`);
+                    showStatus(`正在加载角色 ${catgirl_name} 的模型: ${model_name}...`);
+                    
+                    // 设置模型选择器
+                    currentModelInfo = model_info;
+                    modelSelect.value = model_name;
+                    
+                    // 加载模型
+                    await loadModel(model_name, model_info);
+                    
+                    showStatus(`已加载角色 ${catgirl_name} 的模型: ${model_name}`);
+                } else {
+                    // 如果角色没有设置模型，显示提示信息
+                    console.log(`角色 ${catgirl_name} 未设置Live2D模型`);
+                    showStatus(`角色 ${catgirl_name} 未设置模型，请手动选择`);
+                }
+            } catch (error) {
+                console.error('加载当前角色模型失败:', error);
+                showStatus('加载当前角色模型失败');
+            }
         }
     });
 </script>

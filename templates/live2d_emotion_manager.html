@@ -149,7 +149,7 @@
 
                  .emotion-grid {
              display: grid;
-             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+             grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
              gap: 12px;
              flex: 1;
              margin-top: 10px;
@@ -228,9 +228,13 @@
         }
 
                  .btn-small {
-             padding: 3px 6px;
-             font-size: 11px;
+             padding: 6px 12px;
+             font-size: 12px;
              border-radius: 4px;
+             min-height: 28px;
+             display: inline-flex;
+             align-items: center;
+             justify-content: center;
          }
 
                  .add-file-section {
@@ -243,6 +247,8 @@
              display: flex;
              gap: 8px;
              margin-bottom: 4px;
+             align-items: center;
+             min-height: 36px;
          }
 
         .file-input-group input {
@@ -265,11 +271,19 @@
              border-radius: 6px;
              font-size: 13px;
              background: white;
+             min-width: 0; /* 防止flex项目溢出 */
          }
 
         .file-select:focus {
             outline: none;
             border-color: #667eea;
+        }
+
+        /* 确保添加按钮不被挤压 */
+        .file-input-group .btn-small {
+            flex-shrink: 0;
+            min-width: 50px;
+            white-space: nowrap;
         }
 
                  .toast-container {
@@ -443,10 +457,12 @@
         let availableModels = [];
         let currentModel = '';
         let currentModelFiles = { motion_files: [], expression_files: [] };
+        let emotionMappingConfig = {}; // 存储情绪映射配置
 
         // 页面加载时初始化
         document.addEventListener('DOMContentLoaded', function() {
             loadAvailableModels();
+            loadEmotionMappingConfig();
         });
 
         // 全局错误处理
@@ -456,6 +472,25 @@
         });
 
         
+
+        // 加载情绪映射配置
+        async function loadEmotionMappingConfig() {
+            try {
+                const response = await fetch('/api/live2d/emotion_mapping');
+                const data = await response.json();
+                
+                if (data.success) {
+                    emotionMappingConfig = data.config || {};
+                    showStatus('情绪映射配置加载成功', 'success');
+                } else {
+                    emotionMappingConfig = {};
+                    showStatus('加载情绪映射配置失败: ' + data.error, 'error');
+                }
+            } catch (error) {
+                emotionMappingConfig = {};
+                showStatus('加载情绪映射配置时出错: ' + error.message, 'error');
+            }
+        }
 
         // 加载可用的模型列表
         async function loadAvailableModels() {
@@ -544,6 +579,9 @@
                          }, 3000);
                      }
                      
+                     // 自动为没有映射的模型添加映射
+                     autoAddModelMapping(selectedModel);
+                     
                      renderEmotionGrid();
                      showModelInfo();
                  } else {
@@ -590,14 +628,28 @@
             });
         }
 
+        // 自动为没有映射的模型添加映射
+        function autoAddModelMapping(modelName) {
+            // 如果该模型在情绪映射配置中不存在，则自动添加
+            if (!emotionMappingConfig[modelName]) {
+                emotionMappingConfig[modelName] = {
+                    motions: {},
+                    expressions: {}
+                };
+                showStatus(`已为模型 ${modelName} 自动创建情绪映射配置`, 'success');
+            }
+        }
+
         // 创建情感卡片
         function createEmotionCard(emotion, emotionName) {
             const card = document.createElement('div');
             card.className = 'emotion-card';
             card.id = `emotion-${emotion}`;
 
-            const motions = currentModelConfig.FileReferences.Motions[emotion]?.map(m => m.File.split('/').pop()) || [];
-            const expressions = currentModelConfig.FileReferences.Expressions?.filter(e => e.Name.startsWith(emotion)).map(e => e.File.split('/').pop()) || [];
+            // 从情绪映射配置中获取文件列表
+            const modelMapping = emotionMappingConfig[currentModel] || { motions: {}, expressions: {} };
+            const motions = modelMapping.motions[emotion] || [];
+            const expressions = modelMapping.expressions[emotion] || [];
 
             // 获取可用的文件列表
             const availableMotions = currentModelFiles.motion_files || [];
@@ -671,16 +723,21 @@
                 return;
             }
 
+            // 确保当前模型在情绪映射配置中存在
+            if (!emotionMappingConfig[currentModel]) {
+                emotionMappingConfig[currentModel] = { motions: {}, expressions: {} };
+            }
+
             if (type === 'motions') {
-                if (!currentModelConfig.FileReferences.Motions[emotion]) {
-                    currentModelConfig.FileReferences.Motions[emotion] = [];
+                if (!emotionMappingConfig[currentModel].motions[emotion]) {
+                    emotionMappingConfig[currentModel].motions[emotion] = [];
                 }
-                currentModelConfig.FileReferences.Motions[emotion].push({ File: `motions/${fileName}` });
+                emotionMappingConfig[currentModel].motions[emotion].push(fileName);
             } else {
-                if (!currentModelConfig.FileReferences.Expressions) {
-                    currentModelConfig.FileReferences.Expressions = [];
+                if (!emotionMappingConfig[currentModel].expressions[emotion]) {
+                    emotionMappingConfig[currentModel].expressions[emotion] = [];
                 }
-                currentModelConfig.FileReferences.Expressions.push({ Name: `${emotion}_${Date.now()}`, File: `expressions/${fileName}` });
+                emotionMappingConfig[currentModel].expressions[emotion].push(fileName);
             }
 
             select.value = '';
@@ -690,18 +747,21 @@
 
         // 删除文件
         function removeFile(emotion, type, fileName) {
+            const modelMapping = emotionMappingConfig[currentModel];
+            if (!modelMapping) return;
+
             if (type === 'motions') {
-                const motions = currentModelConfig.FileReferences.Motions[emotion];
+                const motions = modelMapping.motions[emotion];
                 if (motions) {
-                    const index = motions.findIndex(m => m.File.endsWith(fileName));
+                    const index = motions.indexOf(fileName);
                     if (index > -1) {
                         motions.splice(index, 1);
                     }
                 }
             } else {
-                const expressions = currentModelConfig.FileReferences.Expressions;
+                const expressions = modelMapping.expressions[emotion];
                 if (expressions) {
-                    const index = expressions.findIndex(e => e.File.endsWith(fileName));
+                    const index = expressions.indexOf(fileName);
                     if (index > -1) {
                         expressions.splice(index, 1);
                     }
@@ -721,7 +781,8 @@
             try {
                 showStatus('正在保存配置...', 'info');
                 
-                const response = await fetch(`/api/live2d/model_config/${currentModel}`, {
+                // 保存模型配置
+                const configResponse = await fetch(`/api/live2d/model_config/${currentModel}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -729,12 +790,26 @@
                     body: JSON.stringify(currentModelConfig)
                 });
 
-                const data = await response.json();
+                const configData = await configResponse.json();
                 
-                if (data.success) {
+                // 保存情绪映射配置
+                const emotionResponse = await fetch('/api/live2d/emotion_mapping', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(emotionMappingConfig)
+                });
+
+                const emotionData = await emotionResponse.json();
+                
+                if (configData.success && emotionData.success) {
                     showStatus('配置保存成功', 'success');
                 } else {
-                    showStatus('保存配置失败: ' + data.error, 'error');
+                    const errors = [];
+                    if (!configData.success) errors.push('模型配置: ' + configData.error);
+                    if (!emotionData.success) errors.push('情绪映射: ' + emotionData.error);
+                    showStatus('保存配置失败: ' + errors.join(', '), 'error');
                 }
             } catch (error) {
                 showStatus('保存配置时出错: ' + error.message, 'error');
@@ -744,8 +819,11 @@
         // 重置映射
         function resetMapping() {
             if (confirm('确定要重置当前配置吗？这将清空所有动作和表情文件。')) {
-                currentModelConfig.FileReferences.Motions = { "Idle": [] };
-                currentModelConfig.FileReferences.Expressions = [];
+                if (!emotionMappingConfig[currentModel]) {
+                    emotionMappingConfig[currentModel] = { motions: {}, expressions: {} };
+                }
+                emotionMappingConfig[currentModel].motions = { "Idle": [] };
+                emotionMappingConfig[currentModel].expressions = {};
                 renderEmotionGrid();
                 showStatus('配置已重置', 'success');
             }
