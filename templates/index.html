@@ -321,6 +321,14 @@
             color: #fff;
         }
 
+        .mobile-text {
+            display: none;
+        }
+
+        .desktop-text {
+            display: inline;
+        }
+
         #status {
             /*margin-top: 5px;*/
             color: #4f8cff;
@@ -369,6 +377,14 @@
                 padding: 6px 10px;
                 font-size: 0.85rem;
             }
+
+            .mobile-text {
+                display: inline;
+            }
+
+            .desktop-text {
+                display: none;
+            }
         }
 
     </style>
@@ -379,8 +395,8 @@
         <button id="toggle-sidebar-btn" title="折叠侧边栏">—</button>
         <button id="micButton" class="side-btn">🎤 开始聊天</button>
         <button id="muteButton" class="side-btn" disabled>⏸️ 休息一下</button>
-        <button id="screenButton" class="side-btn" disabled>🖥️ 屏幕共享</button>
-        <button id="stopButton" class="side-btn" disabled>🛑 暂停共享</button>
+        <button id="screenButton" class="side-btn" disabled><span class="desktop-text">🖥️ 屏幕共享</span><span class="mobile-text">📷 摄像头分享</span></button>
+        <button id="stopButton" class="side-btn" disabled>🛑 停止共享</button>
         <button id="resetSessionButton" class="side-btn" disabled>👋 请她离开</button>
         <div id="status"></div>
     </div>

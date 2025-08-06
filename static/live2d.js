@@ -106,6 +106,8 @@ class Live2DManager {
         this.motionTimer = null;
         this.isEmotionChanging = false;
         this.dragEnabled = false;
+        this.isFocusing = false;
+        this.isLocked = true;
         this.onModelLoaded = null;
         this.onStatusUpdate = null;
     }
@@ -629,6 +631,14 @@ class Live2DManager {
                 this.setupWheelZoom(model);
             }
 
+            // 启用鼠标跟踪
+            if (options.mouseTracking !== false) {
+                this.enableMouseTracking(model);
+            }
+
+            // 设置 HTML 锁定图标
+            this.setupHTMLLockIcon(model);
+
             // 加载情感映射
             if (options.loadEmotionMapping !== false) {
                 if (model.internalModel && model.internalModel.settings && model.internalModel.settings.json && model.internalModel.settings.json.FileReferences) {
@@ -698,7 +708,9 @@ class Live2DManager {
         let dragStartPos = new PIXI.Point();
 
         model.on('pointerdown', (event) => {
+            if (this.isLocked) return;
             isDragging = true;
+            this.isFocusing = false; // 拖拽时禁用聚焦
             const globalPos = event.data.global;
             dragStartPos.x = globalPos.x - model.x;
             dragStartPos.y = globalPos.y - model.y;
@@ -727,7 +739,7 @@ class Live2DManager {
     // 设置滚轮缩放
     setupWheelZoom(model) {
         const onWheelScroll = (event) => {
-            if (!this.currentModel) return;
+            if (this.isLocked || !this.currentModel) return;
             event.preventDefault();
             const scaleFactor = 1.1;
             const oldScale = this.currentModel.scale.x;
@@ -742,8 +754,96 @@ class Live2DManager {
         view.addEventListener('wheel', onWheelScroll, { passive: false });
         view.lastWheelListener = onWheelScroll;
     }
+    
+    // 设置 HTML 锁形图标
+    setupHTMLLockIcon(model) {
+        const container = document.getElementById('live2d-canvas');
+        
+        // 在 l2d_manager 等页面，默认解锁并可交互
+        if (!document.getElementById('chat-container')) {
+            this.isLocked = false;
+            container.style.pointerEvents = 'auto';
+            return;
+        }
 
+        const lockIcon = document.createElement('div');
+        lockIcon.id = 'live2d-lock-icon';
+        lockIcon.innerText = this.isLocked ? '🔒' : '🔓';
+        Object.assign(lockIcon.style, {
+            position: 'fixed',
+            zIndex: '30',
+            fontSize: '24px',
+            cursor: 'pointer',
+            userSelect: 'none',
+            textShadow: '0 0 4px black',
+            pointerEvents: 'auto',
+            display: 'none' // 默认隐藏
+        });
 
+        document.body.appendChild(lockIcon);
+
+        lockIcon.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.isLocked = !this.isLocked;
+            lockIcon.innerText = this.isLocked ? '🔒' : '🔓';
+
+            if (this.isLocked) {
+                container.style.pointerEvents = 'none';
+            } else {
+                container.style.pointerEvents = 'auto';
+            }
+        });
+
+        // 初始状态
+        container.style.pointerEvents = this.isLocked ? 'none' : 'auto';
+
+        // 持续更新图标位置
+        this.pixi_app.ticker.add(() => {
+            const bounds = model.getBounds();
+            const screenWidth = window.innerWidth;
+            const screenHeight = window.innerHeight;
+
+            const targetX = bounds.right*0.75 + bounds.left*0.25;
+            const targetY = (bounds.top+bounds.bottom)/2;
+
+            lockIcon.style.left = `${Math.min(targetX, screenWidth - 40)}px`;
+            lockIcon.style.top = `${Math.min(targetY, screenHeight - 40)}px`;
+        });
+    }
+
+    // 启用鼠标跟踪以检测与模型的接近度
+    enableMouseTracking(model, options = {}) {
+        const { threshold = 70 } = options;
+
+        this.pixi_app.stage.on('pointermove', (event) => {
+            const lockIcon = document.getElementById('live2d-lock-icon');
+            const pointer = event.data.global;
+            
+            // 在拖拽期间不执行任何操作
+            if (model.interactive && model.dragging) {
+                this.isFocusing = false;
+                if (lockIcon) lockIcon.style.display = 'none';
+                return;
+            }
+
+            const bounds = model.getBounds();
+            const dx = Math.max(bounds.left - pointer.x, 0, pointer.x - bounds.right);
+            const dy = Math.max(bounds.top - pointer.y, 0, pointer.y - bounds.bottom);
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < threshold) {
+                this.isFocusing = true;
+                if (lockIcon) lockIcon.style.display = 'block';
+            } else {
+                this.isFocusing = false;
+                if (lockIcon) lockIcon.style.display = 'none';
+            }
+
+            if (this.isFocusing) {
+                model.focus(pointer.x, pointer.y);
+            }
+        });
+    }
 
     // 获取当前模型
     getCurrentModel() {
@@ -811,4 +911,3 @@ if (typeof cubism4Model !== 'undefined' && cubism4Model) {
         }
     })();
 }
-
