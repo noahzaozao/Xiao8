@@ -1,4 +1,5 @@
-from langchain_chroma import Chroma
+# from langchain_chroma import Chroma
+# ↑ 这个库引入了Chroma和onnx依赖，显著增大了一键包体积，暂时注释掉
 from typing import List
 from langchain_core.documents import Document
 from datetime import datetime
@@ -75,11 +76,12 @@ class SemanticMemory:
 class SemanticMemoryOriginal:
     def __init__(self, persist_directory, lanlan_name, name_mapping):
         self.embeddings = OpenAIEmbeddings(base_url=OPENROUTER_URL, model=SEMANTIC_MODEL, api_key=OPENROUTER_API_KEY)
-        self.vectorstore = Chroma(
-            collection_name="Origin",
-            persist_directory=persist_directory[lanlan_name],
-            embedding_function=self.embeddings
-        )
+        # self.vectorstore = Chroma(
+        #     collection_name="Origin",
+        #     persist_directory=persist_directory[lanlan_name],
+        #     embedding_function=self.embeddings
+        # )
+        self.vectorstore = None
         self.lanlan_name = lanlan_name
         self.name_mapping = name_mapping
 
@@ -117,11 +119,12 @@ class SemanticMemoryCompressed:
         self.lanlan_name = lanlan_name
         self.name_mapping = name_mapping
         self.embeddings = OpenAIEmbeddings(base_url=OPENROUTER_URL, model=SEMANTIC_MODEL, api_key=OPENROUTER_API_KEY)
-        self.vectorstore = Chroma(
-            collection_name="Compressed",
-            persist_directory=persist_directory[lanlan_name],
-            embedding_function=self.embeddings
-        )
+        self.vectorstore = None
+        # self.vectorstore = Chroma(
+        #     collection_name="Compressed",
+        #     persist_directory=persist_directory[lanlan_name],
+        #     embedding_function=self.embeddings
+        # )
         self.recent_history_manager = recent_history_manager
 
     def store_compressed_summary(self, event_id, messages):

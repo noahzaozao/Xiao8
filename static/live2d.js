@@ -277,7 +277,12 @@ class Live2DManager {
         
         const motions = this.emotionMapping.Motions[emotion];
         if (!motions || motions.length === 0) {
-            console.warn(`未找到情感 ${emotion} 对应的动作`);
+            console.warn(`未找到情感 ${emotion} 对应的动作，但将保持表情`);
+            // 如果没有找到对应的motion，设置一个短定时器以确保expression能够显示
+            // 并且不设置回调来清除效果，让表情一直持续
+            this.motionTimer = setTimeout(() => {
+                this.motionTimer = null;
+            }, 500); // 500ms应该足够让expression稳定显示
             return;
         }
         

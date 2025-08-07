@@ -462,7 +462,6 @@
         // 页面加载时初始化
         document.addEventListener('DOMContentLoaded', function() {
             loadAvailableModels();
-            loadEmotionMappingConfig();
         });
 
         // 全局错误处理
@@ -472,25 +471,6 @@
         });
 
         
-
-        // 加载情绪映射配置
-        async function loadEmotionMappingConfig() {
-            try {
-                const response = await fetch('/api/live2d/emotion_mapping');
-                const data = await response.json();
-                
-                if (data.success) {
-                    emotionMappingConfig = data.config || {};
-                    showStatus('情绪映射配置加载成功', 'success');
-                } else {
-                    emotionMappingConfig = {};
-                    showStatus('加载情绪映射配置失败: ' + data.error, 'error');
-                }
-            } catch (error) {
-                emotionMappingConfig = {};
-                showStatus('加载情绪映射配置时出错: ' + error.message, 'error');
-            }
-        }
 
         // 加载可用的模型列表
         async function loadAvailableModels() {
@@ -525,8 +505,7 @@
             });
         }
 
-                 // 加载模型映射配置
-         async function loadModelMapping() {
+        async function loadModelMapping() {
              const modelSelect = document.getElementById('model-select');
              const selectedModel = modelSelect.value;
              
@@ -544,13 +523,15 @@
                  statusText.textContent = '正在加载配置和模型文件...';
                  statusDot.className = 'status-dot info';
                  
-                 const [configResponse, filesResponse] = await Promise.all([
+                 const [configResponse, filesResponse, emotionMappingResponse] = await Promise.all([
                      fetch(`/api/live2d/model_config/${selectedModel}`),
-                     fetch(`/api/live2d/model_files/${selectedModel}`)
+                     fetch(`/api/live2d/model_files/${selectedModel}`),
+                     fetch(`/api/live2d/emotion_mapping/${selectedModel}`)
                  ]);
                  
                  const configData = await configResponse.json();
                  const filesData = await filesResponse.json();
+                 const emotionMappingData = await emotionMappingResponse.json();
                  
                  if (configData.success) {
                      currentModelConfig = configData.config;
@@ -578,6 +559,13 @@
                              statusIndicator.classList.add('hidden');
                          }, 3000);
                      }
+
+                    if (emotionMappingData.success) {
+                        emotionMappingConfig[currentModel] = emotionMappingData.config || { motions: {}, expressions: {} };
+                    } else {
+                        emotionMappingConfig[currentModel] = { motions: {}, expressions: {} };
+                        showStatus('加载情绪映射配置失败: ' + emotionMappingData.error, 'error');
+                    }
                      
                      // 自动为没有映射的模型添加映射
                      autoAddModelMapping(selectedModel);
@@ -781,35 +769,21 @@
             try {
                 showStatus('正在保存配置...', 'info');
                 
-                // 保存模型配置
-                const configResponse = await fetch(`/api/live2d/model_config/${currentModel}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(currentModelConfig)
-                });
-
-                const configData = await configResponse.json();
-                
                 // 保存情绪映射配置
-                const emotionResponse = await fetch('/api/live2d/emotion_mapping', {
+                const emotionResponse = await fetch(`/api/live2d/emotion_mapping/${currentModel}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify(emotionMappingConfig)
+                    body: JSON.stringify(emotionMappingConfig[currentModel])
                 });
 
                 const emotionData = await emotionResponse.json();
                 
-                if (configData.success && emotionData.success) {
+                if (emotionData.success) {
                     showStatus('配置保存成功', 'success');
                 } else {
-                    const errors = [];
-                    if (!configData.success) errors.push('模型配置: ' + configData.error);
-                    if (!emotionData.success) errors.push('情绪映射: ' + emotionData.error);
-                    showStatus('保存配置失败: ' + errors.join(', '), 'error');
+                    showStatus('保存配置失败: ' + emotionData.error, 'error');
                 }
             } catch (error) {
                 showStatus('保存配置时出错: ' + error.message, 'error');
@@ -843,15 +817,7 @@
              const totalExpressionFiles = currentModelFiles.expression_files.length;
              status.textContent = `动作文件: ${totalMotionFiles} | 表情文件: ${totalExpressionFiles}`;
          }
-
-        
-
-        
-
-        
-
-        
-
+         
                  // 显示toast通知
          function showStatus(message, type) {
              const toastContainer = document.getElementById('toast-container');

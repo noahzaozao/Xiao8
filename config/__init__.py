@@ -107,9 +107,9 @@ try:
             AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_OPENAI
         elif core_cfg['assistApi'] == 'glm':
             OPENROUTER_URL = "https://open.bigmodel.cn/api/paas/v4"
-            SUMMARY_MODEL = "glm-4-air-250414" # glm-4-flash-250414 <-永久免费模型
+            SUMMARY_MODEL = "glm-4.5-flash" # <-永久免费模型
             CORRECTION_MODEL = "glm-z1-air"  # glm-z1-flash <-永久免费模型
-            EMOTION_MODEL = "glm-4-flash-250414"
+            EMOTION_MODEL = "glm-4.5-flash"
             AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_GLM
         else:
             logger.error("💥 Unknown assistApi: " + core_cfg['assistApi']) 

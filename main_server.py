@@ -1005,50 +1005,74 @@ async def live2d_emotion_manager(request: Request):
         logger.error(f"加载Live2D情感映射管理器页面失败: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
 
-@app.get('/api/live2d/emotion_mapping')
-async def get_emotion_mapping():
+@app.get('/api/live2d/emotion_mapping/{model_name}')
+async def get_emotion_mapping(model_name: str):
     """获取情绪映射配置"""
     try:
-        mapping_file_path = os.path.join('config', 'live2d_emotion_mapping.json')
+        # 在模型目录中查找.model3.json文件
+        model_dir = os.path.join('static', model_name)
+        if not os.path.exists(model_dir):
+            return JSONResponse(status_code=404, content={"success": False, "error": "模型目录不存在"})
         
-        if not os.path.exists(mapping_file_path):
-            # 如果文件不存在，返回空配置
-            return {"success": True, "config": {}}
+        # 查找.model3.json文件
+        model_json_path = None
+        for file in os.listdir(model_dir):
+            if file.endswith('.model3.json'):
+                model_json_path = os.path.join(model_dir, file)
+                break
         
-        with open(mapping_file_path, 'r', encoding='utf-8') as f:
+        if not model_json_path or not os.path.exists(model_json_path):
+            return JSONResponse(status_code=404, content={"success": False, "error": "模型配置文件不存在"})
+        
+        with open(model_json_path, 'r', encoding='utf-8') as f:
             config_data = json.load(f)
+
+        emotion_mapping = config_data.get('EmotionMapping', {})
             
-        return {"success": True, "config": config_data}
+        return {"success": True, "config": emotion_mapping}
     except Exception as e:
         logger.error(f"获取情绪映射配置失败: {e}")
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
-@app.post('/api/live2d/emotion_mapping')
-async def update_emotion_mapping(request: Request):
+@app.post('/api/live2d/emotion_mapping/{model_name}')
+async def update_emotion_mapping(model_name: str, request: Request):
     """更新情绪映射配置"""
     try:
         data = await request.json()
         
         if not data:
             return JSONResponse(status_code=400, content={"success": False, "error": "无效的数据"})
+
+        # 在模型目录中查找.model3.json文件
+        model_dir = os.path.join('static', model_name)
+        if not os.path.exists(model_dir):
+            return JSONResponse(status_code=404, content={"success": False, "error": "模型目录不存在"})
         
-        mapping_file_path = os.path.join('config', 'live2d_emotion_mapping.json')
+        # 查找.model3.json文件
+        model_json_path = None
+        for file in os.listdir(model_dir):
+            if file.endswith('.model3.json'):
+                model_json_path = os.path.join(model_dir, file)
+                break
         
-        # 确保config目录存在
-        os.makedirs(os.path.dirname(mapping_file_path), exist_ok=True)
+        if not model_json_path or not os.path.exists(model_json_path):
+            return JSONResponse(status_code=404, content={"success": False, "error": "模型配置文件不存在"})
+
+        with open(model_json_path, 'r', encoding='utf-8') as f:
+            config_data = json.load(f)
+
+        # 添加或更新 EmotionMapping
+        config_data['EmotionMapping'] = data
         
         # 保存配置到文件
-        with open(mapping_file_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        with open(model_json_path, 'w', encoding='utf-8') as f:
+            json.dump(config_data, f, ensure_ascii=False, indent=2)
             
-        logger.info("情绪映射配置已更新")
+        logger.info(f"模型 {model_name} 的情绪映射配置已更新")
         return {"success": True, "message": "情绪映射配置已保存"}
     except Exception as e:
         logger.error(f"更新情绪映射配置失败: {e}")
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
-    except Exception as e:
-        logger.error(f"加载Live2D情感映射管理器页面失败: {e}")
-        return HTMLResponse(content=f"<h1>页面加载失败: {str(e)}</h1>", status_code=500)
 
 @app.post('/api/memory/recent_file/save')
 async def save_recent_file(request: Request):
