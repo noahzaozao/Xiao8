@@ -227,7 +227,7 @@ if (!window._addMasterFieldHandler) {
     document.getElementById('add-master-field-btn') && (document.getElementById('add-master-field-btn').onclick = function() {
         const key = prompt('请输入新设定的名称（键名）');
         if (!key || ["档案名"].includes(key)) return;
-        if (document.querySelector(`[name='${key}']`)) { alert('该设定已存在'); return; }
+        if (masterFormEl.querySelector(`[name='${key}']`)) { alert('该设定已存在'); return; }
         const row = document.createElement('div');
         row.className = 'field-row custom-row';
         row.innerHTML = `<label>${key}</label><input type="text" name="${key}"><button type="button" class="btn sm delete" style="margin-left:8px" onclick="deleteMasterField(this)">删除设定</button>`;
