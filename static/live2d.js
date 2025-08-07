@@ -110,6 +110,8 @@ class Live2DManager {
         this.isLocked = true;
         this.onModelLoaded = null;
         this.onStatusUpdate = null;
+        this.modelName = null; // 记录当前模型目录名
+        this.modelRootPath = null; // 记录当前模型根路径，如 /static/<modelName>
     }
 
     // 初始化 PIXI 应用
@@ -201,41 +203,31 @@ class Live2DManager {
             return;
         }
         
-        const expressions = this.emotionMapping.Expressions.filter(e => e.Name.startsWith(emotion));
+        const expressions = this.emotionMapping.Expressions.filter(e => (e.Name || '').startsWith(emotion));
         if (!expressions || expressions.length === 0) {
             console.log(`未找到情感 ${emotion} 对应的表情，将跳过表情播放`);
             return; // Gracefully exit if no expression is found
         }
         
-        const expressionFile = this.getRandomElement(expressions).File.split('/').pop();
-        if (!expressionFile) return;
+        const choice = this.getRandomElement(expressions);
+        if (!choice || !choice.File) return;
         
         try {
-            // 获取模型名称（从模型路径中提取）
-            let modelName = 'mao_pro'; // 默认模型名称
-            
-            // 尝试从模型路径中提取模型名称
-            if (this.currentModel.internalModel && this.currentModel.internalModel.settings && this.currentModel.internalModel.settings.model) {
-                const modelPath = this.currentModel.internalModel.settings.model;
-                const pathParts = modelPath.split('/');
-                modelName = pathParts[pathParts.length - 2] || pathParts[pathParts.length - 1].replace('.model3.json', '');
-            }
-            
-            // 加载表情文件并应用参数
-            const expressionPath = `/static/${modelName}/expressions/${expressionFile}`;
+            // 计算表达文件路径（相对模型根目录）
+            const expressionPath = this.resolveAssetPath(choice.File);
             const response = await fetch(expressionPath);
             if (!response.ok) {
                 throw new Error(`Failed to load expression: ${response.statusText}`);
             }
             
             const expressionData = await response.json();
-            console.log(`加载表情文件: ${expressionFile}`, expressionData);
+            console.log(`加载表情文件: ${choice.File}`, expressionData);
             
             // 方法1: 尝试使用原生expression API
             if (this.currentModel.expression) {
                 try {
-                    // 从文件名中提取expression名称（去掉.exp3.json后缀）
-                    const expressionName = expressionFile.replace('.exp3.json', '');
+                    // 直接使用配置中的 Name（我们保存时已包含情感前缀）
+                    const expressionName = choice.Name || choice.File.replace('.exp3.json', '');
                     console.log(`尝试使用原生API播放expression: ${expressionName}`);
                     
                     const expression = await this.currentModel.expression(expressionName);
@@ -286,20 +278,10 @@ class Live2DManager {
             return;
         }
         
-        const motionFile = this.getRandomElement(motions).File.split('/').pop();
-        if (!motionFile) return;
+        const choice = this.getRandomElement(motions);
+        if (!choice || !choice.File) return;
         
         try {
-            // 获取模型名称（从模型路径中提取）
-            let modelName = 'mao_pro'; // 默认模型名称
-            
-            // 尝试从模型路径中提取模型名称
-            if (this.currentModel.internalModel && this.currentModel.internalModel.settings && this.currentModel.internalModel.settings.model) {
-                const modelPath = this.currentModel.internalModel.settings.model;
-                const pathParts = modelPath.split('/');
-                modelName = pathParts[pathParts.length - 2] || pathParts[pathParts.length - 1].replace('.model3.json', '');
-            }
-            
             // 清除之前的动作定时器
             if (this.motionTimer) {
                 console.log('检测到前一个motion正在播放，正在停止...');
@@ -326,14 +308,14 @@ class Live2DManager {
             
             // 尝试使用Live2D模型的原生motion播放功能
             try {
-                // 构建完整的motion路径
-                const motionPath = `/static/${modelName}/motions/${motionFile}`;
+                // 构建完整的motion路径（相对模型根目录）
+                const motionPath = this.resolveAssetPath(choice.File);
                 console.log(`尝试播放motion: ${motionPath}`);
                 
                 // 方法1: 直接使用模型的motion播放功能
                 if (this.currentModel.motion) {
                     try {
-                        console.log(`尝试播放motion: ${motionFile}`);
+                        console.log(`尝试播放motion: ${choice.File}`);
                         
                         // 使用情感名称作为motion组名，这样可以确保播放正确的motion
                         console.log(`尝试使用情感组播放motion: ${emotion}`);
@@ -363,7 +345,7 @@ class Live2DManager {
                             
                             // 设置定时器在motion结束后清理
                             this.motionTimer = setTimeout(() => {
-                                console.log(`motion播放完成（预期文件: ${motionFile}）`);
+                                console.log(`motion播放完成（预期文件: ${choice.File}）`);
                                 this.motionTimer = null;
                                 this.clearEmotionEffects();
                             }, motionDuration);
@@ -387,7 +369,7 @@ class Live2DManager {
                 }
                 
                 // 如果所有方法都失败，回退到简单动作
-                console.warn(`无法播放motion: ${motionFile}，回退到简单动作`);
+                console.warn(`无法播放motion: ${choice.File}，回退到简单动作`);
                 this.playSimpleMotion(emotion);
                 
             } catch (error) {
@@ -605,6 +587,21 @@ class Live2DManager {
             const model = await Live2DModel.from(modelPath, { autoInteract: false });
             this.currentModel = model;
 
+            // 解析模型目录名与根路径，供资源解析使用
+            try {
+                const cleanPath = (modelPath || '').split('#')[0].split('?')[0];
+                const lastSlash = cleanPath.lastIndexOf('/');
+                const rootDir = lastSlash >= 0 ? cleanPath.substring(0, lastSlash) : '/static';
+                this.modelRootPath = rootDir; // e.g. /static/mao_pro or /static/some/deeper/dir
+                const parts = rootDir.split('/').filter(Boolean);
+                this.modelName = parts.length > 0 ? parts[parts.length - 1] : null;
+                console.log('模型根路径解析:', { modelPath, modelName: this.modelName, modelRootPath: this.modelRootPath });
+            } catch (e) {
+                console.warn('解析模型根路径失败，将使用默认值', e);
+                this.modelRootPath = '/static';
+                this.modelName = null;
+            }
+
             // 配置渲染纹理数量以支持更多蒙版
             if (model.internalModel && model.internalModel.renderer && model.internalModel.renderer._clippingManager) {
                 model.internalModel.renderer._clippingManager._renderTextureCount = 3;
@@ -664,6 +661,19 @@ class Live2DManager {
             console.error('加载模型失败:', error);
             throw error;
         }
+    }
+
+    // 解析资源相对路径（基于当前模型根目录）
+    resolveAssetPath(relativePath) {
+        if (!relativePath) return '';
+        let rel = String(relativePath).replace(/^[\\/]+/, '');
+        if (rel.startsWith('static/')) {
+            return `/${rel}`;
+        }
+        if (rel.startsWith('/static/')) {
+            return rel;
+        }
+        return `${this.modelRootPath}/${rel}`;
     }
 
     // 应用模型设置

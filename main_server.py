@@ -1027,8 +1027,45 @@ async def get_emotion_mapping(model_name: str):
         with open(model_json_path, 'r', encoding='utf-8') as f:
             config_data = json.load(f)
 
-        emotion_mapping = config_data.get('EmotionMapping', {})
-            
+        # 优先使用 EmotionMapping；若不存在则从 FileReferences 推导
+        emotion_mapping = config_data.get('EmotionMapping')
+        if not emotion_mapping:
+            derived_mapping = {"motions": {}, "expressions": {}}
+            file_refs = config_data.get('FileReferences', {}) or {}
+
+            # 从标准 Motions 结构推导
+            motions = file_refs.get('Motions', {}) or {}
+            for group_name, items in motions.items():
+                files = []
+                for item in items or []:
+                    try:
+                        file_path = item.get('File') if isinstance(item, dict) else None
+                        if file_path:
+                            files.append(file_path.replace('\\', '/'))
+                    except Exception:
+                        continue
+                derived_mapping["motions"][group_name] = files
+
+            # 从标准 Expressions 结构推导（按 Name 的前缀进行分组，如 happy_xxx）
+            expressions = file_refs.get('Expressions', []) or []
+            for item in expressions:
+                if not isinstance(item, dict):
+                    continue
+                name = item.get('Name') or ''
+                file_path = item.get('File') or ''
+                if not file_path:
+                    continue
+                file_path = file_path.replace('\\', '/')
+                # 根据第一个下划线拆分分组
+                if '_' in name:
+                    group = name.split('_', 1)[0]
+                else:
+                    # 无前缀的归入 neutral 组，避免丢失
+                    group = 'neutral'
+                derived_mapping["expressions"].setdefault(group, []).append(file_path)
+
+            emotion_mapping = derived_mapping
+        
         return {"success": True, "config": emotion_mapping}
     except Exception as e:
         logger.error(f"获取情绪映射配置失败: {e}")
@@ -1061,14 +1098,59 @@ async def update_emotion_mapping(model_name: str, request: Request):
         with open(model_json_path, 'r', encoding='utf-8') as f:
             config_data = json.load(f)
 
-        # 添加或更新 EmotionMapping
+        # 统一写入到标准 Cubism 结构（FileReferences.Motions / FileReferences.Expressions）
+        file_refs = config_data.setdefault('FileReferences', {})
+
+        # 处理 motions: data 结构为 { motions: { emotion: ["motions/xxx.motion3.json", ...] }, expressions: {...} }
+        motions_input = (data.get('motions') if isinstance(data, dict) else None) or {}
+        motions_output = {}
+        for group_name, files in motions_input.items():
+            items = []
+            for file_path in files or []:
+                if not isinstance(file_path, str):
+                    continue
+                normalized = file_path.replace('\\', '/').lstrip('./')
+                items.append({"File": normalized})
+            motions_output[group_name] = items
+        file_refs['Motions'] = motions_output
+
+        # 处理 expressions: 将按 emotion 前缀生成扁平列表，Name 采用 "{emotion}_{basename}" 的约定
+        expressions_input = (data.get('expressions') if isinstance(data, dict) else None) or {}
+
+        # 先保留不属于我们情感前缀的原始表达（避免覆盖用户自定义）
+        existing_expressions = file_refs.get('Expressions', []) or []
+        emotion_prefixes = set(expressions_input.keys())
+        preserved_expressions = []
+        for item in existing_expressions:
+            try:
+                name = (item.get('Name') or '') if isinstance(item, dict) else ''
+                prefix = name.split('_', 1)[0] if '_' in name else None
+                if not prefix or prefix not in emotion_prefixes:
+                    preserved_expressions.append(item)
+            except Exception:
+                preserved_expressions.append(item)
+
+        new_expressions = []
+        for emotion, files in expressions_input.items():
+            for file_path in files or []:
+                if not isinstance(file_path, str):
+                    continue
+                normalized = file_path.replace('\\', '/').lstrip('./')
+                base = os.path.basename(normalized)
+                base_no_ext = base.replace('.exp3.json', '')
+                name = f"{emotion}_{base_no_ext}"
+                new_expressions.append({"Name": name, "File": normalized})
+
+        file_refs['Expressions'] = preserved_expressions + new_expressions
+
+        # 同时保留一份 EmotionMapping（供管理器读取与向后兼容）
         config_data['EmotionMapping'] = data
-        
+
         # 保存配置到文件
         with open(model_json_path, 'w', encoding='utf-8') as f:
             json.dump(config_data, f, ensure_ascii=False, indent=2)
-            
-        logger.info(f"模型 {model_name} 的情绪映射配置已更新")
+        
+        logger.info(f"模型 {model_name} 的情绪映射配置已更新（已同步到 FileReferences）")
         return {"success": True, "message": "情绪映射配置已保存"}
     except Exception as e:
         logger.error(f"更新情绪映射配置失败: {e}")
