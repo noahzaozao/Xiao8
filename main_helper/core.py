@@ -250,7 +250,14 @@ class LLMSessionManager:
         except Exception as e:
             logger.error(f"💥 WS Send Lanlan Response Error: {e}")
         
-    async def handle_connection_error(self):
+    async def handle_connection_error(self, message=None):
+        if message:
+            if '欠费' in message:
+                await self.send_status("💥 智谱API触发欠费bug。请考虑充值1元。")
+            elif 'standing' in message:
+                await self.send_status("💥 阿里API已欠费。")
+            else:
+                await self.send_status(message)
         logger.info("💥 Session closed by API Server.")
         await self.disconnected_by_server()
 
@@ -358,6 +365,10 @@ class LLMSessionManager:
             logger.error(f"💥 {error_message}")
             traceback.print_exc()
             await self.send_status(error_message)
+            if 'actively refused it' in str(e):
+                await self.send_status("💥 记忆服务器已崩溃。请检查API Key是否正确。")
+            elif '401' in str(e):
+                await self.send_status("💥 API Key被服务器拒绝。请检查API Key是否与所选模型匹配。")
             await self.cleanup()
 
     async def send_user_activity(self):

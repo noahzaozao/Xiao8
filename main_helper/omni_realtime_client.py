@@ -65,7 +65,7 @@ class OmniRealtimeClient:
         on_interrupt: Optional[Callable[[], Awaitable[None]]] = None,
         on_input_transcript: Optional[Callable[[str], Awaitable[None]]] = None,
         on_output_transcript: Optional[Callable[[str, bool], Awaitable[None]]] = None,
-        on_connection_error: Optional[Callable[[], Awaitable[None]]] = None,
+        on_connection_error: Optional[Callable[[str], Awaitable[None]]] = None,
         on_response_done: Optional[Callable[[], Awaitable[None]]] = None,
         extra_event_handlers: Optional[Dict[str, Callable[[Dict[str, Any]], Awaitable[None]]]] = None
     ):
@@ -247,6 +247,10 @@ class OmniRealtimeClient:
                 #     print(f"Event type: {event_type}")
                 if event_type == "error":
                     logger.error(f"API Error: {event['error']}")
+                    if '欠费' in event['error'] or 'standing' in event['error']:
+                        if self.handle_connection_error:
+                            await self.handle_connection_error(event['error'])
+                        await self.close()
                     continue
                 elif event_type == "response.done":
                     self._is_responding = False
