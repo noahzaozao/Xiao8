@@ -1105,6 +1105,10 @@ async def update_emotion_mapping(model_name: str, request: Request):
         motions_input = (data.get('motions') if isinstance(data, dict) else None) or {}
         motions_output = {}
         for group_name, files in motions_input.items():
+            # 禁止在“常驻”组配置任何motion
+            if group_name == '常驻':
+                logger.info("忽略常驻组中的motion配置（只允许expression）")
+                continue
             items = []
             for file_path in files or []:
                 if not isinstance(file_path, str):

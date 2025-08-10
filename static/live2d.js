@@ -15,7 +15,8 @@ let isEmotionChanging = false; // 防止快速连续点击的标志
 class Live2DManager {
     constructor() {
         this.currentModel = null;
-        this.emotionMapping = null;
+        this.emotionMapping = null; // { motions: {emotion: [string]}, expressions: {emotion: [string]} }
+        this.fileReferences = null; // 保存原始 FileReferences（含 Motions/Expressions）
         this.currentEmotion = 'neutral';
         this.pixi_app = null;
         this.isInitialized = false;
@@ -28,6 +29,42 @@ class Live2DManager {
         this.onStatusUpdate = null;
         this.modelName = null; // 记录当前模型目录名
         this.modelRootPath = null; // 记录当前模型根路径，如 /static/<modelName>
+        
+        // 常驻表情：使用官方 expression 播放并在清理后自动重放
+        this.persistentExpressionNames = [];
+    }
+
+    // 从 FileReferences 推导 EmotionMapping（用于兼容历史数据）
+    deriveEmotionMappingFromFileRefs(fileRefs) {
+        const result = { motions: {}, expressions: {} };
+
+        try {
+            // 推导 motions
+            const motions = (fileRefs && fileRefs.Motions) || {};
+            Object.keys(motions).forEach(group => {
+                const items = motions[group] || [];
+                const files = items
+                    .map(item => (item && item.File) ? String(item.File) : null)
+                    .filter(Boolean);
+                result.motions[group] = files;
+            });
+
+            // 推导 expressions（按 Name 前缀分组）
+            const expressions = (fileRefs && Array.isArray(fileRefs.Expressions)) ? fileRefs.Expressions : [];
+            expressions.forEach(item => {
+                if (!item || typeof item !== 'object') return;
+                const name = String(item.Name || '');
+                const file = String(item.File || '');
+                if (!file) return;
+                const group = name.includes('_') ? name.split('_', 1)[0] : 'neutral';
+                if (!result.expressions[group]) result.expressions[group] = [];
+                result.expressions[group].push(file);
+            });
+        } catch (e) {
+            console.warn('从 FileReferences 推导 EmotionMapping 失败:', e);
+        }
+
+        return result;
     }
 
     // 初始化 PIXI 应用
@@ -110,40 +147,52 @@ class Live2DManager {
         } else {
             console.warn('无法访问expressionManager，expression清除失败');
         }
+
+        // 如存在常驻表情，清除后立即重放常驻，保证不被清掉
+        this.applyPersistentExpressionsNative();
     }
 
-    // 播放表情
+    // 播放表情（优先使用 EmotionMapping.expressions）
     async playExpression(emotion) {
-        if (!this.currentModel || !this.emotionMapping || !this.emotionMapping.Expressions) {
+        if (!this.currentModel || !this.emotionMapping) {
             console.warn('无法播放表情：模型或映射配置未加载');
             return;
         }
-        
-        const expressions = this.emotionMapping.Expressions.filter(e => (e.Name || '').startsWith(emotion));
-        if (!expressions || expressions.length === 0) {
-            console.log(`未找到情感 ${emotion} 对应的表情，将跳过表情播放`);
-            return; // Gracefully exit if no expression is found
+
+        // EmotionMapping.expressions 规范：{ emotion: ["expressions/xxx.exp3.json", ...] }
+        let expressionFiles = (this.emotionMapping.expressions && this.emotionMapping.expressions[emotion]) || [];
+
+        // 兼容旧结构：从 FileReferences.Expressions 里按前缀分组
+        if ((!expressionFiles || expressionFiles.length === 0) && this.fileReferences && Array.isArray(this.fileReferences.Expressions)) {
+            const candidates = this.fileReferences.Expressions.filter(e => (e.Name || '').startsWith(emotion));
+            expressionFiles = candidates.map(e => e.File).filter(Boolean);
         }
-        
-        const choice = this.getRandomElement(expressions);
-        if (!choice || !choice.File) return;
+
+        if (!expressionFiles || expressionFiles.length === 0) {
+            console.log(`未找到情感 ${emotion} 对应的表情，将跳过表情播放`);
+            return;
+        }
+
+        const choiceFile = this.getRandomElement(expressionFiles);
+        if (!choiceFile) return;
         
         try {
             // 计算表达文件路径（相对模型根目录）
-            const expressionPath = this.resolveAssetPath(choice.File);
+            const expressionPath = this.resolveAssetPath(choiceFile);
             const response = await fetch(expressionPath);
             if (!response.ok) {
                 throw new Error(`Failed to load expression: ${response.statusText}`);
             }
             
             const expressionData = await response.json();
-            console.log(`加载表情文件: ${choice.File}`, expressionData);
+            console.log(`加载表情文件: ${choiceFile}`, expressionData);
             
             // 方法1: 尝试使用原生expression API
             if (this.currentModel.expression) {
                 try {
-                    // 直接使用配置中的 Name（我们保存时已包含情感前缀）
-                    const expressionName = choice.Name || choice.File.replace('.exp3.json', '');
+                    // 使用文件名作为候选名称（如果 FileReferences 中存在同名 Name 会成功）
+                    const base = String(choiceFile).split('/').pop() || '';
+                    const expressionName = base.replace('.exp3.json', '');
                     console.log(`尝试使用原生API播放expression: ${expressionName}`);
                     
                     const expression = await this.currentModel.expression(expressionName);
@@ -170,20 +219,30 @@ class Live2DManager {
                 }
             }
             
-            console.log(`手动设置表情: ${expressionFile}`);
+            console.log(`手动设置表情: ${choiceFile}`);
         } catch (error) {
             console.error('播放表情失败:', error);
         }
+
+        // 重放常驻表情，确保不被覆盖
+        try { await this.applyPersistentExpressionsNative(); } catch (e) {}
     }
 
     // 播放动作
     async playMotion(emotion) {
-        if (!this.currentModel || !this.emotionMapping || !this.emotionMapping.Motions) {
-            console.warn('无法播放动作：模型或映射配置未加载');
+        if (!this.currentModel) {
+            console.warn('无法播放动作：模型未加载');
             return;
         }
-        
-        const motions = this.emotionMapping.Motions[emotion];
+
+        // 优先使用 Cubism 原生 Motion Group（FileReferences.Motions）
+        let motions = null;
+        if (this.fileReferences && this.fileReferences.Motions && this.fileReferences.Motions[emotion]) {
+            motions = this.fileReferences.Motions[emotion]; // 形如 [{ File: "motions/xxx.motion3.json" }, ...]
+        } else if (this.emotionMapping && this.emotionMapping.motions && this.emotionMapping.motions[emotion]) {
+            // 兼容 EmotionMapping.motions: ["motions/xxx.motion3.json", ...]
+            motions = this.emotionMapping.motions[emotion].map(f => ({ File: f }));
+        }
         if (!motions || motions.length === 0) {
             console.warn(`未找到情感 ${emotion} 对应的动作，但将保持表情`);
             // 如果没有找到对应的motion，设置一个短定时器以确保expression能够显示
@@ -236,10 +295,10 @@ class Live2DManager {
                         // 使用情感名称作为motion组名，这样可以确保播放正确的motion
                         console.log(`尝试使用情感组播放motion: ${emotion}`);
                         
-                        const motion = await this.currentModel.motion(emotion);
+                const motion = await this.currentModel.motion(emotion);
                         
                         if (motion) {
-                            console.log(`成功开始播放motion（情感组: ${emotion}，预期文件: ${motionFile}）`);
+                    console.log(`成功开始播放motion（情感组: ${emotion}，预期文件: ${choice.File}）`);
                             
                             // 获取motion的实际持续时间
                             let motionDuration = 5000; // 默认5秒
@@ -261,7 +320,7 @@ class Live2DManager {
                             
                             // 设置定时器在motion结束后清理
                             this.motionTimer = setTimeout(() => {
-                                console.log(`motion播放完成（预期文件: ${choice.File}）`);
+                            console.log(`motion播放完成（预期文件: ${choice.File}）`);
                                 this.motionTimer = null;
                                 this.clearEmotionEffects();
                             }, motionDuration);
@@ -495,6 +554,8 @@ class Live2DManager {
 
         // 移除当前模型
         if (this.currentModel) {
+            // 先清空常驻表情记录
+            this.teardownPersistentExpressions();
             this.pixi_app.stage.removeChild(this.currentModel);
             this.currentModel.destroy({ children: true });
         }
@@ -505,13 +566,22 @@ class Live2DManager {
 
             // 解析模型目录名与根路径，供资源解析使用
             try {
-                const cleanPath = (modelPath || '').split('#')[0].split('?')[0];
+                let urlString = null;
+                if (typeof modelPath === 'string') {
+                    urlString = modelPath;
+                } else if (modelPath && typeof modelPath === 'object' && typeof modelPath.url === 'string') {
+                    urlString = modelPath.url;
+                }
+
+                if (typeof urlString !== 'string') throw new TypeError('modelPath/url is not a string');
+
+                const cleanPath = urlString.split('#')[0].split('?')[0];
                 const lastSlash = cleanPath.lastIndexOf('/');
                 const rootDir = lastSlash >= 0 ? cleanPath.substring(0, lastSlash) : '/static';
                 this.modelRootPath = rootDir; // e.g. /static/mao_pro or /static/some/deeper/dir
                 const parts = rootDir.split('/').filter(Boolean);
                 this.modelName = parts.length > 0 ? parts[parts.length - 1] : null;
-                console.log('模型根路径解析:', { modelPath, modelName: this.modelName, modelRootPath: this.modelRootPath });
+                console.log('模型根路径解析:', { modelUrl: urlString, modelName: this.modelName, modelRootPath: this.modelRootPath });
             } catch (e) {
                 console.warn('解析模型根路径失败，将使用默认值', e);
                 this.modelRootPath = '/static';
@@ -557,15 +627,27 @@ class Live2DManager {
             // 设置 HTML 锁定图标
             this.setupHTMLLockIcon(model);
 
-            // 加载情感映射
+            // 加载 FileReferences 与 EmotionMapping
             if (options.loadEmotionMapping !== false) {
-                if (model.internalModel && model.internalModel.settings && model.internalModel.settings.json && model.internalModel.settings.json.FileReferences) {
-                    this.emotionMapping = model.internalModel.settings.json.FileReferences;
-                    console.log("已从模型配置中提取情感映射:", this.emotionMapping);
+                const settings = model.internalModel && model.internalModel.settings && model.internalModel.settings.json;
+                if (settings) {
+                    // 保存原始 FileReferences
+                    this.fileReferences = settings.FileReferences || null;
+
+                    // 优先使用顶层 EmotionMapping，否则从 FileReferences 推导
+                    if (settings.EmotionMapping && (settings.EmotionMapping.expressions || settings.EmotionMapping.motions)) {
+                        this.emotionMapping = settings.EmotionMapping;
+                    } else {
+                        this.emotionMapping = this.deriveEmotionMappingFromFileRefs(this.fileReferences || {});
+                    }
+                    console.log('已加载情绪映射:', this.emotionMapping);
                 } else {
-                    console.warn("模型配置中未找到FileReferences，无法加载情感映射");
+                    console.warn('模型配置中未找到 settings.json，无法加载情绪映射');
                 }
             }
+
+            // 设置常驻表情（根据 EmotionMapping.expressions.常驻 或 FileReferences 前缀推导）
+            await this.setupPersistentExpressions();
 
             // 调用回调函数
             if (this.onModelLoaded) {
@@ -791,6 +873,75 @@ class Live2DManager {
         return this.pixi_app;
     }
 }
+
+// ========== 常驻表情：实现 ==========
+Live2DManager.prototype.collectPersistentExpressionFiles = function() {
+    // 1) EmotionMapping.expressions.常驻
+    const filesFromMapping = (this.emotionMapping && this.emotionMapping.expressions && this.emotionMapping.expressions['常驻']) || [];
+
+    // 2) 兼容：从 FileReferences.Expressions 里按前缀 "常驻_" 推导
+    let filesFromRefs = [];
+    if ((!filesFromMapping || filesFromMapping.length === 0) && this.fileReferences && Array.isArray(this.fileReferences.Expressions)) {
+        filesFromRefs = this.fileReferences.Expressions
+            .filter(e => (e.Name || '').startsWith('常驻_'))
+            .map(e => e.File)
+            .filter(Boolean);
+    }
+
+    const all = [...filesFromMapping, ...filesFromRefs];
+    // 去重
+    return Array.from(new Set(all));
+};
+
+Live2DManager.prototype.setupPersistentExpressions = async function() {
+    try {
+        this.persistentExpressionNames = [];
+        const files = this.collectPersistentExpressionFiles();
+        if (!files || files.length === 0) {
+            this.teardownPersistentExpressions();
+            console.log('未配置常驻表情');
+            return;
+        }
+
+        for (const file of files) {
+            try {
+                const url = this.resolveAssetPath(file);
+                const resp = await fetch(url);
+                if (!resp.ok) continue;
+                const data = await resp.json();
+                const params = Array.isArray(data.Parameters) ? data.Parameters : [];
+                const base = String(file).split('/').pop() || '';
+                const name = base.replace('.exp3.json', '');
+                // 只有包含参数的表达才加入播放队列
+                if (params.length > 0) this.persistentExpressionNames.push(name);
+            } catch (e) {
+                console.warn('加载常驻表情失败:', file, e);
+            }
+        }
+
+        // 使用官方 expression API 依次播放一次（若支持），并记录名称
+        await this.applyPersistentExpressionsNative();
+        console.log('常驻表情已启用，数量:', this.persistentExpressionNames.length);
+    } catch (e) {
+        console.warn('设置常驻表情失败:', e);
+    }
+};
+
+Live2DManager.prototype.teardownPersistentExpressions = function() {
+    this.persistentExpressionNames = [];
+};
+
+Live2DManager.prototype.applyPersistentExpressionsNative = async function() {
+    if (!this.currentModel) return;
+    if (typeof this.currentModel.expression !== 'function') return;
+    for (const name of this.persistentExpressionNames || []) {
+        try {
+            await this.currentModel.expression(name);
+        } catch (e) {
+            // 某些名称可能未注册到模型中，忽略
+        }
+    }
+};
 
 // 创建全局 Live2D 管理器实例
 window.Live2DManager = Live2DManager;
