@@ -735,16 +735,6 @@ function init_app(){
         const dataArray = new Uint8Array(analyser.fftSize);
 
         function animate() {
-            function trySetParam(model, id, value) {
-                // getParameterIndex: 找不到时返回 -1
-                if (model.internalModel.coreModel.getParameterIndex(id) !== -1) {
-                    model.internalModel.coreModel.setParameterValueById(id, value);
-                    return true;
-                }
-                return false;
-              }
-
-              
             analyser.getByteTimeDomainData(dataArray);
             // 简单求音量（RMS 或最大振幅）
             let sum = 0;
@@ -755,9 +745,10 @@ function init_app(){
             const rms = Math.sqrt(sum / dataArray.length);
             // 这里可以调整映射关系
             const mouthOpen = Math.min(1, rms * 8); // 放大到 0~1
-            // 设置 Live2D 嘴巴参数
-            trySetParam(model, "ParamO", mouthOpen);
-            trySetParam(model, "ParamMouthOpenY", mouthOpen);
+            // 通过统一通道设置嘴巴开合，屏蔽 motion 对嘴巴的控制
+            if (window.LanLan1 && typeof window.LanLan1.setMouth === 'function') {
+                window.LanLan1.setMouth(mouthOpen);
+            }
 
             animationFrameId = requestAnimationFrame(animate);
         }
@@ -767,8 +758,12 @@ function init_app(){
 
     function stopLipSync(model) {
         cancelAnimationFrame(animationFrameId);
-        // 关闭嘴巴
-        model.internalModel.coreModel.setParameterValueById("ParamMouthOpenY", 0);
+        if (window.LanLan1 && typeof window.LanLan1.setMouth === 'function') {
+            window.LanLan1.setMouth(0);
+        } else if (model && model.internalModel && model.internalModel.coreModel) {
+            // 兜底
+            try { model.internalModel.coreModel.setParameterValueById("ParamMouthOpenY", 0); } catch (_) {}
+        }
     }
 
     // 隐藏live2d函数

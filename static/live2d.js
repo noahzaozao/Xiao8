@@ -32,6 +32,13 @@ class Live2DManager {
         
         // 常驻表情：使用官方 expression 播放并在清理后自动重放
         this.persistentExpressionNames = [];
+
+        // 口型同步控制
+        this.mouthValue = 0; // 0~1
+        this.mouthParameterId = null; // 例如 'ParamMouthOpenY' 或 'ParamO'
+        this._mouthOverrideInstalled = false;
+        this._origUpdateParameters = null;
+        this._origExpressionUpdateParameters = null;
     }
 
     // 从 FileReferences 推导 EmotionMapping（用于兼容历史数据）
@@ -486,7 +493,7 @@ class Live2DManager {
         // 如果情感相同，有一定概率随机播放motion
         if (this.currentEmotion === emotion) {
             // 30% 的概率随机播放motion
-            if (Math.random() < 0.3) {
+            if (Math.random() < 0.5) {
                 console.log(`情感相同 (${emotion})，随机播放motion`);
                 await this.playMotion(emotion);
             } else {
@@ -627,6 +634,14 @@ class Live2DManager {
             // 设置 HTML 锁定图标
             this.setupHTMLLockIcon(model);
 
+            // 安装口型覆盖逻辑（屏蔽 motion 对嘴巴的控制）
+            try {
+                this.installMouthOverride();
+                console.log('已安装口型覆盖');
+            } catch (e) {
+                console.warn('安装口型覆盖失败:', e);
+            }
+
             // 加载 FileReferences 与 EmotionMapping
             if (options.loadEmotionMapping !== false) {
                 const settings = model.internalModel && model.internalModel.settings && model.internalModel.settings.json;
@@ -659,6 +674,100 @@ class Live2DManager {
             console.error('加载模型失败:', error);
             throw error;
         }
+    }
+
+    // 不再需要预解析嘴巴参数ID，保留占位以兼容旧代码调用
+    resolveMouthParameterId() { return null; }
+
+    // 安装覆盖：在 motion 参数更新后强制写入口型参数
+    installMouthOverride() {
+        if (!this.currentModel || !this.currentModel.internalModel || !this.currentModel.internalModel.motionManager) {
+            throw new Error('模型未就绪，无法安装口型覆盖');
+        }
+
+        const mm = this.currentModel.internalModel.motionManager;
+
+        // 使用 best-effort：每帧尝试对常见嘴巴参数写值（无需预解析ID）
+
+        // 如果之前装过，先还原
+        if (this._mouthOverrideInstalled) {
+            if (typeof this._origUpdateParameters === 'function') {
+                try { mm.updateParameters = this._origUpdateParameters; } catch (_) {}
+            }
+            if (mm.expressionManager && typeof this._origExpressionUpdateParameters === 'function') {
+                try { mm.expressionManager.updateParameters = this._origExpressionUpdateParameters; } catch (_) {}
+            }
+            this._mouthOverrideInstalled = false;
+            this._origUpdateParameters = null;
+            this._origExpressionUpdateParameters = null;
+        }
+
+        if (typeof mm.updateParameters !== 'function') {
+            throw new Error('motionManager.updateParameters 不可用');
+        }
+
+        // 绑定原函数并覆盖
+        const orig = mm.updateParameters.bind(mm);
+        mm.updateParameters = (coreModel, now) => {
+            const updated = orig(coreModel, now);
+            try {
+                const mouthIds = ['ParamMouthOpenY', 'ParamO'];
+                for (const id of mouthIds) {
+                    try {
+                        if (coreModel.getParameterIndex(id) !== -1) {
+                            coreModel.setParameterValueById(id, this.mouthValue, 1);
+                        }
+                    } catch (_) {}
+                }
+            } catch (e) {
+                // 忽略单帧失败
+            }
+            return updated;
+        };
+
+        this._origUpdateParameters = orig;
+
+        // 也覆盖 expressionManager.updateParameters，防止表情参数覆盖嘴巴
+        if (mm.expressionManager && typeof mm.expressionManager.updateParameters === 'function') {
+            const origExp = mm.expressionManager.updateParameters.bind(mm.expressionManager);
+            mm.expressionManager.updateParameters = (coreModel, now) => {
+                const updated = origExp(coreModel, now);
+                try {
+                    const mouthIds = ['ParamMouthOpenY', 'ParamO'];
+                    for (const id of mouthIds) {
+                        try {
+                            if (coreModel.getParameterIndex(id) !== -1) {
+                                coreModel.setParameterValueById(id, this.mouthValue, 1);
+                            }
+                        } catch (_) {}
+                    }
+                } catch (_) {}
+                return updated;
+            };
+            this._origExpressionUpdateParameters = origExp;
+        }
+
+        this._mouthOverrideInstalled = true;
+    }
+
+    // 设置嘴巴开合值（0~1）
+    setMouth(value) {
+        const v = Math.max(0, Math.min(1, Number(value) || 0));
+        this.mouthValue = v;
+        // 即时写入一次，best-effort 同步
+        try {
+            if (this.currentModel && this.currentModel.internalModel) {
+                const coreModel = this.currentModel.internalModel.coreModel;
+                const mouthIds = ['ParamMouthOpenY', 'ParamO'];
+                for (const id of mouthIds) {
+                    try {
+                        if (coreModel.getParameterIndex(id) !== -1) {
+                            coreModel.setParameterValueById(id, this.mouthValue, 1);
+                        }
+                    } catch (_) {}
+                }
+            }
+        } catch (_) {}
     }
 
     // 解析资源相对路径（基于当前模型根目录）
@@ -954,6 +1063,7 @@ window.LanLan1.playExpression = (emotion) => window.live2dManager.playExpression
 window.LanLan1.playMotion = (emotion) => window.live2dManager.playMotion(emotion);
 window.LanLan1.clearEmotionEffects = () => window.live2dManager.clearEmotionEffects();
 window.LanLan1.clearExpression = () => window.live2dManager.clearExpression();
+window.LanLan1.setMouth = (value) => window.live2dManager.setMouth(value);
 
 // 自动初始化（如果存在 cubism4Model 变量）
 if (typeof cubism4Model !== 'undefined' && cubism4Model) {
