@@ -712,6 +712,8 @@ class Live2DManager {
                 }
             }
 
+            // 先从服务器同步映射（覆盖“常驻”），再设置常驻表情
+            try { await this.syncEmotionMappingWithServer({ replacePersistentOnly: true }); } catch(_) {}
             // 设置常驻表情（根据 EmotionMapping.expressions.常驻 或 FileReferences 前缀推导）
             await this.setupPersistentExpressions();
 
@@ -1051,6 +1053,32 @@ class Live2DManager {
     }
 }
 
+// 同步服务器端的情绪映射（可仅替换“常驻”表情组）
+Live2DManager.prototype.syncEmotionMappingWithServer = async function(options = {}) {
+    const { replacePersistentOnly = true } = options;
+    try {
+        if (!this.modelName) return;
+        const resp = await fetch(`/api/live2d/emotion_mapping/${encodeURIComponent(this.modelName)}`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (!data || !data.success || !data.config) return;
+
+        const serverMapping = data.config || { motions: {}, expressions: {} };
+        if (!this.emotionMapping) this.emotionMapping = { motions: {}, expressions: {} };
+        if (!this.emotionMapping.expressions) this.emotionMapping.expressions = {};
+
+        if (replacePersistentOnly) {
+            if (serverMapping.expressions && Array.isArray(serverMapping.expressions['常驻'])) {
+                this.emotionMapping.expressions['常驻'] = [...serverMapping.expressions['常驻']];
+            }
+        } else {
+            this.emotionMapping = serverMapping;
+        }
+    } catch (_) {
+        // 静默失败，保持现有映射
+    }
+};
+
 // ========== 常驻表情：实现 ==========
 Live2DManager.prototype.collectPersistentExpressionFiles = function() {
     // 1) EmotionMapping.expressions.常驻
@@ -1073,6 +1101,7 @@ Live2DManager.prototype.collectPersistentExpressionFiles = function() {
 Live2DManager.prototype.setupPersistentExpressions = async function() {
     try {
         this.persistentExpressionNames = [];
+        this.persistentExpressionParamsByName = {};
         const files = this.collectPersistentExpressionFiles();
         if (!files || files.length === 0) {
             this.teardownPersistentExpressions();
@@ -1090,7 +1119,10 @@ Live2DManager.prototype.setupPersistentExpressions = async function() {
                 const base = String(file).split('/').pop() || '';
                 const name = base.replace('.exp3.json', '');
                 // 只有包含参数的表达才加入播放队列
-                if (params.length > 0) this.persistentExpressionNames.push(name);
+                if (params.length > 0) {
+                    this.persistentExpressionNames.push(name);
+                    this.persistentExpressionParamsByName[name] = params;
+                }
             } catch (e) {
                 console.warn('加载常驻表情失败:', file, e);
             }
@@ -1106,6 +1138,7 @@ Live2DManager.prototype.setupPersistentExpressions = async function() {
 
 Live2DManager.prototype.teardownPersistentExpressions = function() {
     this.persistentExpressionNames = [];
+    this.persistentExpressionParamsByName = {};
 };
 
 Live2DManager.prototype.applyPersistentExpressionsNative = async function() {
@@ -1113,9 +1146,32 @@ Live2DManager.prototype.applyPersistentExpressionsNative = async function() {
     if (typeof this.currentModel.expression !== 'function') return;
     for (const name of this.persistentExpressionNames || []) {
         try {
-            await this.currentModel.expression(name);
+            const maybe = await this.currentModel.expression(name);
+            if (!maybe && this.persistentExpressionParamsByName && Array.isArray(this.persistentExpressionParamsByName[name])) {
+                // 回退：手动设置参数
+                try {
+                    const params = this.persistentExpressionParamsByName[name];
+                    const core = this.currentModel.internalModel && this.currentModel.internalModel.coreModel;
+                    if (core) {
+                        for (const p of params) {
+                            try { core.setParameterValueById(p.Id, p.Value); } catch (_) {}
+                        }
+                    }
+                } catch (_) {}
+            }
         } catch (e) {
-            // 某些名称可能未注册到模型中，忽略
+            // 名称可能未注册，尝试回退到手动设置
+            try {
+                if (this.persistentExpressionParamsByName && Array.isArray(this.persistentExpressionParamsByName[name])) {
+                    const params = this.persistentExpressionParamsByName[name];
+                    const core = this.currentModel.internalModel && this.currentModel.internalModel.coreModel;
+                    if (core) {
+                        for (const p of params) {
+                            try { core.setParameterValueById(p.Id, p.Value); } catch (_) {}
+                        }
+                    }
+                }
+            } catch (_) {}
         }
     }
 };

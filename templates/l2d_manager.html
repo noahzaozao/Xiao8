@@ -530,6 +530,16 @@
             }
             const expr = (currentEmotionMapping.expressions || {});
             currentPersistent = Array.isArray(expr['常驻']) ? [...expr['常驻']] : [];
+            // 将后端映射应用到前端 Live2D 管理器并启用常驻
+            try {
+                if (window.live2dManager) {
+                    const mgr = window.live2dManager;
+                    if (!mgr.emotionMapping) mgr.emotionMapping = { motions: {}, expressions: {} };
+                    if (!mgr.emotionMapping.expressions) mgr.emotionMapping.expressions = {};
+                    mgr.emotionMapping.expressions['常驻'] = [...currentPersistent];
+                    await mgr.setupPersistentExpressions();
+                }
+            } catch (e) { console.warn('应用常驻表情失败:', e); }
         }
 
         function renderPersistentUI() {
