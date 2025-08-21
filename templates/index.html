@@ -338,6 +338,66 @@
             word-break: break-all;
         }
 
+        /* Agent control panel (top-right) */
+        #agent-panel {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            z-index: 30;
+            pointer-events: auto;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 6px;
+            background: rgba(255,255,255,0.75);
+            border-radius: 12px;
+            padding: 8px 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        #agent-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 48px;
+            height: 24px;
+        }
+        .switch input { display: none; }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #ccc;
+            transition: .2s;
+            border-radius: 24px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px; width: 18px;
+            left: 3px; bottom: 3px;
+            background-color: white;
+            transition: .2s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #4f8cff;
+        }
+        input:checked + .slider:before {
+            transform: translateX(24px);
+        }
+        #agent-status {
+            font-size: 0.9rem;
+            color: #4f8cff;
+            max-width: 260px;
+            margin-top: 2px;
+            min-height: 1.2em;
+        }
+
         @media only screen and (max-width: 768px) {
             #live2d-container {
                 position: fixed;
@@ -390,6 +450,17 @@
     </style>
 </head>
 <body>
+<div id="agent-panel">
+    <div id="agent-controls">
+        <div>Agent模式</div>
+        <label class="switch"><input id="agentMasterToggle" type="checkbox"><span class="slider"></span></label>
+        <div>键鼠</div>
+        <label class="switch"><input id="agentCUtoggle" type="checkbox" disabled><span class="slider"></span></label>
+        <div>MCP</div>
+        <label class="switch"><input id="agentMCPtoggle" type="checkbox" disabled><span class="slider"></span></label>
+    </div>
+    <div id="agent-status"></div>
+  </div>
 <div id="sidebar">
     <div id="sidebarbox">
         <button id="toggle-sidebar-btn" title="折叠侧边栏">—</button>
@@ -469,5 +540,138 @@
 <script src="/static/common_ui.js"></script>
 <script src="/static/live2d.js"></script>
 <script src="/static/app.js"></script>
+<script>
+  const agentStatusEl = document.getElementById('agent-status');
+  let agentStatusTimer = null;
+  const masterToggle = document.getElementById('agentMasterToggle');
+  const cuToggle = document.getElementById('agentCUtoggle');
+  const mcpToggle = document.getElementById('agentMCPtoggle');
+
+  function setStatus(msg) {
+    if (agentStatusTimer) { clearTimeout(agentStatusTimer); agentStatusTimer = null; }
+    if (!msg) { agentStatusEl.textContent = ''; return; }
+    agentStatusEl.textContent = msg;
+    agentStatusTimer = setTimeout(() => { agentStatusEl.textContent = ''; }, 5000);
+  }
+  function resetToggles() {
+    masterToggle.checked = false;
+    cuToggle.checked = false; cuToggle.disabled = true;
+    mcpToggle.checked = false; mcpToggle.disabled = true;
+  }
+
+  async function checkToolServerHealth() {
+    try {
+      const resp = await fetch(`/api/agent/health`);
+      if (!resp.ok) throw new Error('not ok');
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  masterToggle.addEventListener('change', async () => {
+    if (masterToggle.checked) {
+      try {
+        const ok = await checkToolServerHealth();
+        if (!ok) throw new Error('tool server down');
+      } catch (e) {
+        setStatus('Agent服务器未启动');
+        resetToggles();
+        return;
+      }
+      setStatus('Agent已开启');
+      cuToggle.disabled = false;
+      mcpToggle.disabled = false;
+      try {
+        const r = await fetch('/api/agent/flags', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({lanlan_name: lanlan_config.lanlan_name, flags: {agent_enabled:true, computer_use_enabled:false, mcp_enabled:false}})});
+        if (!r.ok) throw new Error('main_server rejected');
+      } catch(e) {
+        // auto close on failure
+        resetToggles();
+        setStatus('开启失败');
+      }
+    } else {
+      setStatus('');
+      cuToggle.checked = false; cuToggle.disabled = true;
+      mcpToggle.checked = false; mcpToggle.disabled = true;
+      try { await fetch('/api/agent/flags', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({lanlan_name: lanlan_config.lanlan_name, flags: {agent_enabled:false, computer_use_enabled:false, mcp_enabled:false}})});} catch(e){}
+    }
+  });
+
+  async function checkCapability(kind) {
+    try {
+      if (kind === 'computer_use') {
+        const r = await fetch(`/api/agent/computer_use/availability`);
+        if (!r.ok) return false;
+        const j = await r.json();
+        if (!j.ready) {
+          setStatus((j.reasons && j.reasons[0]) || '键鼠控制不可用');
+          return false;
+        }
+        return true;
+      } else if (kind === 'mcp') {
+        const r = await fetch(`/api/agent/mcp/availability`);
+        if (!r.ok) return false;
+        const j = await r.json();
+        if (!j.ready) {
+          setStatus((j.reasons && j.reasons[0]) || 'MCP不可用');
+          return false;
+        }
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  cuToggle.addEventListener('change', async () => {
+    if (cuToggle.checked) {
+      try {
+        const ok = await checkCapability('computer_use');
+        if (!ok) throw new Error('not available');
+      } catch (e) {
+        setStatus('键鼠控制不可用，请检查智谱API秘钥配置');
+        cuToggle.checked = false;
+        return;
+      }
+      try {
+        const r = await fetch('/api/agent/flags', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({lanlan_name: lanlan_config.lanlan_name, flags: {computer_use_enabled:true}})});
+        if (!r.ok) throw new Error('main_server rejected');
+        setStatus('键鼠控制已开启');
+      } catch(e) {
+        cuToggle.checked = false;
+        setStatus('键鼠控制开启失败');
+      }
+    } else {
+      setStatus('键鼠控制已关闭');
+      try { await fetch('/api/agent/flags', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({lanlan_name: lanlan_config.lanlan_name, flags: {computer_use_enabled:false}})});} catch(e){}
+    }
+  });
+
+  mcpToggle.addEventListener('change', async () => {
+    if (mcpToggle.checked) {
+      try {
+        const ok = await checkCapability('mcp');
+        if (!ok) throw new Error('not available');
+      } catch (e) {
+        setStatus('MCP插件不可用，请检查MCP服务器配置');
+        mcpToggle.checked = false;
+        return;
+      }
+      try {
+        const r = await fetch('/api/agent/flags', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({lanlan_name: lanlan_config.lanlan_name, flags: {mcp_enabled:true}})});
+        if (!r.ok) throw new Error('main_server rejected');
+        setStatus('MCP插件已开启');
+      } catch(e) {
+        mcpToggle.checked = false;
+        setStatus('MCP开启失败');
+      }
+    } else {
+      setStatus('MCP插件已关闭');
+      try { await fetch('/api/agent/flags', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({lanlan_name: lanlan_config.lanlan_name, flags: {mcp_enabled:false}})});} catch(e){}
+    }
+  });
+</script>
 </body>
 </html>

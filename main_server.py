@@ -24,7 +24,7 @@ import dashscope
 from dashscope.audio.tts_v2 import VoiceEnrollmentService
 import requests
 from openai import AsyncOpenAI
-from config import get_character_data, MAIN_SERVER_PORT, CORE_API_KEY, AUDIO_API_KEY, EMOTION_MODEL, OPENROUTER_API_KEY, OPENROUTER_URL, load_characters, save_characters
+from config import get_character_data, MAIN_SERVER_PORT, CORE_API_KEY, AUDIO_API_KEY, EMOTION_MODEL, OPENROUTER_API_KEY, OPENROUTER_URL, load_characters, save_characters, TOOL_SERVER_PORT
 from config.prompts_sys import emotion_analysis_prompt
 import glob
 
@@ -418,6 +418,25 @@ async def websocket_endpoint(websocket: WebSocket, lanlan_name: str):
     finally:
         logger.info(f"Cleaning up WebSocket resources: {websocket.client}")
         await session_manager[lanlan_name].cleanup()
+
+@app.post('/api/notify_task_result')
+async def notify_task_result(request: Request):
+    """供工具/任务服务回调：在下一次正常回复之后，插入一条任务完成提示。"""
+    try:
+        data = await request.json()
+        # 如果未显式提供，则使用当前默认角色
+        lanlan = data.get('lanlan_name') or her_name
+        text = (data.get('text') or '').strip()
+        if not text:
+            return JSONResponse({"success": False, "error": "text required"}, status_code=400)
+        mgr = session_manager.get(lanlan)
+        if not mgr:
+            return JSONResponse({"success": False, "error": "lanlan not found"}, status_code=404)
+        # 将提示加入待插入队列
+        mgr.pending_extra_replies.append(text)
+        return {"success": True}
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
 @app.get("/l2d", response_class=HTMLResponse)
 async def get_l2d_manager(request: Request, lanlan_name: str = ""):
@@ -1309,6 +1328,80 @@ async def get_index(request: Request, lanlan_name: str):
         "model_path": model_path,
         "focus_mode": False
     })
+
+@app.post('/api/agent/flags')
+async def update_agent_flags(request: Request):
+    """来自前端的Agent开关更新，级联到各自的session manager。"""
+    try:
+        data = await request.json()
+        lanlan = data.get('lanlan_name') or her_name
+        flags = data.get('flags') or {}
+        mgr = session_manager.get(lanlan)
+        if not mgr:
+            return JSONResponse({"success": False, "error": "lanlan not found"}, status_code=404)
+        # Update core flags first
+        mgr.update_agent_flags(flags)
+        # Forward to tool server for MCP/Computer-Use flags
+        try:
+            forward_payload = {}
+            if 'mcp_enabled' in flags:
+                forward_payload['mcp_enabled'] = bool(flags['mcp_enabled'])
+            if 'computer_use_enabled' in flags:
+                forward_payload['computer_use_enabled'] = bool(flags['computer_use_enabled'])
+            if forward_payload:
+                import requests as _rq
+                r = _rq.post(f"http://localhost:{TOOL_SERVER_PORT}/agent/flags", json=forward_payload, timeout=0.7)
+                if not r.ok:
+                    raise Exception(f"tool_server responded {r.status_code}")
+        except Exception as e:
+            # On failure, reset flags in core to safe state
+            mgr.update_agent_flags({'agent_enabled': False, 'computer_use_enabled': False, 'mcp_enabled': False})
+            return JSONResponse({"success": False, "error": f"tool_server forward failed: {e}"}, status_code=502)
+        return {"success": True}
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+
+@app.get('/api/agent/health')
+async def agent_health():
+    """Check tool_server health via main_server proxy."""
+    try:
+        import requests as _rq
+        r = _rq.get(f"http://localhost:{TOOL_SERVER_PORT}/health", timeout=0.7)
+        if not r.ok:
+            return JSONResponse({"status": "down"}, status_code=502)
+        data = {}
+        try:
+            data = r.json()
+        except Exception:
+            pass
+        return {"status": "ok", **({"tool": data} if isinstance(data, dict) else {})}
+    except Exception:
+        return JSONResponse({"status": "down"}, status_code=502)
+
+
+@app.get('/api/agent/computer_use/availability')
+async def proxy_cu_availability():
+    try:
+        import requests as _rq
+        r = _rq.get(f"http://localhost:{TOOL_SERVER_PORT}/computer_use/availability", timeout=1.5)
+        if not r.ok:
+            return JSONResponse({"ready": False, "reasons": [f"tool_server responded {r.status_code}"]}, status_code=502)
+        return r.json()
+    except Exception as e:
+        return JSONResponse({"ready": False, "reasons": [f"proxy error: {e}"]}, status_code=502)
+
+
+@app.get('/api/agent/mcp/availability')
+async def proxy_mcp_availability():
+    try:
+        import requests as _rq
+        r = _rq.get(f"http://localhost:{TOOL_SERVER_PORT}/mcp/availability", timeout=1.5)
+        if not r.ok:
+            return JSONResponse({"ready": False, "reasons": [f"tool_server responded {r.status_code}"]}, status_code=502)
+        return r.json()
+    except Exception as e:
+        return JSONResponse({"ready": False, "reasons": [f"proxy error: {e}"]}, status_code=502)
 
 
 # --- Run the Server ---

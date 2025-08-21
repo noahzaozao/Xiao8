@@ -44,7 +44,7 @@ class SemanticMemory:
         ])
         return f"""======{lanlan_name}尝试回忆=====\n{query}\n\n====={lanlan_name}的相关记忆=====\n{results_text}"""
 
-    def rerank_results(self, query, results: List[Document], k=5) -> List[Document]:
+    def rerank_results(self, query, results: list, k=5) -> list:
         # 使用LLM重新排序结果
         results_text = "\n\n".join([
             f"记忆片段 {i + 1}:\n{doc.page_content}"
@@ -93,7 +93,17 @@ class SemanticMemoryOriginal:
         name_mapping['ai'] = self.lanlan_name
 
         for message in messages:
-            texts.append(f'{name_mapping[message.type]} | {"\n".join(i.get("text", "|" +i["type"]+ "|") for i in message.content)}\n')
+            try:
+                parts = []
+                for i in message.content:
+                    if isinstance(i, dict):
+                        parts.append(i.get("text", f"|{i.get('type','')}|"))
+                    else:
+                        parts.append(str(i))
+                joined = "\n".join(parts)
+            except Exception:
+                joined = str(message.content)
+            texts.append(f"{name_mapping[message.type]} | {joined}\n")
             metadatas.append({
                 "event_id": event_id,
                 "role": message.type,

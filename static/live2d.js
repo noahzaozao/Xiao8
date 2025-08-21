@@ -33,12 +33,17 @@ class Live2DManager {
         // 常驻表情：使用官方 expression 播放并在清理后自动重放
         this.persistentExpressionNames = [];
 
+        // UI/Ticker 资源句柄（便于在切换模型时清理）
+        this._lockIconTicker = null;
+        this._lockIconElement = null;
+
         // 口型同步控制
         this.mouthValue = 0; // 0~1
         this.mouthParameterId = null; // 例如 'ParamMouthOpenY' 或 'ParamO'
         this._mouthOverrideInstalled = false;
         this._origUpdateParameters = null;
         this._origExpressionUpdateParameters = null;
+        this._mouthTicker = null;
     }
 
     // 从 FileReferences 推导 EmotionMapping（用于兼容历史数据）
@@ -563,8 +568,54 @@ class Live2DManager {
         if (this.currentModel) {
             // 先清空常驻表情记录
             this.teardownPersistentExpressions();
-            this.pixi_app.stage.removeChild(this.currentModel);
-            this.currentModel.destroy({ children: true });
+
+            // 尝试还原之前覆盖的 updateParameters，避免旧引用在新模型上报错
+            try {
+                const mm = this.currentModel.internalModel && this.currentModel.internalModel.motionManager;
+                if (mm) {
+                    if (this._mouthOverrideInstalled && typeof this._origUpdateParameters === 'function') {
+                        try { mm.updateParameters = this._origUpdateParameters; } catch (_) {}
+                    }
+                    if (mm && mm.expressionManager && this._mouthOverrideInstalled && typeof this._origExpressionUpdateParameters === 'function') {
+                        try { mm.expressionManager.updateParameters = this._origExpressionUpdateParameters; } catch (_) {}
+                    }
+                }
+            } catch (_) {}
+            this._mouthOverrideInstalled = false;
+            this._origUpdateParameters = null;
+            this._origExpressionUpdateParameters = null;
+            // 同时移除 mouthTicker（若曾启用过 ticker 模式）
+            if (this._mouthTicker && this.pixi_app && this.pixi_app.ticker) {
+                try { this.pixi_app.ticker.remove(this._mouthTicker); } catch (_) {}
+                this._mouthTicker = null;
+            }
+
+            // 移除由 HTML 锁图标或交互注册的监听，避免访问已销毁的显示对象
+            try {
+                // 先移除锁图标的 ticker 回调
+                if (this._lockIconTicker && this.pixi_app && this.pixi_app.ticker) {
+                    this.pixi_app.ticker.remove(this._lockIconTicker);
+                }
+                this._lockIconTicker = null;
+                // 移除锁图标元素
+                if (this._lockIconElement && this._lockIconElement.parentNode) {
+                    this._lockIconElement.parentNode.removeChild(this._lockIconElement);
+                }
+                this._lockIconElement = null;
+                // 暂停 ticker，期间做销毁，随后恢复
+                this.pixi_app.ticker && this.pixi_app.ticker.stop();
+            } catch (_) {}
+            try {
+                this.pixi_app.stage.removeAllListeners && this.pixi_app.stage.removeAllListeners();
+            } catch (_) {}
+            try {
+                this.currentModel.removeAllListeners && this.currentModel.removeAllListeners();
+            } catch (_) {}
+
+            // 从舞台移除并销毁旧模型
+            try { this.pixi_app.stage.removeChild(this.currentModel); } catch (_) {}
+            try { this.currentModel.destroy({ children: true }); } catch (_) {}
+            try { this.pixi_app.ticker && this.pixi_app.ticker.start(); } catch (_) {}
         }
 
         try {
@@ -631,7 +682,7 @@ class Live2DManager {
                 this.enableMouseTracking(model);
             }
 
-            // 设置 HTML 锁定图标
+            // 设置 HTML 锁定图标（在模型完全就绪后再绑定ticker回调）
             this.setupHTMLLockIcon(model);
 
             // 安装口型覆盖逻辑（屏蔽 motion 对嘴巴的控制）
@@ -687,20 +738,20 @@ class Live2DManager {
 
         const mm = this.currentModel.internalModel.motionManager;
 
-        // 使用 best-effort：每帧尝试对常见嘴巴参数写值（无需预解析ID）
-
-        // 如果之前装过，先还原
-        if (this._mouthOverrideInstalled) {
-            if (typeof this._origUpdateParameters === 'function') {
-                try { mm.updateParameters = this._origUpdateParameters; } catch (_) {}
+        // 如果之前装过在其他模型上，先尝试还原
+        try {
+            if (this._mouthOverrideInstalled) {
+                if (typeof this._origUpdateParameters === 'function') {
+                    try { mm.updateParameters = this._origUpdateParameters; } catch (_) {}
+                }
+                if (mm.expressionManager && typeof this._origExpressionUpdateParameters === 'function') {
+                    try { mm.expressionManager.updateParameters = this._origExpressionUpdateParameters; } catch (_) {}
+                }
+                this._mouthOverrideInstalled = false;
+                this._origUpdateParameters = null;
+                this._origExpressionUpdateParameters = null;
             }
-            if (mm.expressionManager && typeof this._origExpressionUpdateParameters === 'function') {
-                try { mm.expressionManager.updateParameters = this._origExpressionUpdateParameters; } catch (_) {}
-            }
-            this._mouthOverrideInstalled = false;
-            this._origUpdateParameters = null;
-            this._origExpressionUpdateParameters = null;
-        }
+        } catch (_) {}
 
         if (typeof mm.updateParameters !== 'function') {
             throw new Error('motionManager.updateParameters 不可用');
@@ -719,13 +770,10 @@ class Live2DManager {
                         }
                     } catch (_) {}
                 }
-            } catch (e) {
-                // 忽略单帧失败
-            }
+            } catch (_) {}
             return updated;
         };
-
-        this._origUpdateParameters = orig;
+        this._origUpdateParameters = orig; // 保存可还原的实现（已绑定）
 
         // 也覆盖 expressionManager.updateParameters，防止表情参数覆盖嘴巴
         if (mm.expressionManager && typeof mm.expressionManager.updateParameters === 'function') {
@@ -745,6 +793,14 @@ class Live2DManager {
                 return updated;
             };
             this._origExpressionUpdateParameters = origExp;
+        } else {
+            this._origExpressionUpdateParameters = null;
+        }
+
+        // 若此前使用了 ticker 覆盖，确保移除
+        if (this._mouthTicker && this.pixi_app && this.pixi_app.ticker) {
+            try { this.pixi_app.ticker.remove(this._mouthTicker); } catch (_) {}
+            this._mouthTicker = null;
         }
 
         this._mouthOverrideInstalled = true;
@@ -903,6 +959,7 @@ class Live2DManager {
         });
 
         document.body.appendChild(lockIcon);
+        this._lockIconElement = lockIcon;
 
         lockIcon.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -919,18 +976,29 @@ class Live2DManager {
         // 初始状态
         container.style.pointerEvents = this.isLocked ? 'none' : 'auto';
 
-        // 持续更新图标位置
-        this.pixi_app.ticker.add(() => {
-            const bounds = model.getBounds();
-            const screenWidth = window.innerWidth;
-            const screenHeight = window.innerHeight;
+        // 持续更新图标位置（保存回调用于移除）
+        const tick = () => {
+            try {
+                if (!model || !model.parent) {
+                    // 模型可能已被销毁或从舞台移除
+                    if (lockIcon) lockIcon.style.display = 'none';
+                    return;
+                }
+                const bounds = model.getBounds();
+                const screenWidth = window.innerWidth;
+                const screenHeight = window.innerHeight;
 
-            const targetX = bounds.right*0.75 + bounds.left*0.25;
-            const targetY = (bounds.top+bounds.bottom)/2;
+                const targetX = bounds.right * 0.75 + bounds.left * 0.25;
+                const targetY = (bounds.top + bounds.bottom) / 2;
 
-            lockIcon.style.left = `${Math.min(targetX, screenWidth - 40)}px`;
-            lockIcon.style.top = `${Math.min(targetY, screenHeight - 40)}px`;
-        });
+                lockIcon.style.left = `${Math.min(targetX, screenWidth - 40)}px`;
+                lockIcon.style.top = `${Math.min(targetY, screenHeight - 40)}px`;
+            } catch (_) {
+                // 忽略单帧异常
+            }
+        };
+        this._lockIconTicker = tick;
+        this.pixi_app.ticker.add(tick);
     }
 
     // 启用鼠标跟踪以检测与模型的接近度

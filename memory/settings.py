@@ -56,7 +56,20 @@ class ImportantSettingsManager:
     def extract_and_update_settings(self, messages, lanlan_name):
         name_mapping = self.name_mapping.copy()
         name_mapping['ai'] = lanlan_name
-        prompt = settings_extractor_prompt % ("\n".join([f"{name_mapping[msg.type]} | {"\n".join([i.get("text", "|" +i["type"]+ "|") for i in msg.content])}" for msg in messages]))
+        lines = []
+        for msg in messages:
+            try:
+                parts = []
+                for i in msg.content:
+                    if isinstance(i, dict):
+                        parts.append(i.get("text", f"|{i.get('type','')}|"))
+                    else:
+                        parts.append(str(i))
+                joined = "\n".join(parts)
+            except Exception:
+                joined = str(getattr(msg, 'content', ''))
+            lines.append(f"{name_mapping[msg.type]} | {joined}")
+        prompt = settings_extractor_prompt % ("\n".join(lines))
         prompt = prompt.replace('{LANLAN_NAME}', lanlan_name)
         retries = 0
         new_settings = ""

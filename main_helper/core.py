@@ -99,6 +99,14 @@ class LLMSessionManager:
         self.final_swap_task = None
         self.receive_task = None
         self.message_handler_task = None
+        # 任务完成后的额外回复队列（将在下一次切换时统一汇报）
+        self.pending_extra_replies = []
+        # 由前端控制的Agent相关开关
+        self.agent_flags = {
+            'agent_enabled': False,
+            'computer_use_enabled': False,
+            'mcp_enabled': False,
+        }
 
         # 注册回调
         self.session = OmniRealtimeClient(
@@ -142,6 +150,14 @@ class LLMSessionManager:
                 await self.websocket.send_json({'type': 'system', 'data': 'turn end'})
         except Exception as e:
             logger.error(f"💥 WS Send Turn End Error: {e}")
+
+        # 如果有挂起的额外提示：触发热切换准备并安排renew，会在最终swap时统一植入提示
+        try:
+            if getattr(self, 'pending_extra_replies', None) and len(self.pending_extra_replies) > 0 \
+               and not self.is_preparing_new_session and not self.is_hot_swap_imminent:
+                await self._trigger_immediate_preparation_for_extra()
+        except Exception as e:
+            logger.error(f"💥 Extra reply preparation error: {e}")
         
         # 如果正在热切换过程中，跳过所有热切换逻辑
         if self.is_hot_swap_imminent:
@@ -339,7 +355,7 @@ class LLMSessionManager:
 
         try:
             # 获取初始 prompt
-            initial_prompt = self.lanlan_prompt
+            initial_prompt = ("你是一个角色扮演大师，并且精通电脑操作。请按要求扮演以下角色（self.lanlan_name），并在对方请求时、回答“我试试”并尝试操纵电脑。" if self.is_agent_enabled() else "你是一个角色扮演大师。请按要求扮演以下角色（self.lanlan_name）。") + self.lanlan_prompt
             initial_prompt += requests.get(f"http://localhost:{self.memory_server_port}/new_dialog/{self.lanlan_name}").text
             # logger.info("====Initial Prompt=====")
             # logger.info(initial_prompt)
@@ -390,6 +406,9 @@ class LLMSessionManager:
             res += f"{i['role']} | {i['text']}\n"
         return res
 
+    def _is_agent_enabled(self):
+        return self.agent_flags['agent_enabled'] and (self.agent_flags['computer_use_enabled'] or self.agent_flags['mcp_enabled'])
+
     async def _background_prepare_pending_session(self):
         """[热切换相关] 后台预热pending session"""
 
@@ -410,7 +429,7 @@ class LLMSessionManager:
                 on_response_done=self.handle_response_complete
             )
             
-            initial_prompt = self.lanlan_prompt
+            initial_prompt = ("你是一个角色扮演大师，并且精通电脑操作。请按要求扮演以下角色（self.lanlan_name），在对方请求时、回答“我试试”并尝试操纵电脑。" if self.is_agent_enabled() else "你是一个角色扮演大师。请按要求扮演以下角色（self.lanlan_name）。") + self.lanlan_prompt
             self.initial_cache_snapshot_len = len(self.message_cache_for_new_session)
             async with httpx.AsyncClient() as client:
                 resp = await client.get(f"http://localhost:{self.memory_server_port}/new_dialog/{self.lanlan_name}")
@@ -437,6 +456,31 @@ class LLMSessionManager:
             if self.background_preparation_task and self.background_preparation_task.done():
                 self.background_preparation_task = None
 
+    async def _trigger_immediate_preparation_for_extra(self):
+        """当需要注入额外提示时，如果当前未进入准备流程，立即开始准备并安排renew逻辑。"""
+        try:
+            if not self.is_preparing_new_session:
+                logger.info("Extra Reply: Triggering preparation due to pending extra reply.")
+                self.is_preparing_new_session = True
+                self.summary_triggered_time = datetime.now()
+                self.message_cache_for_new_session = []
+                self.initial_cache_snapshot_len = 0
+                # 立即启动后台预热，不等待10秒
+                self.pending_session_warmed_up_event = asyncio.Event()
+                if not self.background_preparation_task or self.background_preparation_task.done():
+                    self.background_preparation_task = asyncio.create_task(self._background_prepare_pending_session())
+        except Exception as e:
+            logger.error(f"💥 Extra Reply: preparation trigger error: {e}")
+
+    # 供主服务调用，更新Agent模式相关开关
+    def update_agent_flags(self, flags: dict):
+        try:
+            for k in ['agent_enabled', 'computer_use_enabled', 'mcp_enabled']:
+                if k in flags and isinstance(flags[k], bool):
+                    self.agent_flags[k] = flags[k]
+        except Exception:
+            pass
+
     async def _perform_final_swap_sequence(self):
         """[热切换相关] 执行最终的swap序列"""
         logger.info("Final Swap Sequence: Starting...")
@@ -450,14 +494,29 @@ class LLMSessionManager:
             incremental_cache = self.message_cache_for_new_session[self.initial_cache_snapshot_len:]
             # 1. Send incremental cache (or a heartbeat) to PENDING session for its *second* ignored response
             if incremental_cache:
-                final_prime_text = f"SYSTEM_MESSAGE | " + self._convert_cache_to_str(incremental_cache) + \
-                    f'=======以上为前情概要。现在请{self.lanlan_name}准备，即将开始用语音与{self.master_name}继续对话。\n'
+                final_prime_text = f"SYSTEM_MESSAGE | " + self._convert_cache_to_str(incremental_cache)
             else:  # Ensure session cycles a turn even if no incremental cache
                 logger.error(f"💥 Unexpected: No incremental cache found. {len(self.message_cache_for_new_session)}, {self.initial_cache_snapshot_len}")
-                final_prime_text = f"SYSTEM_MESSAGE | 系统自动报时，当前时间： " + str(
-                                                    datetime.now().strftime("%Y-%m-%d %H:%M"))
+                final_prime_text = f"SYSTEM_MESSAGE | 系统自动报时，当前时间： " + str(datetime.now().strftime("%Y-%m-%d %H:%M"))
 
-            await self.pending_session.create_response(final_prime_text, skipped=True)
+            # 若存在需要植入的额外提示，则指示模型忽略上一条消息，并在下一次响应中统一向用户补充这些提示
+            if self.pending_extra_replies and len(self.pending_extra_replies) > 0:
+                try:
+                    items = "\n".join([f"- {txt}" for txt in self.pending_extra_replies if isinstance(txt, str) and txt.strip()])
+                except Exception:
+                    items = ""
+                final_prime_text += (
+                    "\n[注入指令] 请忽略上一次用户的最后一条输入，不要继续该轮对话。"
+                    " 在你的下一次响应中，用简洁自然的一段话汇报和解释你先前执行的任务的结果，简要说明你做了什么：\n"
+                    + items +
+                    "\n完成上述汇报后，恢复正常的对话节奏。"
+                )
+                # 清空队列，避免重复注入
+                self.pending_extra_replies.clear()
+                await self.pending_session.create_response(final_prime_text, skipped=False)
+            else:
+                final_prime_text += f"=======以上为前情概要。现在请{self.lanlan_name}准备，即将开始用语音与{self.master_name}继续对话。\n"
+                await self.pending_session.create_response(final_prime_text, skipped=True)
 
             # 2. Start temporary listener for PENDING session's *second* ignored response
             if self.pending_session_final_prime_complete_event:
@@ -582,14 +641,6 @@ class LLMSessionManager:
                     return
                 except web_exceptions.ConnectionClosedOK:
                     return
-                except web_exceptions.ConnectionClosedError as e:
-                    logger.error(f"💥 Stream: Error sending audio data to session: {e}")
-                    if '1011' in str(e):
-                        print(f"💥 备注：检测到1011错误。该错误为网络和API服务器错误，不是本地错误")
-                    if '1007' in str(e):
-                        print(f"💥 备注：检测到1007错误。该错误大概率是欠费导致。")
-                    await self.disconnected_by_server()
-                    return
                 except Exception as e:
                     logger.error(f"💥 Stream: Error processing audio data: {e}")
                     traceback.print_exc()
@@ -624,7 +675,12 @@ class LLMSessionManager:
 
         except web_exceptions.ConnectionClosedError as e:
             logger.error(f"💥 Stream: Error sending data to session: {e}")
+            if '1011' in str(e):
+                print(f"💥 备注：检测到1011错误。该错误表示API服务器异常。请首先检查自己的麦克风是否有声音。")
+            if '1007' in str(e):
+                print(f"💥 备注：检测到1007错误。该错误大概率是欠费导致。")
             await self.disconnected_by_server()
+            return
         except Exception as e:
             error_message = f"Stream: Error sending data to session: {e}"
             logger.error(f"💥 {error_message}")

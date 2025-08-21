@@ -100,7 +100,9 @@ def get_recent_history(lanlan_name: str):
         if i.type == 'system':
             result += i.content + "\n"
         else:
-            result += f"{name_mapping[i.type]} | {'\n'.join([j['text'] for j in i.content if j['type']=='text'])}\n"
+            texts = [j['text'] for j in i.content if j['type']=='text']
+            joined = "\n".join(texts)
+            result += f"{name_mapping[i.type]} | {joined}\n"
     return result
 
 @app.get("/search_for_memory/{lanlan_name}/{query}")
@@ -123,7 +125,8 @@ def new_dialog(lanlan_name: str):
         if type(i.content) == str:
             result += f"{name_mapping[i.type]} | {i.content}\n"
         else:
-            result += f"{name_mapping[i.type]} | {'\n'.join([m1.sub(j['text'], '') for j in i.content if j['type'] == 'text'])}\n"
+            texts = [m1.sub(j['text'], '') for j in i.content if j['type'] == 'text']
+            result += f"{name_mapping[i.type]} | " + "\n".join(texts) + "\n"
     return result
 
 if __name__ == "__main__":

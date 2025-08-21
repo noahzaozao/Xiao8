@@ -91,29 +91,6 @@
             max-width: 280px;
             word-break: break-all;
         }
-        #chat-container-placeholder { 
-            pointer-events: auto; 
-            position: fixed; 
-            left: 20px; 
-            bottom: 20px; 
-            width: 340px;
-            height: 300px; 
-            background: rgba(247, 248, 250, 0.7);
-            border-radius: 12px; 
-            padding: 16px;
-            box-sizing: border-box; 
-            z-index: 20; 
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-            display: flex; 
-            flex-direction: column; 
-            backdrop-filter: blur(10px);
-        }
-        #chat-content-wrapper { 
-            flex-grow: 1; 
-            padding-left: 8px; 
-            overflow-y: auto; 
-            opacity: 0.7; 
-        }
     </style>
 </head>
 <body>
@@ -171,10 +148,6 @@
     </div>
     
     <div id="status">正在初始化...</div>
-</div>
-
-<div id="chat-container-placeholder">
-    <div id="chat-content-wrapper"><p style="color: #888">对话历史界面<br><br>...现在是一片空白...</p></div>
 </div>
 
 <div id="live2d-container"><canvas id="live2d-canvas"></canvas></div>
@@ -238,6 +211,15 @@
                     option.textContent = model.name;
                     modelSelect.appendChild(option);
                 });
+
+                // 如果已自动加载了一个模型，则在下拉框中选中它
+                if (currentModelInfo && currentModelInfo.name) {
+                    const exists = availableModels.some(m => m.name === currentModelInfo.name);
+                    if (exists) {
+                        modelSelect.value = currentModelInfo.name;
+                    }
+                }
+
                 showStatus('模型列表加载成功');
             } else {
                 showStatus('未找到可用模型');
@@ -569,11 +551,22 @@
                 }).join('');
                 // 绑定移除
                 Array.from(persistentList.querySelectorAll('button[data-file]')).forEach(btn => {
-                    btn.onclick = () => {
+                    btn.onclick = async () => {
                         const file = btn.getAttribute('data-file');
                         const idx = currentPersistent.indexOf(file);
                         if (idx > -1) currentPersistent.splice(idx, 1);
                         renderPersistentUI();
+                        // 即时同步到前端并应用
+                        try {
+                            if (window.live2dManager) {
+                                const mgr = window.live2dManager;
+                                if (!mgr.emotionMapping) mgr.emotionMapping = { motions: {}, expressions: {} };
+                                if (!mgr.emotionMapping.expressions) mgr.emotionMapping.expressions = {};
+                                mgr.emotionMapping.expressions['常驻'] = [...currentPersistent];
+                                await mgr.setupPersistentExpressions();
+                                showStatus('已更新常驻表情', 1200);
+                            }
+                        } catch (e) { console.warn('应用常驻表情失败:', e); }
                     };
                 });
             }
@@ -583,11 +576,22 @@
             savePersistentBtn.disabled = false;
         }
 
-        addPersistentBtn.addEventListener('click', () => {
+        addPersistentBtn.addEventListener('click', async () => {
             const file = persistentSelect.value;
             if (!file) return;
             if (!currentPersistent.includes(file)) currentPersistent.push(file);
             renderPersistentUI();
+            // 即时同步到前端并应用
+            try {
+                if (window.live2dManager) {
+                    const mgr = window.live2dManager;
+                    if (!mgr.emotionMapping) mgr.emotionMapping = { motions: {}, expressions: {} };
+                    if (!mgr.emotionMapping.expressions) mgr.emotionMapping.expressions = {};
+                    mgr.emotionMapping.expressions['常驻'] = [...currentPersistent];
+                    await mgr.setupPersistentExpressions();
+                    showStatus('常驻表情已应用', 1200);
+                }
+            } catch (e) { console.warn('应用常驻表情失败:', e); }
         });
 
         savePersistentBtn.addEventListener('click', async () => {

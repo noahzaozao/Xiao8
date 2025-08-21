@@ -89,6 +89,10 @@ try:
     ASSIST_API_KEY_QWEN = core_cfg['assistApiKeyQwen'] if 'assistApiKeyQwen' in core_cfg and core_cfg['assistApiKeyQwen'] != '' else CORE_API_KEY
     ASSIST_API_KEY_OPENAI = core_cfg['assistApiKeyOpenai'] if 'assistApiKeyOpenai' in core_cfg and core_cfg['assistApiKeyOpenai'] != '' else CORE_API_KEY
     ASSIST_API_KEY_GLM = core_cfg['assistApiKeyGlm'] if 'assistApiKeyGlm' in core_cfg and core_cfg['assistApiKeyGlm'] != '' else CORE_API_KEY
+    COMPUTER_USE_MODEL = 'glm-4.5v'
+    COMPUTER_USE_GROUND_MODEL = 'glm-4.5v'
+    COMPUTER_USE_MODEL_URL = COMPUTER_USE_GROUND_URL = 'https://open.bigmodel.cn/api/paas/v4'  # reuse
+    COMPUTER_USE_MODEL_API_KEY = COMPUTER_USE_GROUND_API_KEY = ASSIST_API_KEY_GLM
     if 'assistApi' in core_cfg and core_cfg['assistApi']:
         logger.warning("assistApi: " + core_cfg['assistApi'])
         if core_cfg['assistApi'] == 'qwen':

@@ -56,7 +56,26 @@ class CompressedRecentHistoryManager:
     def compress_history(self, messages, lanlan_name, detailed=False):
         name_mapping = self.name_mapping.copy()
         name_mapping['ai'] = lanlan_name
-        messages_text = "\n".join([f"{name_mapping[msg.type]} | {"\n".join([(i.get("text", "|" +i["type"]+ "|") if isinstance(i, dict) else str(i)) for i in msg.content]) if type(msg.content)!=str else f"{name_mapping[msg.type]} | {msg.content}"}" for msg in messages])
+        lines = []
+        for msg in messages:
+            role = name_mapping.get(getattr(msg, 'type', ''), getattr(msg, 'type', ''))
+            content = getattr(msg, 'content', '')
+            if isinstance(content, str):
+                line = f"{role} | {content}"
+            else:
+                parts = []
+                try:
+                    for item in content:
+                        if isinstance(item, dict):
+                            parts.append(item.get('text', f"|{item.get('type', '')}|"))
+                        else:
+                            parts.append(str(item))
+                except Exception:
+                    parts = [str(content)]
+                joined = "\n".join(parts)
+                line = f"{role} | {joined}"
+            lines.append(line)
+        messages_text = "\n".join(lines)
         if not detailed:
             prompt = recent_history_manager_prompt % messages_text
         else:

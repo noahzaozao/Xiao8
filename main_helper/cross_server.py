@@ -12,7 +12,7 @@ import asyncio
 import time
 import pickle
 import aiohttp
-from config import MONITOR_SERVER_PORT, MEMORY_SERVER_PORT, COMMENTER_SERVER_PORT
+from config import MONITOR_SERVER_PORT, MEMORY_SERVER_PORT, COMMENTER_SERVER_PORT, TOOL_SERVER_PORT
 from datetime import datetime
 import json
 import requests
@@ -120,39 +120,46 @@ def sync_connector_process(message_queue, shutdown_event, lanlan_name, sync_serv
                     message = message_queue.get()
 
                     if message["type"] == "json":
+                        # Forward to monitor if enabled
                         if config['monitor'] and sync_ws:
                             await sync_ws.send_json(message["data"])
-                        if current_turn == 'user': # 说明是lanlan的新消息
-                            if user_input_cache:
-                                chat_history.append({'role': 'user', 'content': [{"type": "text","text": user_input_cache.replace('小巴', '小八')}]})
-                                user_input_cache = ''
-                            current_turn = 'assistant'
-                            text_output_cache = datetime.now().strftime('[%Y%m%d %a %H:%M] ')
 
-                            if config['bullet'] and bullet_ws:
-                                try:
-                                    last_user = last_ai = None
-                                    for i in chat_history[::-1]:
-                                        if i["role"] == "user":
-                                            last_user = i['content'][0]['text']
-                                            break
-                                    for i in chat_history[::-1]:
-                                        if i["role"] == "assistant":
-                                            last_ai = i['content'][0]['text']
-                                            break
+                        # Only treat assistant turn when it's a gemini_response
+                        if message["data"].get("type") == "gemini_response":
+                            if current_turn == 'user':  # assistant new message starts
+                                if user_input_cache:
+                                    chat_history.append({'role': 'user', 'content': [{"type": "text", "text": user_input_cache}]})
+                                    user_input_cache = ''
+                                current_turn = 'assistant'
+                                text_output_cache = datetime.now().strftime('[%Y%m%d %a %H:%M] ')
 
-                                    message_data = {
-                                        "user": last_user,
-                                        "ai": last_ai,
-                                        "screen": last_screen
-                                    }
-                                    binary_message = pickle.dumps(message_data)
-                                    await bullet_ws.send_bytes(binary_message)
-                                except Exception as e:
-                                    print("💥Error when sending to commenter: ", e)
+                                if config['bullet'] and bullet_ws:
+                                    try:
+                                        last_user = last_ai = None
+                                        for i in chat_history[::-1]:
+                                            if i["role"] == "user":
+                                                last_user = i['content'][0]['text']
+                                                break
+                                        for i in chat_history[::-1]:
+                                            if i["role"] == "assistant":
+                                                last_ai = i['content'][0]['text']
+                                                break
 
-                        if message["data"]["type"] == "gemini_response":
-                            text_output_cache += message["data"]["text"]
+                                        message_data = {
+                                            "user": last_user,
+                                            "ai": last_ai,
+                                            "screen": last_screen
+                                        }
+                                        binary_message = pickle.dumps(message_data)
+                                        await bullet_ws.send_bytes(binary_message)
+                                    except Exception as e:
+                                        print("💥Error when sending to commenter: ", e)
+
+                            # Append assistant streaming text
+                            try:
+                                text_output_cache += message["data"].get("text", "")
+                            except Exception:
+                                pass
 
                     elif message["type"] == "binary":
                         if config['monitor'] and binary_ws:
@@ -200,6 +207,27 @@ def sync_connector_process(message_queue, shutdown_event, lanlan_name, sync_serv
                                 text_output_cache = ''
                                 if config['monitor'] and sync_ws:
                                     await sync_ws.send_json({'type': 'turn end'})
+                                # 非阻塞地向tool_server发送最近对话，供分析器识别潜在任务
+                                try:
+                                    # 构造最近的消息摘要
+                                    recent = []
+                                    for item in chat_history[-6:]:
+                                        if item.get('role') in ['user', 'assistant']:
+                                            try:
+                                                txt = item['content'][0]['text'] if item.get('content') else ''
+                                            except Exception:
+                                                txt = ''
+                                            if txt == '':
+                                                continue
+                                            recent.append({'role': item.get('role'), 'text': txt})
+                                    if recent:
+                                        requests.post(
+                                            f"http://localhost:{TOOL_SERVER_PORT}/analyze_and_plan",
+                                            json={'messages': recent, 'lanlan_name': lanlan_name},
+                                            timeout=0.2
+                                        )
+                                except Exception:
+                                    pass
 
                             elif message["data"] == 'session end': # 当前session结束了
                                 print("💗开始处理聊天历史")
