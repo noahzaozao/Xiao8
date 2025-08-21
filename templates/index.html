@@ -452,7 +452,7 @@
 <body>
 <div id="agent-panel">
     <div id="agent-controls">
-        <div>Agent模式</div>
+        <div>Agent模式总开关</div>
         <label class="switch"><input id="agentMasterToggle" type="checkbox"><span class="slider"></span></label>
         <div>键鼠</div>
         <label class="switch"><input id="agentCUtoggle" type="checkbox" disabled><span class="slider"></span></label>
@@ -579,7 +579,7 @@
         resetToggles();
         return;
       }
-      setStatus('Agent已开启');
+      setStatus('Agent模式已开启');
       cuToggle.disabled = false;
       mcpToggle.disabled = false;
       try {
