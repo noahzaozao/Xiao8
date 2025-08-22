@@ -13,6 +13,7 @@ import re
 import io
 import platform, os, time
 from PIL import Image
+from langchain_openai import ChatOpenAI
 
 # Improve DPI accuracy on Windows to avoid coordinate offsets with pyautogui
 try:
@@ -274,7 +275,26 @@ class ComputerUseAdapter:
                 max_trajectory_length=3,
                 enable_reflection=False,
             )
-            self.init_ok = True
+            # Connectivity check for grounding model via ChatOpenAI
+            try:
+                api_key = COMPUTER_USE_GROUND_API_KEY if COMPUTER_USE_GROUND_API_KEY and COMPUTER_USE_GROUND_API_KEY != '' else None
+                test_llm = ChatOpenAI(
+                    model=COMPUTER_USE_GROUND_MODEL,
+                    base_url=COMPUTER_USE_GROUND_URL,
+                    api_key=api_key,
+                    temperature=0
+                ).bind(max_tokens=5)
+                _ = test_llm.invoke("ok").content
+                self.init_ok = True
+            except Exception as e:
+                self.last_error = f"GUI Grounding model initialization failed: {e}"
+                print("GUI Grounding model initialization failed:", e)
+                try:
+                    if self.grounding_agent is not None:
+                        setattr(self.grounding_agent, "grounding_model", None)
+                except Exception:
+                    pass
+                self.init_ok = False
         except Exception as e:
             self.last_error = str(e)
             print("Failed to initialize gui_agents. ", e)

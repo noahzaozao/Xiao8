@@ -3,11 +3,24 @@ core_config.txt
 
 # 忽略日志文件
 *.log
+# Binaries (but keep our committed Windows tools listed explicitly if needed)
+*.exe
+*.dll
+*.pdb
+*.lib
+*.obj
+*.o
+*.a
+*.lo
+*.loT
+*.stackdump
 
 # 忽略 memory/store 下所有内容（含子目录和文件）
 memory/store/
 config/api.py
 config/*.json
+env/*
+lanlan_frd.exe
 
 # 忽略临时文件
 *.tmp
@@ -28,3 +41,29 @@ __pycache__/
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Rust: ignore target and cargo artifacts
+/launcher/target/
+**/target/
+Cargo.lock
+
+# Node/Front-end temp (if any)
+node_modules/
+*.cache/
+dist/
+build/
+
+# Python venvs and wheels
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+site-packages/
+env/
+venv/
+ENV/
+env.bak/
+
+# OS miscellany
+Thumbs.db
+ehthumbs.db
+desktop.ini
