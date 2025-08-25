@@ -23,6 +23,7 @@ function init_app(){
     let seqCounter = 0;
     let globalAnalyser = null;
     let lipSyncActive = false;
+    let screenCaptureStream = null; // 暂存屏幕共享stream，不再需要每次都弹窗选择共享区域，方便自动重连
 
     function isMobile() {
       return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -108,6 +109,9 @@ function init_app(){
                                     
                                     showLive2d();
                                     await startMicCapture();
+                                    if (screenCaptureStream != null){
+                                        await startScreenSharing();
+                                    }
                                     statusElement.textContent = `重启完成，${lanlan_config.lanlan_name}回来了！`;
                                 } catch (error) {
                                     console.error("重启时出错:", error);
@@ -285,23 +289,25 @@ function init_app(){
             }
             let captureStream;
 
-            if (isMobile()) {
-              // On mobile we capture the *camera* instead of the screen.
-              // `environment` is the rear camera (iOS + many Androids). If that's not
-              // available the UA will fall back to any camera it has.
-              captureStream = await getMobileCameraStream();
+            if (screenCaptureStream == null){
+                if (isMobile()) {
+                // On mobile we capture the *camera* instead of the screen.
+                // `environment` is the rear camera (iOS + many Androids). If that's not
+                // available the UA will fall back to any camera it has.
+                screenCaptureStream = await getMobileCameraStream();
 
-            } else {
-              // Desktop/laptop: capture the user's chosen screen / window / tab.
-              captureStream = await navigator.mediaDevices.getDisplayMedia({
-                video: {
-                  cursor: 'always',
-                  frameRate: 1,
-                },
-                audio: false,
-              });
+                } else {
+                // Desktop/laptop: capture the user's chosen screen / window / tab.
+                screenCaptureStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: {
+                    cursor: 'always',
+                    frameRate: 1,
+                    },
+                    audio: false,
+                });
+                }
             }
-            startScreenVideoStreaming(captureStream, isMobile() ? 'camera' : 'screen');
+            startScreenVideoStreaming(screenCaptureStream, isMobile() ? 'camera' : 'screen');
 
             micButton.disabled = true;
             muteButton.disabled = false;
@@ -310,7 +316,7 @@ function init_app(){
             resetSessionButton.disabled = false;
 
             // 当用户停止共享屏幕时
-            captureStream.getVideoTracks()[0].onended = stopScreening;
+            screenCaptureStream.getVideoTracks()[0].onended = stopScreening;
 
             // 获取麦克风流
             if (!isRecording) statusElement.textContent = '没开麦啊喂！';
@@ -341,6 +347,7 @@ function init_app(){
         screenButton.disabled = false;
         stopButton.disabled = true;
         resetSessionButton.disabled = false;
+        screenCaptureStream = null;
         statusElement.textContent = '正在语音...';
     }
 
