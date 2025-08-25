@@ -88,15 +88,21 @@ fn python_path(root: &PathBuf) -> PathBuf {
 fn spawn_memory_and_main(root: &PathBuf) -> (Option<Child>, Option<Child>) {
     let python = python_path(root);
     let spawn_child = |script: &str, args: &[&str]| -> Option<Child> {
-        Command::new(&python)
-            .current_dir(root)
+        let mut cmd = Command::new(&python);
+        cmd.current_dir(root)
             .arg(script)
             .args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .ok()
+            .stderr(Stdio::null());
+        
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+        
+        cmd.spawn().ok()
     };
     let mem = spawn_child("memory_server.py", &[]);
     let main = spawn_child("main_server.py", &[]);
@@ -105,60 +111,84 @@ fn spawn_memory_and_main(root: &PathBuf) -> (Option<Child>, Option<Child>) {
 
 fn spawn_memory_with_shutdown(root: &PathBuf) -> Option<Child> {
     let python = python_path(root);
-    Command::new(&python)
-        .current_dir(root)
+    let mut cmd = Command::new(&python);
+    cmd.current_dir(root)
         .arg("memory_server.py")
         .arg("--enable-shutdown")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()
+        .stderr(Stdio::null());
+    
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    
+    cmd.spawn().ok()
 }
 
 fn spawn_main_with_open_index(root: &PathBuf) -> Option<Child> {
     let python = python_path(root);
-    Command::new(&python)
-        .current_dir(root)
+    let mut cmd = Command::new(&python);
+    cmd.current_dir(root)
         .arg("main_server.py")
         .arg("--open-browser")
         .arg("--page")
         .arg("index")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()
+        .stderr(Stdio::null());
+    
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    
+    cmd.spawn().ok()
 }
 
 fn spawn_main_with_open_api_key(root: &PathBuf) -> Option<Child> {
     let python = python_path(root);
-    Command::new(&python)
-        .current_dir(root)
+    let mut cmd = Command::new(&python);
+    cmd.current_dir(root)
         .arg("main_server.py")
         .arg("--open-browser")
         .arg("--page")
         .arg("api_key")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()
+        .stderr(Stdio::null());
+    
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    
+    cmd.spawn().ok()
 }
 
 fn spawn_main_with_open_chara_manager(root: &PathBuf) -> Option<Child> {
     let python = python_path(root);
-    Command::new(&python)
-        .current_dir(root)
+    let mut cmd = Command::new(&python);
+    cmd.current_dir(root)
         .arg("main_server.py")
         .arg("--open-browser")
         .arg("--page")
         .arg("chara_manager")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()
+        .stderr(Stdio::null());
+    
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    
+    cmd.spawn().ok()
 }
 
 fn spawn_lanlan_frd(root: &PathBuf) -> Option<Child> {
@@ -192,14 +222,20 @@ fn kill_child(child: &mut Option<Child>) {
 
 fn spawn_agent(root: &PathBuf) -> Option<Child> {
     let python = python_path(root);
-    Command::new(python)
-        .current_dir(root)
+    let mut cmd = Command::new(python);
+    cmd.current_dir(root)
         .arg("agent_server.py")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()
+        .stderr(Stdio::null());
+    
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    
+    cmd.spawn().ok()
 }
 
 fn open_config_page(root: &PathBuf, dialog_running: bool) {
@@ -207,16 +243,23 @@ fn open_config_page(root: &PathBuf, dialog_running: bool) {
         let _ = open::that("http://localhost:48911/chara_manager");
     } else {
         let python = python_path(root);
-        let _ = Command::new(python)
-            .current_dir(root)
+        let mut cmd = Command::new(python);
+        cmd.current_dir(root)
             .arg("main_server.py")
             .arg("--open-browser")
             .arg("--page")
             .arg("chara_manager")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn();
+            .stderr(Stdio::null());
+        
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+        
+        let _ = cmd.spawn();
     }
 }
 

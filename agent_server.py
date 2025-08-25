@@ -199,7 +199,7 @@ async def _poll_results_loop():
                 if not tid or tid not in Modules.task_registry:
                     continue
                 info = Modules.task_registry[tid]
-                info["status"] = "done" if msg.get("success") else "failed"
+                info["status"] = "completed" if msg.get("success") else "failed"
                 if "result" in msg:
                     info["result"] = msg["result"]
                 if "error" in msg:
@@ -503,9 +503,34 @@ async def mcp_availability():
 @app.get("/tasks")
 async def list_tasks():
     items = []
+    
+    # 添加运行时任务 (task_registry)
     for tid, info in Modules.task_registry.items():
-        items.append({k: v for k, v in info.items() if k != "_proc"})
-    return {"tasks": items}
+        task_item = {k: v for k, v in info.items() if k != "_proc"}
+        task_item["source"] = "runtime"
+        items.append(task_item)
+    
+    # 添加规划器任务 (task_pool)
+    if Modules.planner:
+        for tid, task in Modules.planner.task_pool.items():
+            if hasattr(task, '__dict__'):
+                task_item = task.__dict__.copy()
+                task_item["source"] = "planner"
+                # 确保有基本字段
+                if "id" not in task_item:
+                    task_item["id"] = tid
+                if "status" not in task_item:
+                    task_item["status"] = "queued"  # 默认状态
+                items.append(task_item)
+    
+    # 添加调试信息
+    debug_info = {
+        "task_registry_count": len(Modules.task_registry),
+        "task_pool_count": len(Modules.planner.task_pool) if Modules.planner else 0,
+        "total_returned": len(items)
+    }
+    
+    return {"tasks": items, "debug": debug_info}
 
 
 @app.post("/admin/control")

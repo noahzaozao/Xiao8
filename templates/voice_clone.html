@@ -54,18 +54,14 @@ function registerVoice() {
     const formData = new FormData();
     formData.append('file', fileInput.files[0]);
     formData.append('prefix', prefix);
-    fetch('/api/tmpfiles_voice_clone', {
+    fetch('/api/voice_clone', {
         method: 'POST',
         body: formData
     })
     .then(res => res.json())
     .then(data => {
-        let fileUrlHtml = '';
-        // if (data.file_url) {
-        //     fileUrlHtml = '<br>音频直链：<a href="' + data.file_url + '" target="_blank">' + data.file_url + '</a>';
-        // }
         if (data.voice_id) {
-            resultDiv.innerHTML = '注册成功！voice_id: ' + data.voice_id + fileUrlHtml;
+            resultDiv.innerHTML = '注册成功！voice_id: ' + data.voice_id;
             // 自动更新voice_id到后端
             const lanlanName = document.getElementById('lanlan_name').value;
             if (lanlanName) {
@@ -88,7 +84,7 @@ function registerVoice() {
                 });
             }
         } else {
-            resultDiv.innerHTML = '注册失败：' + (data.error || '未知错误') + fileUrlHtml;
+            resultDiv.innerHTML = '注册失败：' + (data.error || '未知错误');
             resultDiv.className = 'result error';
         }
         setFormDisabled(false);

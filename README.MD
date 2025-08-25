@@ -7,7 +7,7 @@
 
 **新手友好、开箱即用，无需显卡的全场景AI <small><s>猫娘</s></small> 伙伴**
 
-[![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Commit](https://img.shields.io/github/last-commit/wehos/Xiao8?color=green)]()
 [![百度云](https://custom-icon-badges.demolab.com/badge/百度云-Link-4169E1?style=flat&logo=baidunetdisk)](https://pan.baidu.com/s/1qb9XVV94c2FwhIeQO2De5A?pwd=kuro)
@@ -51,7 +51,7 @@ Lanlan（兰兰）是一个新手友好、开箱即用的，具有听觉、视�
 
 1. **体验桌宠模式**。如果网页版可以正常使用，*一键包用户*可以考虑继续通过`启动App版.bat`开启桌宠模式。注意，**请不要同时使用网页版和App版。请确认exe文件没有被系统或杀毒软件隔离。** *使用结束后请在桌面右下角找到小八图标，右键退出，并手动关闭终端。*
 
->  *对于**开发者**，请在克隆本项目后，(1)新建pyhon3.12环境。(2)执行`pip install -r requirements.txt`安装依赖。(3)复制`config/api_template.py`到`config/api.py`并进行必要配置。(4)执行`python memory_server.py`和`python main_server.py`。(5)通过main server中指定的端口（默认为`http://localhost:48911`）访问网页版。*
+>  *对于**开发者**，请在克隆本项目后，(1)新建pyhon3.11环境。(2)执行`pip install -r requirements.txt`安装依赖。(3)复制`config/api_template.py`到`config/api.py`并进行必要配置。(4)执行`python memory_server.py`和`python main_server.py`。(5)通过main server中指定的端口（默认为`http://localhost:48911`）访问网页版。*
 
 # 进阶内容
 
@@ -73,7 +73,7 @@ Lanlan（兰兰）是一个新手友好、开箱即用的，具有听觉、视�
 
 ## 参与开发
 
-本项目环境依赖非常简单，请在`python3.12`环境中执行`pip install -r requirements.txt`即可。请注意将`config/api_template.py`复制为`config/api.py`.开发者建议加入企鹅群1048307485，猫娘名称见项目标题。
+本项目环境依赖非常简单，请在`python3.11`环境中执行`pip install -r requirements.txt`即可。请注意将`config/api_template.py`复制为`config/api.py`.开发者建议加入企鹅群1048307485，猫娘名称见项目标题。
 
 # TODO List（开发计划）
 

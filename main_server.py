@@ -23,6 +23,8 @@ import atexit
 import dashscope
 from dashscope.audio.tts_v2 import VoiceEnrollmentService
 import requests
+import httpx
+import pathlib, wave
 from openai import AsyncOpenAI
 from config import get_character_data, MAIN_SERVER_PORT, CORE_API_KEY, AUDIO_API_KEY, EMOTION_MODEL, OPENROUTER_API_KEY, OPENROUTER_URL, load_characters, save_characters, TOOL_SERVER_PORT
 from config.prompts_sys import emotion_analysis_prompt
@@ -678,15 +680,69 @@ async def clear_voice_ids():
             'error': f'清除Voice ID记录时出错: {str(e)}'
         }, status_code=500)
 
-@app.post('/api/tmpfiles_voice_clone')
-async def tmpfiles_voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
+@app.post('/api/voice_clone')
+async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
     import os
     temp_path = f'tmp_{file.filename}'
     with open(temp_path, 'wb') as f:
         f.write(await file.read())
     tmp_url = None
+
+    def validate_audio_file(file_path: str) -> tuple[str, str]:
+        """
+        验证音频文件类型和格式
+        返回: (mime_type, error_message)
+        """
+        file_path_obj = pathlib.Path(file_path)
+        file_extension = file_path_obj.suffix.lower()
+        
+        # 检查文件扩展名
+        if file_extension not in ['.wav', '.mp3']:
+            return "", f"不支持的文件格式: {file_extension}。仅支持 WAV 和 MP3 格式。"
+        
+        # 根据扩展名确定MIME类型
+        if file_extension == '.wav':
+            mime_type = "audio/wav"
+            # 检查WAV文件是否为16bit
+            try:
+                with wave.open(file_path, 'rb') as wav_file:
+                    # 检查采样宽度（bit depth）
+                    if wav_file.getsampwidth() != 2:  # 2 bytes = 16 bits
+                        return "", f"WAV文件必须是16bit格式，当前文件是{wav_file.getsampwidth() * 8}bit。"
+                    
+                    # 检查声道数（建议单声道）
+                    channels = wav_file.getnchannels()
+                    if channels > 1:
+                        return "", f"建议使用单声道WAV文件，当前文件有{channels}个声道。"
+                    
+                    # 检查采样率
+                    sample_rate = wav_file.getframerate()
+                    if sample_rate not in [8000, 16000, 22050, 44100, 48000]:
+                        return "", f"建议使用标准采样率(8000, 16000, 22050, 44100, 48000)，当前文件采样率: {sample_rate}Hz。"
+                    
+            except Exception as e:
+                return "", f"WAV文件格式错误: {str(e)}。请确认您的文件是合法的WAV文件。"
+                
+        elif file_extension == '.mp3':
+            mime_type = "audio/mpeg"
+            # MP3文件格式检查相对简单，主要检查文件头
+            try:
+                with open(file_path, 'rb') as f:
+                    header = f.read(10)
+                    # 检查MP3文件头标识
+                    if not (header.startswith(b'\xff\xfb') or header.startswith(b'\xff\xf3') or 
+                           header.startswith(b'\xff\xf2') or header.startswith(b'\xff\xe3')):
+                        return "", "MP3文件格式无效或已损坏。"
+            except Exception as e:
+                return "", f"MP3文件读取错误: {str(e)}。请确认您的文件是合法的MP3文件。"
+        
+        return mime_type, ""
+
     try:
         # 1. 上传到 tmpfiles.org
+        _, error_msg = validate_audio_file(temp_path)
+        if error_msg:
+            return JSONResponse({'error': error_msg}, status_code=400)
         with open(temp_path, 'rb') as f2:
             files = {'file': (file.filename, f2)}
             resp = requests.post('https://tmpfiles.org/api/v1/upload', files=files, timeout=30)
@@ -1349,10 +1405,10 @@ async def update_agent_flags(request: Request):
             if 'computer_use_enabled' in flags:
                 forward_payload['computer_use_enabled'] = bool(flags['computer_use_enabled'])
             if forward_payload:
-                import requests as _rq
-                r = _rq.post(f"http://localhost:{TOOL_SERVER_PORT}/agent/flags", json=forward_payload, timeout=0.7)
-                if not r.ok:
-                    raise Exception(f"tool_server responded {r.status_code}")
+                async with httpx.AsyncClient(timeout=0.7) as client:
+                    r = await client.post(f"http://localhost:{TOOL_SERVER_PORT}/agent/flags", json=forward_payload)
+                    if not r.is_success:
+                        raise Exception(f"tool_server responded {r.status_code}")
         except Exception as e:
             # On failure, reset flags in core to safe state
             mgr.update_agent_flags({'agent_enabled': False, 'computer_use_enabled': False, 'mcp_enabled': False})
@@ -1366,16 +1422,16 @@ async def update_agent_flags(request: Request):
 async def agent_health():
     """Check tool_server health via main_server proxy."""
     try:
-        import requests as _rq
-        r = _rq.get(f"http://localhost:{TOOL_SERVER_PORT}/health", timeout=0.7)
-        if not r.ok:
-            return JSONResponse({"status": "down"}, status_code=502)
-        data = {}
-        try:
-            data = r.json()
-        except Exception:
-            pass
-        return {"status": "ok", **({"tool": data} if isinstance(data, dict) else {})}
+        async with httpx.AsyncClient(timeout=0.7) as client:
+            r = await client.get(f"http://localhost:{TOOL_SERVER_PORT}/health")
+            if not r.is_success:
+                return JSONResponse({"status": "down"}, status_code=502)
+            data = {}
+            try:
+                data = r.json()
+            except Exception:
+                pass
+            return {"status": "ok", **({"tool": data} if isinstance(data, dict) else {})}
     except Exception:
         return JSONResponse({"status": "down"}, status_code=502)
 
@@ -1383,11 +1439,11 @@ async def agent_health():
 @app.get('/api/agent/computer_use/availability')
 async def proxy_cu_availability():
     try:
-        import requests as _rq
-        r = _rq.get(f"http://localhost:{TOOL_SERVER_PORT}/computer_use/availability", timeout=1.5)
-        if not r.ok:
-            return JSONResponse({"ready": False, "reasons": [f"tool_server responded {r.status_code}"]}, status_code=502)
-        return r.json()
+        async with httpx.AsyncClient(timeout=1.5) as client:
+            r = await client.get(f"http://localhost:{TOOL_SERVER_PORT}/computer_use/availability")
+            if not r.is_success:
+                return JSONResponse({"ready": False, "reasons": [f"tool_server responded {r.status_code}"]}, status_code=502)
+            return r.json()
     except Exception as e:
         return JSONResponse({"ready": False, "reasons": [f"proxy error: {e}"]}, status_code=502)
 
@@ -1395,13 +1451,117 @@ async def proxy_cu_availability():
 @app.get('/api/agent/mcp/availability')
 async def proxy_mcp_availability():
     try:
-        import requests as _rq
-        r = _rq.get(f"http://localhost:{TOOL_SERVER_PORT}/mcp/availability", timeout=1.5)
-        if not r.ok:
-            return JSONResponse({"ready": False, "reasons": [f"tool_server responded {r.status_code}"]}, status_code=502)
-        return r.json()
+        async with httpx.AsyncClient(timeout=1.5) as client:
+            r = await client.get(f"http://localhost:{TOOL_SERVER_PORT}/mcp/availability")
+            if not r.is_success:
+                return JSONResponse({"ready": False, "reasons": [f"tool_server responded {r.status_code}"]}, status_code=502)
+            return r.json()
     except Exception as e:
         return JSONResponse({"ready": False, "reasons": [f"proxy error: {e}"]}, status_code=502)
+
+
+@app.get('/api/agent/tasks')
+async def proxy_tasks():
+    """Get all tasks from tool server via main_server proxy."""
+    try:
+        async with httpx.AsyncClient(timeout=1.5) as client:
+            r = await client.get(f"http://localhost:{TOOL_SERVER_PORT}/tasks")
+            if not r.is_success:
+                return JSONResponse({"tasks": [], "error": f"tool_server responded {r.status_code}"}, status_code=502)
+            return r.json()
+    except Exception as e:
+        return JSONResponse({"tasks": [], "error": f"proxy error: {e}"}, status_code=502)
+
+
+@app.get('/api/agent/tasks/{task_id}')
+async def proxy_task_detail(task_id: str):
+    """Get specific task details from tool server via main_server proxy."""
+    try:
+        async with httpx.AsyncClient(timeout=1.5) as client:
+            r = await client.get(f"http://localhost:{TOOL_SERVER_PORT}/tasks/{task_id}")
+            if not r.is_success:
+                return JSONResponse({"error": f"tool_server responded {r.status_code}"}, status_code=502)
+            return r.json()
+    except Exception as e:
+        return JSONResponse({"error": f"proxy error: {e}"}, status_code=502)
+
+
+# Task status polling endpoint for frontend
+@app.get('/api/agent/task_status')
+async def get_task_status():
+    """Get current task status for frontend polling - returns all tasks with their current status."""
+    try:
+        # Get tasks from tool server using async client
+        async with httpx.AsyncClient(timeout=1.5) as client:
+            r = await client.get(f"http://localhost:{TOOL_SERVER_PORT}/tasks")
+            if not r.is_success:
+                return JSONResponse({"tasks": [], "error": f"tool_server responded {r.status_code}"}, status_code=502)
+            
+            tasks_data = r.json()
+            tasks = tasks_data.get("tasks", [])
+            debug_info = tasks_data.get("debug", {})
+            
+            # Log debug information
+            logger.info(f"Agent server debug info: {debug_info}")
+            logger.info(f"Raw tasks from agent server: {len(tasks)} tasks")
+            
+            # Enhance task data with additional information if needed
+            enhanced_tasks = []
+            for task in tasks:
+                enhanced_task = {
+                    "id": task.get("id"),
+                    "status": task.get("status", "unknown"),
+                    "type": task.get("type", "unknown"),
+                    "lanlan_name": task.get("lanlan_name"),
+                    "start_time": task.get("start_time"),
+                    "end_time": task.get("end_time"),
+                    "params": task.get("params", {}),
+                    "result": task.get("result"),
+                    "error": task.get("error"),
+                    "source": task.get("source", "unknown")  # 添加来源信息
+                }
+                enhanced_tasks.append(enhanced_task)
+            
+            return {
+                "success": True,
+                "tasks": enhanced_tasks,
+                "total_count": len(enhanced_tasks),
+                "running_count": len([t for t in enhanced_tasks if t.get("status") == "running"]),
+                "queued_count": len([t for t in enhanced_tasks if t.get("status") == "queued"]),
+                "completed_count": len([t for t in enhanced_tasks if t.get("status") == "completed"]),
+                "failed_count": len([t for t in enhanced_tasks if t.get("status") == "failed"]),
+                "timestamp": datetime.now().isoformat(),
+                "debug": debug_info  # 传递调试信息到前端
+            }
+        
+    except Exception as e:
+        return JSONResponse({
+            "success": False,
+            "tasks": [],
+            "error": f"Failed to fetch task status: {str(e)}",
+            "timestamp": datetime.now().isoformat()
+        }, status_code=500)
+
+
+@app.post('/api/agent/admin/control')
+async def proxy_admin_control(payload):
+    """Proxy admin control commands to tool server."""
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.post(f"http://localhost:{TOOL_SERVER_PORT}/admin/control", json=payload)
+            if not r.is_success:
+                return JSONResponse({"success": False, "error": f"tool_server responded {r.status_code}"}, status_code=502)
+            
+            result = r.json()
+            logger.info(f"Admin control result: {result}")
+            return result
+        
+    except Exception as e:
+        return JSONResponse({
+            "success": False,
+            "error": f"Failed to execute admin control: {str(e)}"
+        }, status_code=500)
 
 
 # --- Run the Server ---
