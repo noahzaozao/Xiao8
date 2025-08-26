@@ -44,14 +44,23 @@ Lanlan（兰兰）是一个新手友好、开箱即用的，具有听觉、视�
 
 # 快速开始
 
-1. **获取阿里云API**。在阿里云的百炼平台[官网](https://bailian.console.aliyun.com/)注册账号。新用户实名认证后可以获取大量免费额度，记得留意页面上的"新人福利"广告。注册完成后，请访问[控制台](https://bailian.console.aliyun.com/api-key?tab=model#/api-key)获取API Key。*一键包用户*可以通过设置页里的按钮设置API Key，*开发者*也可以直接修改`config/api.py`里的内容（首次配置请参考`config/api_template.py`）。
-   > *注：本项目提供的都是官方链接，不含任何推广，本人无法从中获取任何收益。阿里的官网目前做的很烂，请忍耐orz*
+1. 对于*一键包用户*，直接运行`新版启动器.exe`即可打开主控面板。
 
-1. **体验网页版**。对于*一键包用户*，直接运行`启动网页版.bat`即可打开网页版。**请耐心等待网页刷新，并先根据提示配置API Key**。
+1. **启动调试模式**。对于*一键包用户*，直接运行`新版启动器.exe`即可打开主控面板。初次使用请务必选择最下方的**启动调试模式**。 **请耐心等待网页刷新，并先根据提示配置API Key**。
 
 1. **体验桌宠模式**。如果网页版可以正常使用，*一键包用户*可以考虑继续通过`启动App版.bat`开启桌宠模式。注意，**请不要同时使用网页版和App版。请确认exe文件没有被系统或杀毒软件隔离。** *使用结束后请在桌面右下角找到小八图标，右键退出，并手动关闭终端。*
 
->  *对于**开发者**，请在克隆本项目后，(1)新建pyhon3.11环境。(2)执行`pip install -r requirements.txt`安装依赖。(3)复制`config/api_template.py`到`config/api.py`并进行必要配置。(4)执行`python memory_server.py`和`python main_server.py`。(5)通过main server中指定的端口（默认为`http://localhost:48911`）访问网页版。*
+以上。
+
+---
+
+> 使用过程中你需要配置一个第三方AI服务。本项目目前推荐使用 *阿里云* 或 *智谱*。*一键包用户*可以通过设置页里的按钮设置API Key，*开发者*也可以直接修改`config/api.py`里的内容（首次配置请参考`config/api_template.py`）。
+
+> 获取 *阿里云API*。在阿里云的百炼平台[官网](https://bailian.console.aliyun.com/)注册账号。新用户实名认证后可以获取大量免费额度，记得留意页面上的"新人福利"广告。注册完成后，请访问[控制台](https://bailian.console.aliyun.com/api-key?tab=model#/api-key)获取API Key。
+
+> 获取 *智谱API*。在智谱开放平台[官网](https://https://open.bigmodel.cn/)注册账号并充值1元后，可以领取大量免费额度。登陆成功后，请从[API 控制台](https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys)获取API Key。
+
+>  *对于**开发者**，请在克隆本项目后，(1)新建`pyhon3.11`环境。(2)执行`pip install -r requirements.txt`安装依赖。(3)复制`config/api_template.py`到`config/api.py`并进行必要配置。(4)执行`python memory_server.py`和`python main_server.py`。(5)通过main server中指定的端口（默认为`http://localhost:48911`）访问网页版。*
 
 # 进阶内容
 
@@ -73,7 +82,37 @@ Lanlan（兰兰）是一个新手友好、开箱即用的，具有听觉、视�
 
 ## 参与开发
 
-本项目环境依赖非常简单，请在`python3.11`环境中执行`pip install -r requirements.txt`即可。请注意将`config/api_template.py`复制为`config/api.py`.开发者建议加入企鹅群1048307485，猫娘名称见项目标题。
+本项目环境依赖非常简单，请在`python3.11`环境中执行`pip install -r requirements.txt`或`uv sync`即可。请注意将`config/api_template.py`复制为`config/api.py`.开发者建议加入企鹅群1048307485，猫娘名称见项目标题。
+
+开发者详细启动步骤如下：(1)新建`pyhon3.11`环境。(2)执行`pip install -r requirements.txt`或`uv sync`安装依赖。(3)复制`config/api_template.py`到`config/api.py`并进行必要配置。(4)执行`python memory_server.py`, `python main_server.py`(可选`python agent_server.py`)。(5)通过main server中指定的端口（默认为`http://localhost:48911`）访问网页版。
+
+**项目架构**
+
+```
+Lanlan/
+├── 📁 brain/                    # 🧠 背景Agent模块，根据前端对话内容，控制键鼠和MCP
+├── 📁 config/                   # ⚙️ 配置管理模块
+│   ├── api.py                   # API密钥配置
+│   ├── prompts_chara.py         # 角色提示词
+│   └── prompts_sys.py           # 系统提示词
+├── 📁 main_helper/              # 🔧 核心模块
+│   ├── core.py                  # 核心对话模块
+│   ├── cross_server.py         # 跨服务器通信
+│   └── omni_realtime_client.py  # 实时API客户端
+├── 📁 memory/                   # 🧠 记忆管理系统
+│   ├── store/                   # 记忆数据存储
+├── 📁 static/                   # 🌐 前端静态资源
+├── 📁 templates/                # 📄 前端HTML模板
+├── 📁 utils/                    # 🛠️ 工具模块
+├── 📁 launcher/                 # 🚀 Rust启动器
+├── main_server.py               # 🌐 主服务器
+├── agent_server.py              # 🤖 AI智能体服务器
+└── memory_server.py             # 🧠 记忆服务器
+```
+**数据流向**
+
+![Framework](assets/framework.drawio.svg)
+
 
 # TODO List（开发计划）
 
@@ -121,7 +160,7 @@ Lanlan（兰兰）是一个新手友好、开箱即用的，具有听觉、视�
 
 > *是否支持MCP服务、工具、插件？*
 
-OpenAI官方的Realtime API支持`tool calling`功能，因此，本项目与MCP服务兼容，且直播版已经实装了联网搜索等工具。但是，与常规文本模型不同的是，实时模型使用工具需要考虑异步协同和阻塞问题。此外，目前阿里平台并不支持工具调用。因此，开源项目暂时没有MCP兼容性的计划，留待国内厂商实现相关接口后再跟进。
+OpenAI官方的Realtime API支持`tool calling`功能，因此，本项目与MCP服务兼容，且直播版已经实装了联网搜索等工具。但是，与常规文本模型不同的是，实时模型使用工具需要考虑异步协同和阻塞问题。此外，目前阿里平台并不支持工具调用。
 
 > *本项目支持哪些语言模型？*
 
@@ -142,10 +181,6 @@ OpenAI官方的Realtime API支持`tool calling`功能，因此，本项目与MCP
 > *你这项目的标题到底是个什么玩意儿？*
 
 Chat酱是本人2023年3月制作的基于Chatgpt的QQ聊天猫娘。兰兰是2024年3月制作的基于GPT4v和Discord的语音+视觉多模态AI猫娘。小八是本人于2025年4月制作的全场景AI猫娘。标题承载了本人三年间的心路历程。现在姑且还是叫Project Lanlan吧？
-
-> *为什么要设计xxx/xxx/xxx？*
-
-建议进群私聊。很多目前看来冗余的设计，在直播版本（前瞻版本）中都有更多用处。
 
 # 特别鸣谢
 
