@@ -697,8 +697,8 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
         file_extension = file_path_obj.suffix.lower()
         
         # 检查文件扩展名
-        if file_extension not in ['.wav', '.mp3']:
-            return "", f"不支持的文件格式: {file_extension}。仅支持 WAV 和 MP3 格式。"
+        if file_extension not in ['.wav', '.mp3', '.m4a']:
+            return "", f"不支持的文件格式: {file_extension}。仅支持 WAV、MP3 和 M4A 格式。"
         
         # 根据扩展名确定MIME类型
         if file_extension == '.wav':
@@ -725,23 +725,66 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
                 
         elif file_extension == '.mp3':
             mime_type = "audio/mpeg"
-            # MP3文件格式检查相对简单，主要检查文件头
             try:
                 with open(file_path, 'rb') as f:
-                    header = f.read(10)
-                    # 检查MP3文件头标识
-                    if not (header.startswith(b'\xff\xfb') or header.startswith(b'\xff\xf3') or 
-                           header.startswith(b'\xff\xf2') or header.startswith(b'\xff\xe3')):
-                        return "", "MP3文件格式无效或已损坏。"
+                    # 读取更多字节以支持不同的MP3格式
+                    header = f.read(32)
+
+                    # 检查文件大小是否合理
+                    file_size = os.path.getsize(file_path)
+                    if file_size < 1024:  # 至少1KB
+                        return "", "MP3文件太小，可能不是有效的音频文件。"
+                    if file_size > 1024 * 1024 * 10:  # 10MB
+                        return "", "MP3文件太大，可能不是有效的音频文件。"
+                    
+                    # 更宽松的MP3文件头检查
+                    # MP3文件通常以ID3标签或帧同步字开头
+                    # 检查是否以ID3标签开头 (ID3v2)
+                    has_id3_header = header.startswith(b'ID3')
+                    # 检查是否有帧同步字 (FF FA, FF FB, FF F2, FF F3, FF E3等)
+                    has_frame_sync = False
+                    for i in range(len(header) - 1):
+                        if header[i] == 0xFF and (header[i+1] & 0xE0) == 0xE0:
+                            has_frame_sync = True
+                            break
+                    
+                    # 如果既没有ID3标签也没有帧同步字，则认为文件可能无效
+                    # 但这只是一个警告，不应该严格拒绝
+                    if not has_id3_header and not has_frame_sync:
+                        return mime_type, "警告: MP3文件可能格式不标准，文件头: {header[:4].hex()}"
+                        
             except Exception as e:
                 return "", f"MP3文件读取错误: {str(e)}。请确认您的文件是合法的MP3文件。"
+                
+        elif file_extension == '.m4a':
+            mime_type = "audio/mp4"
+            try:
+                with open(file_path, 'rb') as f:
+                    # 读取文件头来验证M4A格式
+                    header = f.read(32)
+                    
+                    # M4A文件应该以'ftyp'盒子开始，通常在偏移4字节处
+                    # 检查是否包含'ftyp'标识
+                    if b'ftyp' not in header:
+                        return "", "M4A文件格式无效或已损坏。请确认您的文件是合法的M4A文件。"
+                    
+                    # 进一步验证：检查是否包含常见的M4A类型标识
+                    # M4A通常包含'mp4a', 'M4A ', 'M4V '等类型
+                    valid_types = [b'mp4a', b'M4A ', b'M4V ', b'isom', b'iso2', b'avc1']
+                    has_valid_type = any(t in header for t in valid_types)
+                    
+                    if not has_valid_type:
+                        return mime_type,  "警告: M4A文件格式无效或已损坏。请确认您的文件是合法的M4A文件。"
+                        
+            except Exception as e:
+                return "", f"M4A文件读取错误: {str(e)}。请确认您的文件是合法的M4A文件。"
         
         return mime_type, ""
 
     try:
         # 1. 上传到 tmpfiles.org
-        _, error_msg = validate_audio_file(temp_path)
-        if error_msg:
+        mime_type, error_msg = validate_audio_file(temp_path)
+        if not mime_type:
             return JSONResponse({'error': error_msg}, status_code=400)
         with open(temp_path, 'rb') as f2:
             files = {'file': (file.filename, f2)}

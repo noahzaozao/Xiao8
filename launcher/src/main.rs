@@ -332,6 +332,8 @@ struct LauncherApp {
 
 impl eframe::App for LauncherApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        ctx.request_repaint_after(std::time::Duration::from_millis(200));
+        
         let mut state_guard = self.state.lock().unwrap();
 
         // Always poll chat process (even without UI lock) so the button can auto-reset when external close happens
@@ -376,6 +378,7 @@ impl eframe::App for LauncherApp {
                 if let Some(child) = state_guard.main_server.as_mut() {
                     if let Ok(Some(_)) = child.try_wait() {
                         state_guard.main_server = None;
+                        state_guard.memory_server = None;
                         state_guard.debug_chain_started = false;
                         state_guard.ui_lock = UiLock::None;
                     }
