@@ -15,6 +15,8 @@
 
 **:older_woman: 我奶奶都能在3分钟内配置好的赛博猫娘！**
 
+:newspaper: **v0.4.0已发布！现已支持Agent模式和GPT-Realtime！**
+
 *Don't ask me anything. Ask 兰兰！*
 
 </div>
@@ -150,7 +152,7 @@ Lanlan/
 
 > *为什么我的AI感觉笨笨的？*
 
-本项目无法对AI的**智能水平**负责，只能帮助您选择当前综合性能最优的解决方案。如果您已经看过本项目在Bilibili的视频，那么直播版与开源版代码逻辑一致，只有支持的API接口不一致。有条件者可以将`config/api.py`中的`CORE_URL`/`CORE_API_KEY`/`CORE_MODEL`替换成OpenAI的`GPT-4o`版本，即可将模型从Qwen升级为`GPT-4o`。也可以**等待阿里或其他国内厂家的升级与跟进**。
+本项目无法对AI的**智能水平**负责，只能帮助您选择当前综合性能最优的解决方案。如果您已经看过本项目在Bilibili的视频，那么直播版与开源版代码逻辑一致，只有支持的API接口不一致。有条件者可以将`config/api.py`中的`CORE_URL`/`CORE_API_KEY`/`CORE_MODEL`替换成OpenAI的`GPT-Realtime`版本，即可将模型从Qwen升级为`GPT-Realtime`。也可以**等待阿里或其他国内厂家的升级与跟进**。
 
 **技术的进步不在一朝一夕，请耐心守候AI的成长**！
 
@@ -164,7 +166,7 @@ OpenAI官方的Realtime API支持`tool calling`功能，因此，本项目与MCP
 
 > *本项目支持哪些语言模型？*
 
-本项目依赖于实时全模态API。直播版本使用的是Gemini Live API，开源版本使用的是[OpenAI Realtime API](https://platform.openai.com/docs/guides/realtime)。Gemini Live接口具有更好的效果，但目前**只支持谷歌**。OpenAI Realtime接口规范目前**有OpenAI，阿里云，智谱 三家服务商**支持，未来可能兼容更多模型。开源版支持`Qwen-Omni-Realtime`,`GLM-Realtime`和`GPT-4o-Realtime`三个模型。
+本项目依赖于实时全模态API。直播版本使用的是Gemini Live API，开源版本使用的是[OpenAI Realtime API](https://platform.openai.com/docs/guides/realtime)。Gemini Live接口具有更好的效果，但目前**只支持谷歌**。OpenAI Realtime接口规范目前**有OpenAI，阿里云，智谱 三家服务商**支持，未来可能兼容更多模型。开源版支持`Qwen-Omni-Realtime`,`GLM-Realtime`和`GPT-Realtime`三个模型。
 
 **已知其他支持实时模式但不兼容OpenAI Realtime的模型：**(字节跳动)豆包实时语音交互，(商汤)SenseNova V6 Omni，(科大讯飞)星火认知超拟人
 
@@ -172,7 +174,7 @@ OpenAI官方的Realtime API支持`tool calling`功能，因此，本项目与MCP
 
 影响对话延迟的因素有：
 - ***上下文长度***：主要因素。冗长的人设文本和记忆池，会导致对话延迟的显著上升。
-- ***模型大小***：主要因素。越大的模型越智能，需要在智能与延迟之间权衡。本项目使用的模型中，`Qwen-Omni`是目前`8B`级别模型中最强的，`GPT-4o`则有`30B`级别的激活参数。小于8B的模型可能取得更低的响应延迟，但也会相应地变笨。注意，影响延迟的只有MoE中的激活参数量。
+- ***模型大小***：主要因素。越大的模型越智能，需要在智能与延迟之间权衡。本项目使用的模型中，`Qwen-Omni`是目前`8B`级别模型中最强的，`GPT-Realtime`则有`30B`级别的激活参数。小于8B的模型可能取得更低的响应延迟，但也会相应地变笨。注意，影响延迟的只有MoE中的激活参数量。
 - ***缓存命中率***：当输入的前缀不变时，能够有效命中语言模型的KV缓存，从而显著降低延迟。因此，尽量使用增量式插入，而不要频繁修改先前（尤其是开头）的对话。
 - *网络延迟*：通常在200ms以内，并不是影响*延迟*的主要因素。但如果存在网络波动，可能会导致语音*卡顿*。
 

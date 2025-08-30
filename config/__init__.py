@@ -80,7 +80,7 @@ try:
             CORE_MODEL = "glm-realtime-air" 
         elif core_cfg['coreApi'] == 'openai':
             CORE_URL = "wss://api.openai.com/v1/realtime"
-            CORE_MODEL = "gpt-4o-realtime-preview"
+            CORE_MODEL = "gpt-realtime"
         else:
             logger.error("💥 Unknown coreApi: " + core_cfg['coreApi'])
     else:
@@ -105,9 +105,9 @@ try:
         elif core_cfg['assistApi'] == 'openai':
             logger.warning("assistApi: " + core_cfg['assistApi'])
             OPENROUTER_URL = "https://api.openai.com/v1"
-            SUMMARY_MODEL= "gpt-4.1"
+            SUMMARY_MODEL= "gpt-5"
             CORRECTION_MODEL = "o4-mini"
-            EMOTION_MODEL = "gpt-4.1-nano"
+            EMOTION_MODEL = "gpt-5-mini"
             AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_OPENAI
         elif core_cfg['assistApi'] == 'glm':
             OPENROUTER_URL = "https://open.bigmodel.cn/api/paas/v4"

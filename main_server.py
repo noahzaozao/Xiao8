@@ -1353,7 +1353,7 @@ async def emotion_analysis(request: Request):
             messages=messages,
             temperature=0.3,
             max_tokens=100,
-            extra_body={"enable_thinking": False}
+            extra_body={"enable_thinking": False} if "gpt" in model else {}
         )
         
         # 解析响应

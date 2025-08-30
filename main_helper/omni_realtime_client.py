@@ -1,6 +1,7 @@
 # -- coding: utf-8 --
 
 import asyncio
+from re import T
 import websockets
 import json
 import base64
@@ -102,10 +103,7 @@ class OmniRealtimeClient:
         url = f"{self.base_url}?model={self.model}"
         headers = {
             "Authorization": f"Bearer {self.api_key}"
-        } if "gpt" not in self.model else {
-            "Authorization": f"Bearer {self.api_key}",
-            "OpenAI-Beta": "realtime=v1"
-        }
+        } 
         self.ws = await websockets.connect(url, additional_headers=headers)
 
         # Set up default session configuration
@@ -132,15 +130,15 @@ class OmniRealtimeClient:
                     },
                     "temperature": 0.7
                 })
-            else:
+            elif "qwen" in self.model:
                 await self.update_session({
                     "instructions": instructions,
                     "modalities": self._modalities ,
-                    "voice": self.voice if "qwen" in self.model else "sage",
+                    "voice": self.voice,
                     "input_audio_format": "pcm16",
                     "output_audio_format": "pcm16",
                     "input_audio_transcription": {
-                        "model": "gummy-realtime-v1" if "qwen" in self.model else "gpt-4o-mini-transcribe"
+                        "model": "gummy-realtime-v1"
                     },
                     "turn_detection": {
                         "type": "server_vad",
@@ -148,9 +146,31 @@ class OmniRealtimeClient:
                         "prefix_padding_ms":300,
                         "silence_duration_ms": 500
                     },
-                    "temperature": 0.3 if "qwen" in self.model else 0.7,
-                    "speed": 1. # OpenAI Only
+                    "temperature": 0.3
                 })
+            elif "gpt" in self.model:
+                await self.update_session({
+                    "type": "realtime",
+                    "model": "gpt-realtime",
+                    "instructions": instructions,
+                    "output_modalities": ['audio'] if 'audio' in self._modalities else ['text'],
+                    "audio": {
+                        "input": {
+                            "transcription": {"model": "gpt-4o-mini-transcribe"},
+                            "turn_detection": { "type": "semantic_vad",
+                                "eagerness": "auto",
+                                "create_response": True,
+                                "interrupt_response": True 
+                            },
+                        },
+                        "output": {
+                            "voice": "marin",
+                            "speed": 1.0
+                        }
+                    }
+                })
+            else:
+                raise ValueError(f"Invalid model: {self.model}")
         else:
             raise ValueError(f"Invalid turn detection mode: {self.turn_detection_mode}")
 
@@ -190,6 +210,20 @@ class OmniRealtimeClient:
                 append_event = {
                     "type": "input_audio_buffer.append_video_frame",
                     "video_frame": image_b64
+                }
+            elif "gpt" in self.model:
+                append_event = {
+                    "type": "conversation.item.create",
+                    "item": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "input_image",
+                                "image_url": "data:image/jpeg;base64," + image_b64
+                            }
+                        ]
+                    }
                 }
             else:
                 raise ValueError(f"Model does not support video streaming: {self.model}")
@@ -241,8 +275,9 @@ class OmniRealtimeClient:
                 event = json.loads(message)
                 event_type = event.get("type")
                 
-                # if event_type not in ["response.audio.delta", "response.audio_transcript.delta"]:
-                #     print(f"Received event: {event}")
+                # if event_type not in ["response.audio.delta", "response.audio_transcript.delta",  "response.output_audio.delta", "response.output_audio_transcript.delta"]:
+                #     # print(f"Received event: {event}")
+                #     print(f"Received event: {event_type}")
                 # else:
                 #     print(f"Event type: {event_type}")
                 if event_type == "error":
@@ -280,7 +315,7 @@ class OmniRealtimeClient:
                     self._audio_in_buffer = False
                 elif event_type == "conversation.item.input_audio_transcription.completed":
                     self._print_input_transcript = True
-                elif event_type == "response.audio_transcript.done":
+                elif event_type in ["response.audio_transcript.done", "response.output_audio_transcript.done"]:
                     self._print_input_transcript = False
 
                 if not self._skip_until_next_response:
@@ -288,7 +323,7 @@ class OmniRealtimeClient:
                         if self.on_text_delta:
                             await self.on_text_delta(event["delta"], self._is_first_text_chunk)
                             self._is_first_text_chunk = False
-                    elif event_type == "response.audio.delta":
+                    elif event_type in ["response.audio.delta", "response.output_audio.delta"]:
                         if self.on_audio_delta:
                             audio_bytes = base64.b64decode(event["delta"])
                             await self.on_audio_delta(audio_bytes)
@@ -296,9 +331,9 @@ class OmniRealtimeClient:
                         transcript = event.get("transcript", "")
                         if self.on_input_transcript:
                             await self.on_input_transcript(transcript)
-                    elif event_type == "response.audio_transcript.done":
+                    elif event_type in ["response.audio_transcript.done", "response.output_audio_transcript.done"]:
                         self._print_input_transcript = False
-                    elif event_type == "response.audio_transcript.delta":
+                    elif event_type in ["response.audio_transcript.delta", "response.output_audio_transcript.delta"]:
                         if self.on_output_transcript:
                             delta = event.get("delta", "")
                             if not self._print_input_transcript:
