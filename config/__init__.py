@@ -3,6 +3,8 @@ from config.prompts_chara import *
 import json
 import os
 import logging
+import os
+from pathlib import Path
 
 # Setup logger for this module
 logger = logging.getLogger(__name__)
@@ -31,9 +33,10 @@ def save_characters(data, character_json_path=CHARACTER_JSON_PATH):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 def get_character_data():
+    """获取角色数据"""
     character_data = load_characters()
     # MASTER_NAME 必须始终存在，取档案名
-    MASTER_NAME = character_data.get('主人', {}).get('档案名', _default_master['档案名'])
+    master_name = character_data.get('主人', {}).get('档案名', _default_master['档案名'])
     # 获取所有猫娘名
     catgirl_names = list(character_data['猫娘'].keys()) if character_data['猫娘'] and len(character_data['猫娘']) > 0 else list(_default_lanlan.keys())
     
@@ -51,7 +54,7 @@ def get_character_data():
     master_basic_config = character_data.get('主人', _default_master)
     lanlan_basic_config = character_data['猫娘'] if catgirl_names else _default_lanlan
 
-    NAME_MAPPING = {'human': MASTER_NAME, 'system': "SYSTEM_MESSAGE"}
+    NAME_MAPPING = {'human': master_name, 'system': "SYSTEM_MESSAGE"}
     # 生成以猫娘名为key的各类store
     LANLAN_PROMPT = {name: character_data['猫娘'][name].get('system_prompt', lanlan_prompt) for name in catgirl_names}
     SEMANTIC_STORE = {name: f'memory/store/semantic_memory_{name}' for name in catgirl_names}
@@ -59,7 +62,7 @@ def get_character_data():
     SETTING_STORE = {name: f'memory/store/settings_{name}.json' for name in catgirl_names}
     RECENT_LOG = {name: f'memory/store/recent_{name}.json' for name in catgirl_names}
 
-    return MASTER_NAME, her_name, master_basic_config, lanlan_basic_config, NAME_MAPPING, LANLAN_PROMPT, SEMANTIC_STORE, TIME_STORE, SETTING_STORE, RECENT_LOG
+    return master_name, her_name, master_basic_config, lanlan_basic_config, NAME_MAPPING, LANLAN_PROMPT, SEMANTIC_STORE, TIME_STORE, SETTING_STORE, RECENT_LOG
 
 TIME_ORIGINAL_TABLE_NAME = "time_indexed_original"
 TIME_COMPRESSED_TABLE_NAME = "time_indexed_compressed"
@@ -81,6 +84,9 @@ try:
         elif core_cfg['coreApi'] == 'openai':
             CORE_URL = "wss://api.openai.com/v1/realtime"
             CORE_MODEL = "gpt-realtime"
+        elif core_cfg['coreApi'] == 'step':
+            CORE_URL = "wss://api.stepfun.com/v1/realtime"
+            CORE_MODEL = "step-audio-2"
         else:
             logger.error("💥 Unknown coreApi: " + core_cfg['coreApi'])
     else:
@@ -89,6 +95,7 @@ try:
     ASSIST_API_KEY_QWEN = core_cfg['assistApiKeyQwen'] if 'assistApiKeyQwen' in core_cfg and core_cfg['assistApiKeyQwen'] != '' else CORE_API_KEY
     ASSIST_API_KEY_OPENAI = core_cfg['assistApiKeyOpenai'] if 'assistApiKeyOpenai' in core_cfg and core_cfg['assistApiKeyOpenai'] != '' else CORE_API_KEY
     ASSIST_API_KEY_GLM = core_cfg['assistApiKeyGlm'] if 'assistApiKeyGlm' in core_cfg and core_cfg['assistApiKeyGlm'] != '' else CORE_API_KEY
+    ASSIST_API_KEY_STEP = core_cfg['assistApiKeyStep'] if 'assistApiKeyStep' in core_cfg and core_cfg['assistApiKeyStep'] != '' else CORE_API_KEY
     COMPUTER_USE_MODEL = 'glm-4.5v'
     COMPUTER_USE_GROUND_MODEL = 'glm-4.5v'
     COMPUTER_USE_MODEL_URL = COMPUTER_USE_GROUND_URL = 'https://open.bigmodel.cn/api/paas/v4'  # reuse
@@ -105,16 +112,22 @@ try:
         elif core_cfg['assistApi'] == 'openai':
             logger.warning("assistApi: " + core_cfg['assistApi'])
             OPENROUTER_URL = "https://api.openai.com/v1"
-            SUMMARY_MODEL= "gpt-5"
+            SUMMARY_MODEL= "gpt-4.1"
             CORRECTION_MODEL = "o4-mini"
-            EMOTION_MODEL = "gpt-5-mini"
+            EMOTION_MODEL = "gpt-4.1-mini"
             AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_OPENAI
         elif core_cfg['assistApi'] == 'glm':
             OPENROUTER_URL = "https://open.bigmodel.cn/api/paas/v4"
             SUMMARY_MODEL = "glm-4.5-flash" # <-永久免费模型
-            CORRECTION_MODEL = "glm-z1-air"  # glm-z1-flash <-永久免费模型
+            CORRECTION_MODEL = "glm-z1-flash"  # <-永久免费模型
             EMOTION_MODEL = "glm-4.5-flash"
             AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_GLM
+        elif core_cfg['assistApi'] == 'step':
+            OPENROUTER_URL = "https://api.stepfun.com/v1"
+            SUMMARY_MODEL = "step-2-mini"
+            CORRECTION_MODEL = "step-3"
+            EMOTION_MODEL = "step-2-mini"
+            AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_STEP
         else:
             logger.error("💥 Unknown assistApi: " + core_cfg['assistApi']) 
     else:

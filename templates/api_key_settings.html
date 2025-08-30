@@ -275,7 +275,7 @@
 
     <div class="section">
         <div class="tips">
-            💡 请确保API Key格式正确，通常以"sk-"开头（智谱例外）。保存后需要重启服务才能生效。<br>
+            💡 请确保API Key格式正确，通常以"sk-"开头（智谱和阶跃例外）。保存后需要重启服务才能生效。<br>
             📝 个人使用环境，API Key将完整显示以便复制使用。
         </div>
         
@@ -306,9 +306,10 @@
                     • <strong>核心API</strong>：负责对话功能<br>
                     • <strong>辅助API</strong>：负责记忆管理和自定义语音<br><br>
                     <strong>各服务商特点：</strong><br>
-                    • <strong>阿里</strong>：有免费限额，支持自定义语音<br>
-                    • <strong>智谱</strong>：完全免费，不支持自定义语音<br>
-                    • <strong>OpenAI</strong>：需要翻墙，价格贵，智能水平高，不支持视频和自定义语音
+                    • <strong>阿里</strong>：有免费额度，支持自定义语音<br>
+                    • <strong>智谱</strong>：免费额度多，内置联网搜索功能<br>
+                    • <strong>阶跃星辰</strong>：有免费额度，不支持视频<br>
+                    • <strong>OpenAI</strong>：需要翻墙，价格贵，智能水平高
                 </div>
             </div>
         </div>
@@ -316,8 +317,7 @@
             <div style="background: #e7f3ff; border: 1px solid #b3d9ff; border-radius: 6px; padding: 16px; margin-bottom: 16px; font-size: 0.9em; color: #0d6efd; line-height: 1.5;">
                 <strong>💡 配置建议：</strong><br>
                 • <strong>核心API</strong>负责对话功能，建议根据预算和需求选择<br>
-                • <strong>辅助API</strong>负责记忆管理和自定义语音，<strong>只有阿里支持自定义语音</strong><br>
-                • 即使选择智谱或OpenAI作为核心API，仍然建议辅助API选择阿里以获得自定义语音功能
+                • <strong>辅助API</strong>负责记忆管理和自定义语音，<strong>只有阿里和阶跃星辰支持自定义语音</strong><br>
             </div>
             <div class="field-row">
                 <label for="coreApiSelect">
@@ -326,16 +326,18 @@
                         <span class="tooltip-icon">?</span>
                         <div class="tooltip-content">
                             <strong>核心API负责对话功能：</strong><br>
-                            • <strong>阿里</strong>：有免费限额，功能全面<br>
-                            • <strong>智谱</strong>：完全免费，性价比高<br>
-                            • <strong>OpenAI</strong>：智能水平最高，但需要翻墙且价格昂贵，不支持视频
+                            • <strong>阿里</strong>：有免费额度，功能全面<br>
+                            • <strong>智谱</strong>：有免费额度，但需充值1元，内置联网搜索功能<br>
+                            • <strong>阶跃星辰</strong>：完全免费，但不支持视频<br>
+                            • <strong>OpenAI</strong>：智能水平最高，但需要翻墙且价格昂贵
                         </div>
                     </div>
                 </label>
                 <select id="coreApiSelect" style="width: 100%; padding: 10px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 1rem;">
                     <option value="qwen">Qwen-Omni（阿里）</option>
-                    <option value="openai">4o-realtime（OpenAI）</option>
+                    <option value="openai">GPT-Realtime（OpenAI）</option>
                     <option value="glm">GLM-realtime（智谱）</option>
+                    <option value="step">Step-2（阶跃星辰）</option>
                 </select>
             </div>
             <div class="field-row">
@@ -345,9 +347,10 @@
                         <span class="tooltip-icon">?</span>
                         <div class="tooltip-content">
                             <strong>辅助API负责记忆管理和自定义语音：</strong><br>
-                            • <strong>阿里</strong>：推荐选择，唯一支持自定义语音<br>
+                            • <strong>阿里</strong>：推荐选择，支持自定义语音<br>
+                            • <strong>智谱</strong>：永久免费且稳定<br><br>
+                            • <strong>阶跃星辰</strong>：价格相对便宜<br><br>
                             • <strong>OpenAI</strong>：记忆管理能力强<br>
-                            • <strong>智谱</strong>：免费且稳定<br><br>
                             <strong>注意：</strong>只有阿里支持自定义语音功能
                         </div>
                     </div>
@@ -356,6 +359,7 @@
                     <option value="qwen">阿里（推荐）</option>
                     <option value="openai">OpenAI</option>
                     <option value="glm">智谱</option>
+                    <option value="step">阶跃星辰</option>
                 </select>
             </div>
             <div class="field-row">
@@ -369,6 +373,10 @@
             <div class="field-row">
                 <label for="assistApiKeyInputGlm">辅助API Key - 智谱<em>（仅当辅助API为智谱时需要填写）</em></label>
                 <input type="text" id="assistApiKeyInputGlm" placeholder="可选，默认为核心API Key" value="" style="max-width: 600px;">
+            </div>
+            <div class="field-row">
+                <label for="assistApiKeyInputStep">辅助API Key - 阶跃星辰<em>（仅当辅助API为阶跃星辰时需要填写）</em></label>
+                <input type="text" id="assistApiKeyInputStep" placeholder="可选，默认为核心API Key" value="" style="max-width: 600px;">
             </div>
         </div>
     </div>
@@ -461,6 +469,10 @@ async function loadCurrentApiKey() {
                 document.getElementById('assistApiKeyInputGlm').value = data.assistApiKeyGlm;
                 document.getElementById('assistApiKeyInputGlm').placeholder = data.assistApiKeyGlm || '可选，默认为核心API Key';
             }
+            if (typeof data.assistApiKeyStep === 'string' && document.getElementById('assistApiKeyInputStep')) {
+                document.getElementById('assistApiKeyInputStep').value = data.assistApiKeyStep;
+                document.getElementById('assistApiKeyInputStep').placeholder = data.assistApiKeyStep || '可选，默认为核心API Key';
+            }
         } else {
             showCurrentApiKey('📋 获取当前API Key失败');
         }
@@ -483,6 +495,7 @@ document.getElementById('api-key-form').addEventListener('submit', async functio
     const assistApiKeyQwen = document.getElementById('assistApiKeyInputQwen') ? document.getElementById('assistApiKeyInputQwen').value.trim() : '';
     const assistApiKeyOpenai = document.getElementById('assistApiKeyInputOpenai') ? document.getElementById('assistApiKeyInputOpenai').value.trim() : '';
     const assistApiKeyGlm = document.getElementById('assistApiKeyInputGlm') ? document.getElementById('assistApiKeyInputGlm').value.trim() : '';
+    const assistApiKeyStep = document.getElementById('assistApiKeyInputStep') ? document.getElementById('assistApiKeyInputStep').value.trim() : '';
 
     if (!apiKey) {
         showStatus('请输入API Key', 'error');
@@ -493,15 +506,15 @@ document.getElementById('api-key-form').addEventListener('submit', async functio
     const currentApiKeyDiv = document.getElementById('current-api-key');
     if (currentApiKeyDiv.style.display !== 'none') {
         // 已有API Key，显示警告弹窗
-        pendingApiKey = { apiKey, coreApi, assistApi, assistApiKeyQwen, assistApiKeyOpenai, assistApiKeyGlm };
+        pendingApiKey = { apiKey, coreApi, assistApi, assistApiKeyQwen, assistApiKeyOpenai, assistApiKeyGlm, assistApiKeyStep };
         showWarningModal();
     } else {
         // 没有现有API Key，直接保存
-        await saveApiKey({ apiKey, coreApi, assistApi, assistApiKeyQwen, assistApiKeyOpenai, assistApiKeyGlm });
+        await saveApiKey({ apiKey, coreApi, assistApi, assistApiKeyQwen, assistApiKeyOpenai, assistApiKeyGlm, assistApiKeyStep });
     }
 });
 
-async function saveApiKey({ apiKey, coreApi, assistApi, assistApiKeyQwen, assistApiKeyOpenai, assistApiKeyGlm }) {
+async function saveApiKey({ apiKey, coreApi, assistApi, assistApiKeyQwen, assistApiKeyOpenai, assistApiKeyGlm, assistApiKeyStep }) {
     // 确保apiKey是有效的字符串
     if (!apiKey || typeof apiKey !== 'string') {
         showStatus('API Key无效', 'error');
@@ -520,7 +533,8 @@ async function saveApiKey({ apiKey, coreApi, assistApi, assistApiKeyQwen, assist
                 assistApi: assistApi || undefined,
                 assistApiKeyQwen: assistApiKeyQwen || undefined,
                 assistApiKeyOpenai: assistApiKeyOpenai || undefined,
-                assistApiKeyGlm: assistApiKeyGlm || undefined
+                assistApiKeyGlm: assistApiKeyGlm || undefined,
+                assistApiKeyStep: assistApiKeyStep || undefined
             })
         });
         
@@ -622,6 +636,9 @@ function updateAssistApiRecommendation() {
         case 'openai':
             recommendation = 'OpenAI作为核心API时，建议辅助API选择阿里以支持自定义语音功能';
             break;
+        case 'step':
+            recommendation = '阶跃星辰作为核心API时，建议辅助API选择阿里以支持自定义语音功能';
+            break;
     }
     
     // 更新辅助API选择框的提示
@@ -629,9 +646,10 @@ function updateAssistApiRecommendation() {
     if (assistApiTooltip) {
         assistApiTooltip.innerHTML = `
             <strong>辅助API负责记忆管理和自定义语音：</strong><br>
-            • <strong>阿里</strong>：推荐选择，唯一支持自定义语音<br>
+            • <strong>阿里</strong>：推荐选择，支持自定义语音<br>
+            • <strong>智谱</strong>：永久免费且稳定，支持联网搜索<br><br>
+            • <strong>阶跃星辰</strong>：相对便宜<br><br>
             • <strong>OpenAI</strong>：记忆管理能力强<br>
-            • <strong>智谱</strong>：免费且稳定<br><br>
             <strong>当前建议：</strong>${recommendation}
         `;
     }

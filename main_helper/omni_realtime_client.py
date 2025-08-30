@@ -152,7 +152,7 @@ class OmniRealtimeClient:
                 await self.update_session({
                     "type": "realtime",
                     "model": "gpt-realtime",
-                    "instructions": instructions,
+                    "instructions": instructions + '\n请使用卡哇伊的声音与用户交流。\n',
                     "output_modalities": ['audio'] if 'audio' in self._modalities else ['text'],
                     "audio": {
                         "input": {
@@ -167,6 +167,17 @@ class OmniRealtimeClient:
                             "voice": "marin",
                             "speed": 1.0
                         }
+                    }
+                })
+            elif "step" in self.model:
+                await self.update_session({
+                    "instructions": instructions + '\n请使用默认女声与用户交流。\n',
+                    "modalities": ['text', 'audio'],
+                    "voice": "qingchunshaonv",
+                    "input_audio_format": "pcm16",
+                    "output_audio_format": "pcm16",
+                    "turn_detection": {
+                        "type": "server_vad"
                     }
                 })
             else:

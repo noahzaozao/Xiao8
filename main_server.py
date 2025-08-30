@@ -249,6 +249,7 @@ async def get_core_config():
             "assistApiKeyQwen": core_cfg.get('assistApiKeyQwen', ''),
             "assistApiKeyOpenai": core_cfg.get('assistApiKeyOpenai', ''),
             "assistApiKeyGlm": core_cfg.get('assistApiKeyGlm', ''),
+            "assistApiKeyStep": core_cfg.get('assistApiKeyStep', ''),
             "success": True
         }
     except Exception as e:
@@ -292,6 +293,8 @@ async def update_core_config(request: Request):
             core_cfg['assistApiKeyOpenai'] = data['assistApiKeyOpenai']
         if 'assistApiKeyGlm' in data:
             core_cfg['assistApiKeyGlm'] = data['assistApiKeyGlm']
+        if 'assistApiKeyStep' in data:
+            core_cfg['assistApiKeyStep'] = data['assistApiKeyStep']
         with open('./config/core_config.json', 'w', encoding='utf-8') as f:
             json.dump(core_cfg, f, indent=2, ensure_ascii=False)
         
@@ -1353,7 +1356,7 @@ async def emotion_analysis(request: Request):
             messages=messages,
             temperature=0.3,
             max_tokens=100,
-            extra_body={"enable_thinking": False} if "gpt" in model else {}
+            extra_body={"enable_thinking": False} if "qwen" in model else {}
         )
         
         # 解析响应
