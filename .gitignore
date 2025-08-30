@@ -1,5 +1,6 @@
 # 忽略敏感配置
 core_config.txt
+test.py
 
 # 忽略日志文件
 *.log
