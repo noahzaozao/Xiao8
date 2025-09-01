@@ -292,7 +292,7 @@ class OmniRealtimeClient:
                 # else:
                 #     print(f"Event type: {event_type}")
                 if event_type == "error":
-                    logger.error(f"API Error: {event['error']}")
+                    logger.error(f"API Error: {event['error']}")    
                     if '欠费' in event['error'] or 'standing' in event['error']:
                         if self.handle_connection_error:
                             await self.handle_connection_error(event['error'])
@@ -330,7 +330,7 @@ class OmniRealtimeClient:
                     self._print_input_transcript = False
 
                 if not self._skip_until_next_response:
-                    if event_type == "response.text.delta":
+                    if event_type in ["response.text.delta", "response.output_text.delta"]:
                         if self.on_text_delta:
                             await self.on_text_delta(event["delta"], self._is_first_text_chunk)
                             self._is_first_text_chunk = False
