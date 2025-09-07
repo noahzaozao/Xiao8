@@ -60,7 +60,7 @@ Lanlan（兰兰）是一个新手友好、开箱即用的，具有听觉、视�
 
 > 获取 *阿里云API*。在阿里云的百炼平台[官网](https://bailian.console.aliyun.com/)注册账号。新用户实名认证后可以获取大量免费额度，记得留意页面上的"新人福利"广告。注册完成后，请访问[控制台](https://bailian.console.aliyun.com/api-key?tab=model#/api-key)获取API Key。
 
-> 获取 *智谱API*。在智谱开放平台[官网](https://https://open.bigmodel.cn/)注册账号并充值1元后，可以领取大量免费额度。登陆成功后，请从[API 控制台](https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys)获取API Key。
+> 获取 *智谱API*。在智谱开放平台[官网](https://open.bigmodel.cn/)注册账号并充值1元后，可以领取大量免费额度。登陆成功后，请从[API 控制台](https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys)获取API Key。
 
 >  *对于**开发者**，请在克隆本项目后，(1)新建`pyhon3.11`环境。(2)执行`pip install -r requirements.txt`安装依赖。(3)复制`config/api_template.py`到`config/api.py`并进行必要配置。(4)执行`python memory_server.py`和`python main_server.py`。(5)通过main server中指定的端口（默认为`http://localhost:48911`）访问网页版。*
 
