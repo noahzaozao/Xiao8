@@ -27,6 +27,7 @@ class ConversationAnalyzer:
 
     def analyze(self, messages: List[Dict[str, str]]):
         prompt = self._build_prompt(messages)
+        print("[LLM Prompt][brain.analyzer]", prompt)
         resp = self.llm.invoke([
             {"role": "system", "content": "You are a precise task intent extractor."},
             {"role": "user", "content": prompt},

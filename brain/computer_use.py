@@ -133,6 +133,10 @@ class ComputerUseAdapter:
                         "Coordinates must be normalized in the range 0..1000 (x is horizontal, y is vertical; top-left to bottom-right).\n"
                         "If a box is not suitable, output exactly two pixel coordinates: x,y. Do not include any explanations or extra text."
                     )
+                    try:
+                        print("[LLM Prompt][computer_use.grounding]", prompt)
+                    except Exception:
+                        pass
                     self.grounding_model.add_message(
                         text_content=prompt, image_content=obs["screenshot"], put_text_last=True
                     )

@@ -35,6 +35,7 @@ class TaskDeduper:
             return {"duplicate": False, "matched_id": None}
 
         prompt = self._build_prompt(new_task, candidates)
+        print("[LLM Prompt][brain.deduper]", prompt)
         resp = self.llm.invoke([
             {"role": "system", "content": "You are a careful deduplication judge."},
             {"role": "user", "content": prompt},

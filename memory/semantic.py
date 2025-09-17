@@ -55,6 +55,7 @@ class SemanticMemory:
         retries = 0
         while retries < 3:
             try:
+                print("[LLM Prompt][semantic.rerank]", prompt)
                 response = self.reranker.invoke(prompt)
             except Exception as e:
                 retries += 1

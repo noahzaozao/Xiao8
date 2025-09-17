@@ -357,8 +357,10 @@ class LLMSessionManager:
             # 获取初始 prompt
             initial_prompt = ("你是一个角色扮演大师，并且精通电脑操作。请按要求扮演以下角色（self.lanlan_name），并在对方请求时、回答“我试试”并尝试操纵电脑。" if self._is_agent_enabled() else "你是一个角色扮演大师。请按要求扮演以下角色（self.lanlan_name）。") + self.lanlan_prompt
             initial_prompt += requests.get(f"http://localhost:{self.memory_server_port}/new_dialog/{self.lanlan_name}").text
-            # logger.info("====Initial Prompt=====")
-            # logger.info(initial_prompt)
+            try:
+                print("[LLM Prompt][core.initial]", initial_prompt)
+            except Exception:
+                pass
 
             # 标记 session 激活
             if self.session:
@@ -434,7 +436,10 @@ class LLMSessionManager:
             async with httpx.AsyncClient() as client:
                 resp = await client.get(f"http://localhost:{self.memory_server_port}/new_dialog/{self.lanlan_name}")
                 initial_prompt += resp.text + self._convert_cache_to_str(self.message_cache_for_new_session)
-            # print(initial_prompt)
+            try:
+                print("[LLM Prompt][core.pending_initial]", initial_prompt)
+            except Exception:
+                pass
             await self.pending_session.connect(initial_prompt, native_audio = not self.use_tts)
 
             # 4. Start temporary listener for PENDING session's *first* ignored response

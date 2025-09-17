@@ -36,6 +36,7 @@ class ImportantSettingsManager:
         retries = 0
         while retries < 3:
             try:
+                print("[LLM Prompt][settings.verifier]", prompt)
                 response = self.verifier.invoke(prompt)
                 result = response.content
                 if result.startswith("```"):
@@ -75,6 +76,7 @@ class ImportantSettingsManager:
         new_settings = ""
         while retries < 3:
             try:
+                print("[LLM Prompt][settings.extract]", prompt)
                 response = self.proposer.invoke(prompt)
             except Exception as e:
                 print("Setting LLM query出错", e)

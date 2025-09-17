@@ -63,7 +63,7 @@ class MemoryQueryRouter:
 查询: {query}
 
 只返回类型名称，不要有其他文本。"""
-
+        print("[LLM Prompt][router.route_query]", prompt)
         response = self.llm.invoke(prompt)
         query_type = response.content.strip().lower()
 
@@ -87,6 +87,7 @@ class MemoryQueryRouter:
         }}
         """
 
+        print("[LLM Prompt][router.extract_time]", prompt)
         response = self.llm.invoke(prompt)
         try:
             time_range = json.loads(response.content)

@@ -1349,6 +1349,10 @@ async def emotion_analysis(request: Request):
                 "content": text
             }
         ]
+        try:
+            print("[LLM Prompt][main_server.emotion]", json.dumps({"model": model, "messages": messages}, ensure_ascii=False))
+        except Exception:
+            pass
         
         # 异步调用模型
         response = await client.chat.completions.create(

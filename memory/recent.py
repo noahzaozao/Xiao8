@@ -85,6 +85,7 @@ class CompressedRecentHistoryManager:
         while retries < 3:
             try:
                 # 尝试将响应内容解析为JSON
+                print("[LLM Prompt][recent.compress]", prompt)
                 response_content = self.llm.invoke(prompt).content
                 # 修复类型问题：确保response_content是字符串
                 if isinstance(response_content, list):
@@ -117,7 +118,9 @@ class CompressedRecentHistoryManager:
         while retries < 3:
             try:
                 # 尝试将响应内容解析为JSON
-                response_content = self.llm.invoke(further_summarize_prompt % initial_summary).content
+                _prompt = further_summarize_prompt % initial_summary
+                print("[LLM Prompt][recent.further]", _prompt)
+                response_content = self.llm.invoke(_prompt).content
                 # 修复类型问题：确保response_content是字符串
                 if isinstance(response_content, list):
                     response_content = str(response_content)
@@ -192,6 +195,7 @@ class CompressedRecentHistoryManager:
         try:
             # 使用LLM审阅历史记录
             prompt = history_review_prompt % (self.name_mapping['human'], name_mapping['ai'], history_text, self.name_mapping['human'], name_mapping['ai'])
+            print("[LLM Prompt][recent.review]", prompt)
             response_content = self.llm.invoke(prompt).content
             
             # 确保response_content是字符串
