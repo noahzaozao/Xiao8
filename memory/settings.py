@@ -5,24 +5,33 @@ from config.prompts_sys import settings_extractor_prompt, settings_verifier_prom
 
 
 class ImportantSettingsManager:
-    def __init__(self, settings_file=None):
-        _, _, master_basic_config, lanlan_basic_config, name_mapping, _, _, _, setting_store, _ = get_character_data()
-        self.settings_file = settings_file if settings_file is not None else setting_store
+    def __init__(self):
         self.proposer = ChatOpenAI(model=SETTING_PROPOSER_MODEL, base_url=OPENROUTER_URL, api_key=OPENROUTER_API_KEY, temperature=0.5)
         self.verifier = ChatOpenAI(model=SETTING_VERIFIER_MODEL, base_url=OPENROUTER_URL, api_key=OPENROUTER_API_KEY, temperature=0.5)
         self.settings = {}
-        self.master_basic_config = master_basic_config
-        self.lanlan_basic_config = lanlan_basic_config
-        self.name_mapping = name_mapping
+        self.settings_file = None
+        self.master_basic_config = None
+        self.lanlan_basic_config = None
+        self.name_mapping = None
         self.load_settings()
 
     def load_settings(self):
+        # It is important to update the settings with the latest character on-disk files
+        _, _, master_basic_config, lanlan_basic_config, name_mapping, _, _, _, setting_store, _ = get_character_data()
+        self.settings_file = setting_store
+        self.master_basic_config = master_basic_config
+        self.lanlan_basic_config = lanlan_basic_config
+        self.name_mapping = name_mapping
+
         for i in self.settings_file:
             try:
+                self.lanlan_basic_config[i].pop('system_prompt', None)
+                self.lanlan_basic_config[i].pop('live2d', None)
+                self.lanlan_basic_config[i].pop('voice_id', None)
                 with open(self.settings_file[i], 'r', encoding='utf-8') as f:
                     self.settings[i] = json.load(f)
             except (FileNotFoundError, json.JSONDecodeError):
-                self.settings[i] = {i: self.lanlan_basic_config[i], self.name_mapping['human']: self.master_basic_config}
+                self.settings[i] = {i: {}, self.name_mapping['human']: {}}
 
     def save_settings(self, lanlan_name):
         with open(self.settings_file[lanlan_name], 'w', encoding='utf-8') as f:

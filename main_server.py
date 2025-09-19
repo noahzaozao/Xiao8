@@ -683,6 +683,43 @@ async def clear_voice_ids():
             'error': f'清除Voice ID记录时出错: {str(e)}'
         }, status_code=500)
 
+@app.post('/api/characters/set_microphone')
+async def set_microphone(request: Request):
+    try:
+        data = await request.json()
+        microphone_id = data.get('microphone_id')
+        
+        # 读取现有的characters.json文件
+        with open('config/characters.json', 'r', encoding='utf-8') as f:
+            characters_data = json.load(f)
+        
+        # 添加或更新麦克风选择
+        characters_data['当前麦克风'] = microphone_id
+        
+        # 保存回文件
+        with open('config/characters.json', 'w', encoding='utf-8') as f:
+            json.dump(characters_data, f, ensure_ascii=False, indent=2)
+        
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"保存麦克风选择失败: {e}")
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+@app.get('/api/characters/get_microphone')
+async def get_microphone():
+    try:
+        # 读取characters.json文件
+        with open('config/characters.json', 'r', encoding='utf-8') as f:
+            characters_data = json.load(f)
+        
+        # 获取保存的麦克风选择
+        microphone_id = characters_data.get('当前麦克风')
+        
+        return {"microphone_id": microphone_id}
+    except Exception as e:
+        logger.error(f"获取麦克风选择失败: {e}")
+        return {"microphone_id": None}
+
 @app.post('/api/voice_clone')
 async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
     import os
@@ -1356,7 +1393,7 @@ async def emotion_analysis(request: Request):
             messages=messages,
             temperature=0.3,
             max_tokens=100,
-            extra_body={"enable_thinking": False} if "qwen" in model else {}
+            extra_body={"enable_thinking": False}
         )
         
         # 解析响应

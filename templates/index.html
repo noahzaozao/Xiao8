@@ -136,8 +136,152 @@
             padding: 0;
         }
 
-        #toggle-chat-btn:hover {
+        #toggle-sidebar-btn:hover {
             background: #cacbcd;
+        }
+
+        /* 麦克风选择器样式 */
+        #mic-container {
+            position: relative;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: nowrap;
+            min-width: 0;
+        }
+        
+        /* 修复开始聊天按钮样式，使其与其他按钮一致 */
+        #micButton {
+            padding: 10px 15px; /* 与其他side-btn一致 */
+            border-radius: 8px;
+            border: none;
+            background: #333;
+            color: #fff;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-bottom: 4px;
+            opacity: 1;
+            transition: background 0.2s, color 0.2s, box-shadow 0.2s, opacity 0.2s;
+            width: 100%;
+            text-align: center;
+            box-sizing: border-box;
+            margin-right: 5px;
+        }
+        
+        #micButton:hover:not(:disabled) {
+            background: #4f8cff;
+            color: #fff;
+        }
+        
+        /* 侧边栏最小化状态下的处理 */
+        #sidebar.minimized #mic-container {
+            min-width: 0;
+        }
+        
+        /* 侧边栏最小化状态下隐藏麦克风选择器 */
+        #sidebar.minimized .mic-selector {
+            display: none;
+        }
+        
+        /* 修改麦克风选择器按钮样式 */
+        .mic-selector {
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 24px;
+            height: 24px;
+            z-index: 2;
+        }
+        
+        .toggle-mic-selector {
+            background: #333; /* 与side-btn一致的背景色 */
+            color: #fff; /* 与side-btn一致的文字颜色 */
+            border: none; /* 移除边框 */
+            border-radius: 8px; /* 与side-btn一致的圆角 */
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            font-size: 12px;
+            line-height: 1;
+            opacity: 0.8;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            position: relative;
+        }
+        
+        .toggle-mic-selector:hover {
+            background: #4f8cff; /* 与side-btn一致的悬停背景色 */
+            opacity: 1;
+            color: #fff;
+        }
+        
+        /* 修改麦克风列表样式 - 向右扩展并设置半透明背景 */
+        .mic-list {
+            position: absolute;
+            left: 100%; /* 向右扩展 */
+            top: 0; /* 与按钮顶部对齐 */
+            background: rgba(255, 255, 255, 0.95); /* 半透明背景 */
+            backdrop-filter: blur(5px); /* 可选：添加模糊效果 */
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+            max-height: 200px;
+            overflow-y: auto;
+            min-width: 220px;
+            display: none;
+            z-index: 1000;
+            margin-left: 5px; /* 与按钮之间的间距 */
+            transition: all 0.2s ease;
+        }
+        
+        .mic-list.show {
+            display: block;
+            animation: fadeInRight 0.2s ease;
+        }
+        
+        /* 添加淡入动画 */
+        @keyframes fadeInRight {
+            from {
+                opacity: 0;
+                transform: translateX(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .mic-option {
+            padding: 8px 12px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+            font-size: 0.9rem;
+            color: #333;
+            transition: background-color 0.2s;
+        }
+        
+        .mic-option:hover {
+            background-color: #f0f0f0;
+        }
+        
+        .mic-option.selected {
+            background-color: #e6f0ff;
+            color: #4f8cff;
+            font-weight: 500;
+        }
+        
+        .mic-option.default::after {
+            content: ' (默认)';
+            font-size: 0.8rem;
+            color: #666;
         }
 
         /* --- 最小化状态 --- */
@@ -289,8 +433,9 @@
             background: #cacbcd;
         }
 
+        /* 确保所有按钮的禁用状态显示一致 */
         .side-btn {
-            padding: 10px 20px;
+            padding: 10px 15px; /* 调整内边距，使按钮更加紧凑 */
             border-radius: 8px;
             border: none;
             background: #333;
@@ -298,19 +443,22 @@
             font-size: 1rem;
             cursor: pointer;
             margin-bottom: 4px;
-            /* 透明度100%，鼠标可点击 */
             opacity: 1;
             pointer-events: auto;
             transition: background 0.2s, color 0.2s, box-shadow 0.2s, opacity 0.2s;
+            width: 100%; /* 确保所有按钮宽度一致 */
+            text-align: center;
+            box-sizing: border-box;
         }
 
         .side-btn:active {
             background: #555;
         }
 
+        /* 增强禁用状态的视觉效果 */
         .side-btn:disabled {
-            background: #e0e0e0;
-            color: #888;
+            background: #e0e0e0 !important; /* 强制应用灰色背景 */
+            color: #888 !important; /* 强制应用灰色文字 */
             cursor: not-allowed;
             border: 1px solid #ccc;
             opacity: 0.7;
@@ -642,6 +790,11 @@
         }
 
         @media only screen and (max-width: 768px) {
+            /* 手机端隐藏麦克风选择器 */
+            .mic-selector {
+                display: none !important;
+            }
+            
             #live2d-container {
                 position: fixed;
                 right: 0;
@@ -812,7 +965,14 @@
 <div id="sidebar">
     <div id="sidebarbox">
         <button id="toggle-sidebar-btn" title="折叠侧边栏">—</button>
-        <button id="micButton" class="side-btn">🎤 开始聊天</button>
+        <div id="mic-container">
+            <button id="micButton" class="side-btn">🎤 开始聊天</button>
+            <div id="mic-selector" class="mic-selector">
+                <!-- 默认显示向右的三角形 -->
+                <button id="toggle-mic-selector" class="toggle-mic-selector" title="选择麦克风">▶️</button>
+                <div id="mic-list" class="mic-list"></div>
+            </div>
+        </div>
         <button id="muteButton" class="side-btn" disabled>⏸️ 休息一下</button>
         <button id="screenButton" class="side-btn" disabled><span class="desktop-text">🖥️ 屏幕共享</span><span class="mobile-text">📷 摄像头分享</span></button>
         <button id="stopButton" class="side-btn" disabled>🛑 停止共享</button>

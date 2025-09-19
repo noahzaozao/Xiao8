@@ -292,7 +292,7 @@ class OmniRealtimeClient:
                 # else:
                 #     print(f"Event type: {event_type}")
                 if event_type == "error":
-                    logger.error(f"API Error: {event['error']}")    
+                    logger.error(f"API Error: {event['error']}")
                     if '欠费' in event['error'] or 'standing' in event['error']:
                         if self.handle_connection_error:
                             await self.handle_connection_error(event['error'])

@@ -24,6 +24,8 @@ function init_app(){
     let globalAnalyser = null;
     let lipSyncActive = false;
     let screenCaptureStream = null; // 暂存屏幕共享stream，不再需要每次都弹窗选择共享区域，方便自动重连
+    // 新增：当前选择的麦克风设备ID
+    let selectedMicrophoneId = null;
 
     function isMobile() {
       return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -187,7 +189,222 @@ function init_app(){
     }
 
 
-    async function startMicCapture() {  // 开麦，按钮on click
+        // 全局变量用于缓存麦克风列表和缓存时间戳
+    let cachedMicrophones = null;
+    let cacheTimestamp = 0;
+    const CACHE_DURATION = 30000; // 缓存30秒
+
+    // 初始化麦克风选择器
+    async function initMicrophoneSelector() {
+        const toggleButton = document.getElementById('toggle-mic-selector');
+        const micList = document.getElementById('mic-list');
+        const micContainer = document.getElementById('mic-container');
+        
+        // 检查元素是否存在
+        if (!toggleButton || !micList) {
+            console.error('麦克风选择器元素未找到');
+            return;
+        }
+        
+        // 添加调试信息
+        console.log('麦克风选择器初始化 - 元素已找到');
+        
+        // 页面加载时预加载麦克风列表，减少首次点击的延迟
+        await loadMicrophoneList(true); // true表示预加载模式
+        
+        // 点击切换按钮时显示/隐藏麦克风列表
+        toggleButton.addEventListener('click', async (event) => {
+            // 添加调试信息
+            console.log('麦克风选择器按钮被点击');
+            event.stopPropagation();
+            if (micList.classList.contains('show')) {
+                micList.classList.remove('show');
+                // 列表收起时，箭头变为向右
+                toggleButton.textContent = '▶️';
+            } else {
+                try {
+                    // 快速显示缓存的列表
+                    if (cachedMicrophones && (Date.now() - cacheTimestamp < CACHE_DURATION)) {
+                        renderMicrophoneList(cachedMicrophones);
+                        micList.classList.add('show');
+                        toggleButton.textContent = '◀️';
+                        console.log('使用缓存的麦克风列表');
+                        
+                        // 后台刷新缓存，不阻塞UI
+                        setTimeout(() => {
+                            loadMicrophoneList();
+                        }, 0);
+                    } else {
+                        // 缓存过期或不存在，重新加载
+                        await loadMicrophoneList();
+                        micList.classList.add('show');
+                        toggleButton.textContent = '◀️';
+                    }
+                    // 添加调试信息
+                    console.log('麦克风列表已显示');
+                } catch (error) {
+                    console.error('加载麦克风列表失败:', error);
+                }
+            }
+        });
+        
+        // 修复：确保点击事件不会被父元素拦截
+        if (micContainer) {
+            micContainer.addEventListener('click', (event) => {
+                event.stopPropagation();
+            });
+        }
+        
+        // 点击页面其他地方时隐藏麦克风列表
+        document.addEventListener('click', (event) => {
+            if (!micList.contains(event.target) && event.target !== toggleButton) {
+                micList.classList.remove('show');
+                // 列表收起时，箭头变为向右
+                toggleButton.textContent = '▶️';
+            }
+        });
+        
+        // 尝试从本地存储或配置中加载上次选择的麦克风
+        await loadSelectedMicrophone();
+    }
+    
+    // 加载麦克风列表
+    async function loadMicrophoneList(isPreload = false) {
+        try {
+            // 获取所有媒体设备
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const audioInputs = devices.filter(device => device.kind === 'audioinput');
+            
+            // 缓存结果
+            cachedMicrophones = audioInputs;
+            cacheTimestamp = Date.now();
+            
+            // 仅在非预加载模式或没有麦克风时渲染UI
+            if (!isPreload || audioInputs.length === 0) {
+                renderMicrophoneList(audioInputs);
+            }
+        } catch (err) {
+            console.error('获取麦克风设备列表失败:', err);
+            
+            if (!isPreload) {
+                const micList = document.getElementById('mic-list');
+                micList.innerHTML = '';
+                const errorItem = document.createElement('div');
+                errorItem.className = 'mic-option';
+                errorItem.textContent = '获取麦克风列表失败';
+                micList.appendChild(errorItem);
+            }
+        }
+    }
+
+    // 渲染麦克风列表到UI
+    function renderMicrophoneList(audioInputs) {
+        const micList = document.getElementById('mic-list');
+        micList.innerHTML = '';
+        
+        // 如果没有麦克风设备
+        if (audioInputs.length === 0) {
+            const noMicItem = document.createElement('div');
+            noMicItem.className = 'mic-option';
+            noMicItem.textContent = '没有检测到麦克风设备';
+            noMicItem.disabled = true;
+            micList.appendChild(noMicItem);
+            return;
+        }
+        
+        // 添加默认麦克风选项（使用系统默认）
+        const defaultOption = document.createElement('button');
+        defaultOption.className = `mic-option ${selectedMicrophoneId === null ? 'selected' : ''} default`;
+        defaultOption.textContent = '系统默认麦克风';
+        defaultOption.addEventListener('click', () => selectMicrophone(null));
+        micList.appendChild(defaultOption);
+        
+        // 添加分隔线
+        const separator = document.createElement('div');
+        separator.style.height = '1px';
+        separator.style.backgroundColor = '#eee';
+        separator.style.margin = '5px 0';
+        micList.appendChild(separator);
+        
+        // 添加各个麦克风设备选项
+        audioInputs.forEach(device => {
+            const option = document.createElement('button');
+            option.className = `mic-option ${selectedMicrophoneId === device.deviceId ? 'selected' : ''}`;
+            option.textContent = device.label || `麦克风 ${micList.children.length - 1}`;
+            option.dataset.deviceId = device.deviceId; // 存储设备ID
+            option.addEventListener('click', () => selectMicrophone(device.deviceId));
+            micList.appendChild(option);
+        });
+    }
+    
+    // 选择麦克风
+    async function selectMicrophone(deviceId) {
+        selectedMicrophoneId = deviceId;
+        
+        // 更新UI选中状态
+        const options = document.querySelectorAll('.mic-option');
+        options.forEach(option => {
+            if ((option.classList.contains('default') && deviceId === null) || 
+                (option.dataset.deviceId === deviceId && deviceId !== null)) {
+                option.classList.add('selected');
+            } else {
+                option.classList.remove('selected');
+            }
+        });
+        
+        // 保存选择到服务器
+        await saveSelectedMicrophone(deviceId);
+        
+        // 隐藏列表
+        document.getElementById('mic-list').classList.remove('show');
+        
+        // 如果正在录音，重启录音以使用新选择的麦克风
+        if (isRecording) {
+            const wasRecording = isRecording;
+            await stopMicCapture();
+            if (wasRecording) {
+                await startMicCapture();
+            }
+        }
+    }
+    
+    // 保存选择的麦克风到服务器
+    async function saveSelectedMicrophone(deviceId) {
+        try {
+            const response = await fetch('/api/characters/set_microphone', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    microphone_id: deviceId
+                })
+            });
+            
+            if (!response.ok) {
+                console.error('保存麦克风选择失败');
+            }
+        } catch (err) {
+            console.error('保存麦克风选择时发生错误:', err);
+        }
+    }
+    
+    // 加载上次选择的麦克风
+    async function loadSelectedMicrophone() {
+        try {
+            const response = await fetch('/api/characters/get_microphone');
+            if (response.ok) {
+                const data = await response.json();
+                selectedMicrophoneId = data.microphone_id || null;
+            }
+        } catch (err) {
+            console.error('加载麦克风选择失败:', err);
+            selectedMicrophoneId = null;
+        }
+    }
+    
+    // 开麦，按钮on click
+    async function startMicCapture() {
         try {
             if (!audioPlayerContext) {
                 audioPlayerContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -197,8 +414,12 @@ function init_app(){
                 await audioPlayerContext.resume();
             }
 
-            // 获取麦克风流
-            stream = await navigator.mediaDevices.getUserMedia({audio: true});
+            // 获取麦克风流，使用选择的麦克风设备ID
+            const constraints = {
+                audio: selectedMicrophoneId ? { deviceId: { exact: selectedMicrophoneId } } : true
+            };
+            
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
 
             // 检查音频轨道状态
             const audioTracks = stream.getAudioTracks();
@@ -803,8 +1024,11 @@ function init_app(){
     }
     window.startScreenSharing = startScreenSharing;
     window.stopScreenSharing  = stopScreenSharing;
-    window.screen_share       = startScreenSharing; // 兼容老按钮
-}
+    window.screen_share       = startScreenSharing;
+    
+    // 初始化麦克风选择器
+    initMicrophoneSelector();
+} // 兼容老按钮
 
 const ready = () => {
     if (ready._called) return;
