@@ -59,7 +59,7 @@ class OmniRealtimeClient:
         base_url,
         api_key: str,
         model: str = "",
-        voice: str = "Chelsie",
+        voice: str = "Cherry",
         turn_detection_mode: TurnDetectionMode = TurnDetectionMode.SERVER_VAD,
         on_text_delta: Optional[Callable[[str, bool], Awaitable[None]]] = None,
         on_audio_delta: Optional[Callable[[bytes], Awaitable[None]]] = None,

@@ -77,7 +77,7 @@ try:
         logger.warning("coreApi: " + core_cfg['coreApi'])
         if core_cfg['coreApi'] == 'qwen':
             CORE_URL = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
-            CORE_MODEL = "qwen-omni-turbo-realtime-2025-05-08"
+            CORE_MODEL = "qwen3-omni-flash-realtime-2025-09-15"
         elif core_cfg['coreApi'] == 'glm':
             CORE_URL = "wss://open.bigmodel.cn/api/paas/v4/realtime"
             CORE_MODEL = "glm-realtime-air" 
@@ -91,7 +91,7 @@ try:
             logger.error("💥 Unknown coreApi: " + core_cfg['coreApi'])
     else:
         CORE_URL = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
-        CORE_MODEL = "qwen-omni-turbo-realtime-2025-05-08"
+        CORE_MODEL = "qwen3-omni-flash-realtime-2025-09-15"
     ASSIST_API_KEY_QWEN = core_cfg['assistApiKeyQwen'] if 'assistApiKeyQwen' in core_cfg and core_cfg['assistApiKeyQwen'] != '' else CORE_API_KEY
     ASSIST_API_KEY_OPENAI = core_cfg['assistApiKeyOpenai'] if 'assistApiKeyOpenai' in core_cfg and core_cfg['assistApiKeyOpenai'] != '' else CORE_API_KEY
     ASSIST_API_KEY_GLM = core_cfg['assistApiKeyGlm'] if 'assistApiKeyGlm' in core_cfg and core_cfg['assistApiKeyGlm'] != '' else CORE_API_KEY
