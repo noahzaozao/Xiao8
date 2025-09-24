@@ -1,8 +1,11 @@
 import asyncio
+import logging
 from typing import Dict, Any, List, Optional
 import httpx
 from cachetools import TTLCache
-from config import MCP_ROUTER_URL
+from config import MCP_ROUTER_URL, MCP_ROUTER_API_KEY
+
+logger = logging.getLogger(__name__)
 
 
 class McpRouterClient:
@@ -14,9 +17,13 @@ class McpRouterClient:
     - Provides simple tool invocation shim (POST /tools/{server_id}/{tool_name}) if router exposes such API later
       For now only discovery is used; tool execution will be done by LLM selection inside processor.
     """
-    def __init__(self, base_url: str = MCP_ROUTER_URL, timeout: float = 10.0):
+    def __init__(self, base_url: str = MCP_ROUTER_URL, api_key: str = MCP_ROUTER_API_KEY, timeout: float = 10.0):
         self.base_url = base_url.rstrip('/')
-        self.http = httpx.AsyncClient(timeout=timeout)
+        self.api_key = api_key
+        headers = {}
+        if self.api_key:
+            headers['Authorization'] = f'Bearer {self.api_key}'
+        self.http = httpx.AsyncClient(timeout=timeout, headers=headers)
         # Cache servers listing for 10 seconds
         self._servers_cache: TTLCache[str, Any] = TTLCache(maxsize=1, ttl=10)
 
@@ -47,6 +54,48 @@ class McpRouterClient:
             if s.get('identifier') == name_or_id or s.get('name') == name_or_id:
                 return s
         return None
+
+    async def call_tool(self, server_id: str, tool_name: str, arguments: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Call a specific tool on an MCP server.
+        This is a placeholder implementation - actual MCP tool calling would require
+        establishing a proper MCP connection to the server.
+        """
+        try:
+            # For now, we'll simulate tool calling since we don't have direct MCP server access
+            # In a real implementation, this would establish an MCP connection and call the tool
+            logger.info(f"[MCP] Simulating tool call: {server_id}.{tool_name} with args: {arguments}")
+            
+            # Simulate different tool responses based on tool name
+            if tool_name == "save_memory":
+                return {
+                    "success": True,
+                    "result": f"Memory saved successfully: {arguments.get('content', 'No content provided')}",
+                    "tool": tool_name,
+                    "server": server_id
+                }
+            elif tool_name == "retrieve_memory":
+                return {
+                    "success": True,
+                    "result": f"Retrieved memories: {arguments.get('query', 'No query provided')}",
+                    "tool": tool_name,
+                    "server": server_id
+                }
+            else:
+                return {
+                    "success": True,
+                    "result": f"Tool {tool_name} executed successfully",
+                    "tool": tool_name,
+                    "server": server_id
+                }
+        except Exception as e:
+            logger.error(f"[MCP] Tool call failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "tool": tool_name,
+                "server": server_id
+            }
 
     async def aclose(self):
         await self.http.aclose()

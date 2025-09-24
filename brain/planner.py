@@ -1,10 +1,14 @@
 import asyncio
+import logging
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from langchain_openai import ChatOpenAI
 from config import OPENROUTER_API_KEY, OPENROUTER_URL, SUMMARY_MODEL
 from .mcp_client import McpRouterClient, McpToolCatalog
 from .computer_use import ComputerUseAdapter
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -39,6 +43,11 @@ class TaskPlanner:
         # Phase 1: MCP-only decision
         capabilities = await self.refresh_capabilities()
         tools_brief = "\n".join([f"- {k}: {v['description']} (status={v['status']})" for k, v in capabilities.items()])
+        
+        # Log MCP capabilities discovery
+        logger.info(f"[MCP] Planning task {task_id} - Discovered {len(capabilities)} MCP capabilities")
+        for cap_id, cap_info in capabilities.items():
+            logger.info(f"[MCP]   - {cap_id}: {cap_info.get('title', 'No title')} (status: {cap_info.get('status', 'unknown')})")
         mcp_system = (
             "You are a planning agent. Decide ONLY based on MCP server capabilities whether the task is executable."
             " Do NOT consider GUI or computer-use in this step."
@@ -58,6 +67,17 @@ class TaskPlanner:
             mcp = json.loads(text1)
         except Exception:
             mcp = {"can_execute": False, "reason": "LLM parse error", "server_id": None, "steps": []}
+        
+        # Log MCP decision
+        if mcp.get('can_execute'):
+            server_id = mcp.get('server_id', 'unknown')
+            steps_count = len(mcp.get('steps', []))
+            logger.info(f"[MCP] ✅ Task {task_id} can be executed by MCP server '{server_id}' with {steps_count} steps")
+            for i, step in enumerate(mcp.get('steps', []), 1):
+                logger.info(f"[MCP]   Step {i}: {step}")
+        else:
+            reason = mcp.get('reason', 'no reason provided')
+            logger.info(f"[MCP] ❌ Task {task_id} cannot be executed by MCP: {reason}")
 
         cu_decision = None
         cu = self.computer_use.is_available()
