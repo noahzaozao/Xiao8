@@ -15,7 +15,7 @@
 
 **:older_woman: 我奶奶都能在3分钟内配置好的赛博猫娘！**
 
-:newspaper: **v0.4.1已发布！现已支持Agent模式、Qwen3-Omni和GPT-Realtime！**
+:newspaper: **v0.4.1已发布！现已支持Agent模式、Step-Audio2、Qwen3-Omni和GPT-Realtime！**
 
 *Don't ask me anything. Ask 兰兰！*
 
@@ -120,11 +120,11 @@ Lanlan/
 
 ## A. 高优先级
 
-1. 继续完善工具调用和MCP教程。
-
 1. 移除memory server中语义索引的部分，引入Graphiti用于长期记忆存储；开放settings update功能。
 
-1. 用React对前端进行重构，筹备手机端独立运行版本。（后续可能会将后端逻辑同样改写为到React，形成一个独立Repo。）
+1. 用React对前端进行重构，筹备手机端独立运行版本。
+
+1. 支持文本输入功能。
 
 ## B. 中等优先级
 
@@ -137,18 +137,6 @@ Lanlan/
 1. 完善原生工具调用。
 
 # Q&A
-
-> *你为什么要用阿里？为什么不用Deepseek？*
-
-因为阿里是全模态模型，它说话快。
-
-> *你为什么要用8B模型？你不知道8B模型都是笨比吗？*
-
-因为阿里目前只有8B模型，它说话快。
-
-> *能不能换别的厂家/离线运行/换别的模型/xxx试试？*
-
-对不起，但是它说话快。
 
 > *为什么我的AI感觉笨笨的？*
 
@@ -166,7 +154,7 @@ OpenAI官方的Realtime API支持`tool calling`功能，因此，本项目与MCP
 
 > *本项目支持哪些语言模型？*
 
-本项目依赖于实时全模态API。直播版本使用的是Gemini Live API，开源版本使用的是[OpenAI Realtime API](https://platform.openai.com/docs/guides/realtime)。Gemini Live接口具有更好的效果，但目前**只支持谷歌**。OpenAI Realtime接口规范目前**有OpenAI，阿里云，智谱 三家服务商**支持，未来可能兼容更多模型。开源版支持`Qwen-Omni-Realtime`,`GLM-Realtime`和`GPT-Realtime`三个模型。
+本项目依赖于实时全模态API。直播版本使用的是Gemini Live API，开源版本使用的是[OpenAI Realtime API](https://platform.openai.com/docs/guides/realtime)。Gemini Live接口具有更好的效果，但目前**只支持谷歌**。OpenAI Realtime接口规范目前**有OpenAI，阿里云，智谱，阶跃星辰 四家服务商**支持，未来可能兼容更多模型。开源版支持`Step-Audio`,`Qwen-Omni-Realtime`,`GLM-Realtime`和`GPT-Realtime`四个模型。
 
 **已知其他支持实时模式但不兼容OpenAI Realtime的模型：**(字节跳动)豆包实时语音交互，(商汤)SenseNova V6 Omni，(科大讯飞)星火认知超拟人
 
