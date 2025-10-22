@@ -63,7 +63,7 @@ class OmniRealtimeClient:
         turn_detection_mode: TurnDetectionMode = TurnDetectionMode.SERVER_VAD,
         on_text_delta: Optional[Callable[[str, bool], Awaitable[None]]] = None,
         on_audio_delta: Optional[Callable[[bytes], Awaitable[None]]] = None,
-        on_interrupt: Optional[Callable[[], Awaitable[None]]] = None,
+        on_new_message: Optional[Callable[[], Awaitable[None]]] = None,
         on_input_transcript: Optional[Callable[[str], Awaitable[None]]] = None,
         on_output_transcript: Optional[Callable[[str, bool], Awaitable[None]]] = None,
         on_connection_error: Optional[Callable[[str], Awaitable[None]]] = None,
@@ -77,7 +77,7 @@ class OmniRealtimeClient:
         self.ws = None
         self.on_text_delta = on_text_delta
         self.on_audio_delta = on_audio_delta
-        self.on_interrupt = on_interrupt
+        self.on_new_message = on_new_message
         self.on_input_transcript = on_input_transcript
         self.on_output_transcript = on_output_transcript
         self.turn_detection_mode = turn_detection_mode
@@ -172,7 +172,7 @@ class OmniRealtimeClient:
             elif "step" in self.model:
                 await self.update_session({
                     "instructions": instructions + '\n请使用默认女声与用户交流。\n',
-                    "modalities": ['text', 'audio'],
+                    "modalities": ['text', 'audio'], # Step API只支持这一个模式
                     "voice": self.voice if self.voice else "qingchunshaonv",
                     "input_audio_format": "pcm16",
                     "output_audio_format": "pcm16",
@@ -318,15 +318,19 @@ class OmniRealtimeClient:
                     if self._is_responding:
                         logger.info("Handling interruption")
                         await self.handle_interruption()
-                    if self.on_interrupt:
-                        # logger.info("Handling on_interrupt, stop playback")
-                        await self.on_interrupt()
                 elif event_type == "input_audio_buffer.speech_stopped":
                     logger.info("Speech ended")
+                    if self.on_new_message:
+                        await self.on_new_message()
                     self._audio_in_buffer = False
                 elif event_type == "conversation.item.input_audio_transcription.completed":
                     self._print_input_transcript = True
                 elif event_type in ["response.audio_transcript.done", "response.output_audio_transcript.done"]:
+                    if self.on_output_transcript and self._is_first_transcript_chunk:
+                        transcript = event.get("transcript", "")
+                        if transcript:
+                            await self.on_output_transcript(transcript, True)
+                            self._is_first_transcript_chunk = False
                     self._print_input_transcript = False
 
                 if not self._skip_until_next_response:

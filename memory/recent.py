@@ -15,7 +15,7 @@ class CompressedRecentHistoryManager:
         # 修复API key类型问题
         api_key = OPENROUTER_API_KEY if OPENROUTER_API_KEY and OPENROUTER_API_KEY != '' else None
         self.llm = ChatOpenAI(model=SUMMARY_MODEL, base_url=OPENROUTER_URL, api_key=api_key, temperature=0.3, extra_body={"enable_thinking": False})
-        self.review_llm = ChatOpenAI(model=CORRECTION_MODEL, base_url=OPENROUTER_URL, api_key=api_key, temperature=0.1)
+        self.review_llm = ChatOpenAI(model=CORRECTION_MODEL, base_url=OPENROUTER_URL, api_key=api_key, temperature=0.1, extra_body={"enable_thinking": False})
         self.max_history_length = max_history_length
         self.log_file_path = recent_log
         self.name_mapping = name_mapping

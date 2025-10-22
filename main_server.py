@@ -414,7 +414,8 @@ async def websocket_endpoint(websocket: WebSocket, lanlan_name: str):
 
             elif action == "pause_session":
                 session_manager[lanlan_name].active_session_is_idle = True
-
+                asyncio.create_task(session_manager[lanlan_name].end_session())
+                
             else:
                 logger.warning(f"Unknown action received: {action}")
                 await session_manager[lanlan_name].send_status(f"Unknown action: {action}")

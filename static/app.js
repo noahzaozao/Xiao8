@@ -64,11 +64,6 @@ function init_app(){
                     // 检查是否是新消息的开始
                     const isNewMessage = response.isNewMessage || false;
                     appendMessage(response.text, 'gemini', isNewMessage);
-
-                    // 如果是新消息，停止并清空当前音频队列
-                    if (isNewMessage) {
-                        clearAudioQueue();
-                    }
                 } else if (response.type === 'user_activity') {
                     clearAudioQueue();
                 } if (response.type === 'cozy_audio') {
@@ -638,7 +633,8 @@ function init_app(){
             }
             isTextSessionActive = false;
             statusElement.textContent = '正在切换到语音模式...';
-            await new Promise(resolve => setTimeout(resolve, 500)); // 等待结束
+            // 增加等待时间，确保后端完全清理资源
+            await new Promise(resolve => setTimeout(resolve, 1500)); // 从500ms增加到1500ms
         }
         
         // 隐藏文本输入区
