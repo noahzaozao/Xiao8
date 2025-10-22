@@ -1,11 +1,10 @@
 from datetime import datetime
-from config import get_character_data, SUMMARY_MODEL, OPENROUTER_API_KEY, OPENROUTER_URL
+from config import get_character_data, SUMMARY_MODEL, OPENROUTER_API_KEY, OPENROUTER_URL, MODELS_WITH_EXTRA_BODY, CORRECTION_MODEL
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, messages_to_dict, messages_from_dict, HumanMessage, AIMessage
 import json
 import os
 
-from config.api import CORRECTION_MODEL
 from config.prompts_sys import recent_history_manager_prompt, detailed_recent_history_manager_prompt, further_summarize_prompt, history_review_prompt
 
 class CompressedRecentHistoryManager:
@@ -14,8 +13,8 @@ class CompressedRecentHistoryManager:
         _, _, _, _, name_mapping, _, _, _, _, recent_log = get_character_data()
         # 修复API key类型问题
         api_key = OPENROUTER_API_KEY if OPENROUTER_API_KEY and OPENROUTER_API_KEY != '' else None
-        self.llm = ChatOpenAI(model=SUMMARY_MODEL, base_url=OPENROUTER_URL, api_key=api_key, temperature=0.3, extra_body={"enable_thinking": False})
-        self.review_llm = ChatOpenAI(model=CORRECTION_MODEL, base_url=OPENROUTER_URL, api_key=api_key, temperature=0.1, extra_body={"enable_thinking": False})
+        self.llm = ChatOpenAI(model=SUMMARY_MODEL, base_url=OPENROUTER_URL, api_key=api_key, temperature=0.3, extra_body={"enable_thinking": False} if SUMMARY_MODEL in MODELS_WITH_EXTRA_BODY else None)
+        self.review_llm = ChatOpenAI(model=CORRECTION_MODEL, base_url=OPENROUTER_URL, api_key=api_key, temperature=0.1, extra_body={"enable_thinking": False} if CORRECTION_MODEL in MODELS_WITH_EXTRA_BODY else None)
         self.max_history_length = max_history_length
         self.log_file_path = recent_log
         self.name_mapping = name_mapping

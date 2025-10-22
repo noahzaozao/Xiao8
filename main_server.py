@@ -27,7 +27,7 @@ import requests
 import httpx
 import pathlib, wave
 from openai import AsyncOpenAI
-from config import get_character_data, MAIN_SERVER_PORT, CORE_API_KEY, AUDIO_API_KEY, EMOTION_MODEL, OPENROUTER_API_KEY, OPENROUTER_URL, load_characters, save_characters, TOOL_SERVER_PORT
+from config import get_character_data, MAIN_SERVER_PORT, CORE_API_KEY, AUDIO_API_KEY, EMOTION_MODEL, OPENROUTER_API_KEY, OPENROUTER_URL, MODELS_WITH_EXTRA_BODY, load_characters, save_characters, TOOL_SERVER_PORT
 from config.prompts_sys import emotion_analysis_prompt
 import glob
 
@@ -415,7 +415,7 @@ async def websocket_endpoint(websocket: WebSocket, lanlan_name: str):
             elif action == "pause_session":
                 session_manager[lanlan_name].active_session_is_idle = True
                 asyncio.create_task(session_manager[lanlan_name].end_session())
-                
+
             else:
                 logger.warning(f"Unknown action received: {action}")
                 await session_manager[lanlan_name].send_status(f"Unknown action: {action}")
@@ -1527,7 +1527,7 @@ async def emotion_analysis(request: Request):
             messages=messages,
             temperature=0.3,
             max_tokens=100,
-            extra_body={"enable_thinking": False}
+            extra_body={"enable_thinking": False} if model in MODELS_WITH_EXTRA_BODY else None
         )
         
         # 解析响应

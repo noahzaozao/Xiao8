@@ -13,6 +13,8 @@ import websockets
 from enum import Enum
 from multiprocessing import Queue as MPQueue, Process
 import threading
+import io
+import wave
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +88,7 @@ def step_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice
                     "session_id": session_id,
                     "voice_id": voice_id,
                     "response_format": "wav",
-                    "sample_rate": 22050
+                    "sample_rate": 24000
                 }
             }
             await ws.send(json.dumps(create_event))
@@ -127,13 +129,17 @@ def step_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice
                                 audio_b64 = event.get("data", {}).get("audio", "")
                                 if audio_b64:
                                     audio_bytes = base64.b64decode(audio_b64)
-                                    # 跳过 WAV header (44 bytes)，提取 PCM 数据
-                                    if len(audio_bytes) > 44:
-                                        pcm_data = audio_bytes[44:]
-                                        audio_array = np.frombuffer(pcm_data, dtype=np.int16)
-                                        # 22050Hz -> 48000Hz
-                                        resampled = np.repeat(audio_array, 48000 // 22050)
-                                        response_queue.put(resampled.tobytes())
+                                    # 使用 wave 模块读取 WAV 数据
+                                    with io.BytesIO(audio_bytes) as wav_io:
+                                        with wave.open(wav_io, 'rb') as wav_file:
+                                            # 读取音频数据
+                                            pcm_data = wav_file.readframes(wav_file.getnframes())
+                                    
+                                    # 转换为 numpy 数组
+                                    audio_array = np.frombuffer(pcm_data, dtype=np.int16)
+                                    # 重采样 24000Hz -> 48000Hz
+                                    resampled = np.repeat(audio_array, 48000 // 24000)
+                                    response_queue.put(resampled.tobytes())
                             except Exception as e:
                                 logger.error(f"处理音频数据时出错: {e}")
                 except websockets.exceptions.ConnectionClosed:
@@ -215,7 +221,7 @@ def step_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice
                                 "session_id": session_id,
                                 "voice_id": voice_id,
                                 "response_format": "wav",
-                                "sample_rate": 22050
+                                "sample_rate": 24000
                             }
                         }))
                         
@@ -233,11 +239,17 @@ def step_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice
                                             audio_b64 = event.get("data", {}).get("audio", "")
                                             if audio_b64:
                                                 audio_bytes = base64.b64decode(audio_b64)
-                                                if len(audio_bytes) > 44:
-                                                    pcm_data = audio_bytes[44:]
-                                                    audio_array = np.frombuffer(pcm_data, dtype=np.int16)
-                                                    resampled = np.repeat(audio_array, 48000 // 22050)
-                                                    response_queue.put(resampled.tobytes())
+                                                # 使用 wave 模块读取 WAV 数据
+                                                with io.BytesIO(audio_bytes) as wav_io:
+                                                    with wave.open(wav_io, 'rb') as wav_file:
+                                                        # 读取音频数据
+                                                        pcm_data = wav_file.readframes(wav_file.getnframes())
+                                                
+                                                # 转换为 numpy 数组
+                                                audio_array = np.frombuffer(pcm_data, dtype=np.int16)
+                                                # 重采样 24000Hz -> 48000Hz
+                                                resampled = np.repeat(audio_array, 48000 // 24000)
+                                                response_queue.put(resampled.tobytes())
                                         except Exception as e:
                                             logger.error(f"处理音频数据时出错: {e}")
                             except websockets.exceptions.ConnectionClosed:

@@ -15,7 +15,7 @@
 
 **:older_woman: 我奶奶都能在3分钟内配置好的赛博猫娘！**
 
-:newspaper: **v0.4.1已发布！现已支持Agent模式、Step-Audio2、Qwen3-Omni和GPT-Realtime！**
+:newspaper: **v0.5.0即将发布！现已支持基于硅基流动和Deepseek的文本输入模式！**
 
 *Don't ask me anything. Ask 兰兰！*
 

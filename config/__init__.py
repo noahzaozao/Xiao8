@@ -67,6 +67,7 @@ def get_character_data():
 TIME_ORIGINAL_TABLE_NAME = "time_indexed_original"
 TIME_COMPRESSED_TABLE_NAME = "time_indexed_compressed"
 
+MODELS_WITH_EXTRA_BODY = ["qwen-flash-2025-07-28"]
 try:
     with open('./config/core_config.json', 'r', encoding='utf-8') as f:
         core_cfg = json.load(f)
@@ -134,7 +135,7 @@ try:
         elif core_cfg['assistApi'] == 'step':
             OPENROUTER_URL = "https://api.stepfun.com/v1"
             SUMMARY_MODEL = "step-2-mini"
-            CORRECTION_MODEL = "step-3"
+            CORRECTION_MODEL = "step-2-mini"
             EMOTION_MODEL = "step-2-mini"
             AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_STEP
         elif core_cfg['assistApi'] == 'silicon':
