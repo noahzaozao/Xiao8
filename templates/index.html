@@ -84,17 +84,17 @@
             position: fixed;
             left: 20px;
             bottom: 20px;
-            width: 340px;
-            max-height: 300px;
-            height: 300px;
+            width: 400px;
+            max-height: 500px;
+            height: 500px;
             background: #f7f8fa;
-            opacity: 0.7;
+            opacity: 0.95;
             border-radius: 12px;
-            padding: 16px;
+            padding: 0;
             box-sizing: border-box;
             overflow: hidden; /* 重要：改为 hidden，滚动交给内部 wrapper */
             z-index: 20;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
             scroll-behavior: smooth;
             display: flex; /* 使用 flex 布局 */
             flex-direction: column;
@@ -107,21 +107,22 @@
             pointer-events: auto; /* 恢复鼠标交互 */
             flex-grow: 1; /* 占据可用空间 */
             padding: 16px; /* 内边距移到这里 */
-            padding-left: 8px; /* 内边距移到这里 */
+            padding-top: 48px; /* 为顶部按钮留空间 */
             overflow-y: auto; /* 滚动条在这里 */
             scroll-behavior: smooth;
             /* 添加过渡，让内容隐藏/显示更平滑 */
             transition: opacity 0.2s ease, visibility 0.2s ease;
-            opacity: 0.7;
+            opacity: 1;
             visibility: visible;
+            background: #fff;
         }
 
         /* 切换按钮样式 */
         #toggle-chat-btn {
             pointer-events: auto; /* 恢复鼠标交互 */
             position: absolute; /* 绝对定位于容器内 */
-            top: 8px;
-            right: 8px;
+            top: 12px;
+            right: 12px;
             width: 24px;
             height: 24px;
             background: #e0e1e2;
@@ -134,6 +135,72 @@
             text-align: center;
             z-index: 21; /* 确保在内容之上 */
             padding: 0;
+        }
+        
+        /* 聊天框标题 */
+        #chat-header {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 48px;
+            background: #f7f8fa;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            box-sizing: border-box;
+            z-index: 21;
+        }
+        
+        #chat-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        /* 聊天消息样式 */
+        #chatContainer {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .message {
+            padding: 10px 14px;
+            border-radius: 12px;
+            max-width: 80%;
+            word-wrap: break-word;
+            line-height: 1.5;
+            font-size: 0.95rem;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        .message.user {
+            align-self: flex-end;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            margin-left: auto;
+            border-bottom-right-radius: 4px;
+        }
+        
+        .message.gemini {
+            align-self: flex-start;
+            background: #f0f0f0;
+            color: #333;
+            margin-right: auto;
+            border-bottom-left-radius: 4px;
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         #toggle-sidebar-btn:hover {
@@ -174,6 +241,15 @@
             color: #fff;
         }
         
+        /* 确保禁用状态下的样式与其他按钮一致 */
+        #micButton:disabled {
+            background: #e0e0e0 !important;
+            color: #888 !important;
+            opacity: 0.7;
+            cursor: not-allowed;
+            border: 1px solid #ccc;
+        }
+        
         /* 侧边栏最小化状态下的处理 */
         #sidebar.minimized #mic-container {
             min-width: 0;
@@ -193,6 +269,90 @@
             width: 24px;
             height: 24px;
             z-index: 2;
+        }
+        
+        /* 文本输入区域样式 - 在聊天框底部 */
+        #text-input-area {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 12px;
+            background: #fff;
+            border-top: 1px solid #e0e0e0;
+            box-sizing: border-box;
+            transition: all 0.3s ease;
+        }
+        
+        /* 语音模式下隐藏文本输入区 */
+        #text-input-area.hidden {
+            display: none;
+        }
+        
+        #text-input-row {
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+        }
+        
+        #textInputBox {
+            flex: 1;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            font-size: 0.95rem;
+            background: #fff;
+            color: #222;
+            resize: vertical;
+            min-height: 40px;
+            max-height: 120px;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        
+        #textInputBox:focus {
+            outline: none;
+            border-color: #4f8cff;
+        }
+        
+        #textInputBox:disabled {
+            background: #f5f5f5;
+            color: #999;
+            cursor: not-allowed;
+        }
+        
+        #textSendButton {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            background: #4f8cff;
+            color: #fff;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-size: 0.95rem;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        
+        #textSendButton:hover:not(:disabled) {
+            background: #2662c8;
+        }
+        
+        #textSendButton:disabled {
+            background: #b0c4de;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        
+        /* 模式提示文字 */
+        #mode-hint {
+            font-size: 0.85rem;
+            color: #666;
+            text-align: center;
+            padding: 4px 0;
+        }
+        
+        #mode-hint.voice-active {
+            color: #4f8cff;
         }
         
         .toggle-mic-selector {
@@ -295,6 +455,10 @@
             cursor: pointer; /* 让整个小方块可点击（虽然按钮也在） */
         }
 
+        #chat-container.minimized #chat-header {
+            display: none;
+        }
+
         #chat-container.minimized #chat-content-wrapper {
             /* 隐藏内容区域 */
             opacity: 0;
@@ -302,6 +466,10 @@
             height: 0; /* 确保不占空间 */
             padding: 0;
             overflow: hidden; /* 隐藏滚动条 */
+        }
+
+        #chat-container.minimized #text-input-area {
+            display: none;
         }
 
         #chat-container.minimized #toggle-chat-btn {
@@ -805,13 +973,46 @@
             }
 
             #chat-container {
-                width: 45vw;
-                left: 0;
-                bottom: 0;
-                max-height: 40vh;
-                height: 40vh;
+                width: 90vw;
+                left: 5vw;
+                bottom: 5px;
+                max-height: 60vh;
+                height: 60vh;
                 padding: 0;
                 margin-bottom: 5px;
+            }
+            
+            #chat-header {
+                height: 40px;
+                font-size: 0.9rem;
+            }
+            
+            #chat-content-wrapper {
+                padding: 12px;
+                padding-top: 44px;
+            }
+            
+            #text-input-area {
+                padding: 8px;
+            }
+            
+            #textInputBox {
+                font-size: 0.9rem;
+                min-height: 36px;
+            }
+            
+            #textSendButton {
+                padding: 8px 16px;
+                font-size: 0.9rem;
+            }
+            
+            #mode-hint {
+                font-size: 0.8rem;
+            }
+            
+            .message {
+                font-size: 0.9rem;
+                max-width: 85%;
             }
 
             #sidebar {
@@ -966,7 +1167,7 @@
     <div id="sidebarbox">
         <button id="toggle-sidebar-btn" title="折叠侧边栏">—</button>
         <div id="mic-container">
-            <button id="micButton" class="side-btn">🎤 开始聊天</button>
+            <button id="micButton" class="side-btn">🎤 开始语音</button>
             <div id="mic-selector" class="mic-selector">
                 <!-- 默认显示向右的三角形 -->
                 <button id="toggle-mic-selector" class="toggle-mic-selector" title="选择麦克风">▶️</button>
@@ -981,13 +1182,19 @@
     </div>
 </div>
 <div id="chat-container">
-    <button id="toggle-chat-btn" title="Minimize">—</button>
+    <div id="chat-header">
+        <span id="chat-title">💬 对话</span>
+    </div>
+    <button id="toggle-chat-btn" title="最小化">—</button>
     <div id="chat-content-wrapper">
         <div id="chatContainer"></div>
-        <!--      <div id="input-row">-->
-        <!--          <input type="text" id="userInput" placeholder="输入你的消息..." autocomplete="off"/>-->
-        <!--          <button id="sendButton">发送</button>-->
-        <!--      </div>-->
+    </div>
+    <div id="text-input-area">
+        <div id="mode-hint">文本聊天模式 - 直接输入消息发送</div>
+        <div id="text-input-row">
+            <textarea id="textInputBox" placeholder="输入你的消息...按Enter发送，Shift+Enter换行"></textarea>
+            <button id="textSendButton">发送</button>
+        </div>
     </div>
 </div>
 <div id="live2d-container">

@@ -18,11 +18,13 @@ from utils.frontend_utils import contains_chinese, replace_blank, replace_corner
     is_only_punctuation, split_paragraph
 from utils.audio import make_wav_header
 from main_helper.omni_realtime_client import OmniRealtimeClient
+from main_helper.omni_offline_client import OmniOfflineClient
+from main_helper.tts_helper import get_tts_worker
 import inflect
 import base64
 from io import BytesIO
 from PIL import Image
-from config import get_character_data, CORE_URL, CORE_MODEL, EMOTION_MODEL, CORE_API_KEY, MEMORY_SERVER_PORT, AUDIO_API_KEY
+from config import get_character_data, CORE_URL, CORE_MODEL, CORRECTION_MODEL, EMOTION_MODEL, CORE_API_KEY, MEMORY_SERVER_PORT, AUDIO_API_KEY, OPENROUTER_URL, OPENROUTER_API_KEY, CORE_API_TYPE
 from multiprocessing import Process, Queue as MPQueue
 from uuid import uuid4
 import numpy as np
@@ -75,13 +77,17 @@ class LLMSessionManager:
             self.recent_log
         ) = get_character_data()
         # 获取API相关配置
-        self.model = CORE_MODEL
+        self.model = CORE_MODEL  # For realtime voice
+        self.text_model = CORRECTION_MODEL  # For text-only mode
         self.core_url = CORE_URL
         self.core_api_key = CORE_API_KEY
+        self.openrouter_url = OPENROUTER_URL
+        self.openrouter_api_key = OPENROUTER_API_KEY
         self.memory_server_port = MEMORY_SERVER_PORT
         self.audio_api_key = AUDIO_API_KEY
         self.voice_id = self.lanlan_basic_config[self.lanlan_name].get('voice_id', '')
-        self.use_tts = False if not self.voice_id else True
+        # 注意：use_tts 会在 start_session 中根据 input_mode 重新设置
+        self.use_tts = False
         self.generation_config = {}  # Qwen暂时不用
         self.message_cache_for_new_session = []
         self.is_preparing_new_session = False
@@ -107,35 +113,43 @@ class LLMSessionManager:
             'computer_use_enabled': False,
             'mcp_enabled': False,
         }
-
-        # 注册回调
-        self.session = OmniRealtimeClient(
-            base_url=self.core_url,
-            api_key=self.core_api_key,
-            model=self.model,
-            voice="Cherry",
-            on_text_delta=self.handle_text_data,
-            on_audio_delta=self.handle_audio_data,
-            on_interrupt=self.handle_interrupt,
-            on_input_transcript=self.handle_input_transcript,
-            on_output_transcript=self.handle_output_transcript,
-            on_connection_error=self.handle_connection_error,
-            on_response_done=self.handle_response_complete
-        )
+        
+        # 模式标志: 'audio' 或 'text'
+        self.input_mode = 'audio'
+        
+        # 初始化时创建audio模式的session（默认）
+        self.session = None
 
     async def handle_interrupt(self):
+        """处理用户打断：清空TTS队列并通知前端"""
         if self.use_tts:
+            # 清空响应队列中待发送的音频数据
+            while not self.tts_response_queue.empty():
+                try:
+                    self.tts_response_queue.get_nowait()
+                except:
+                    break
+            # 发送终止信号以清空TTS请求队列并停止当前合成
             self.tts_request_queue.put((None, None))
         await self.send_user_activity()
 
     async def handle_text_data(self, text: str, is_first_chunk: bool = False):
-        """Qwen文本回调：可用于前端显示、语音合成"""
+        """文本回调：处理文本显示和TTS（用于文本模式）"""
+        # 如果是新消息的第一个chunk，清空TTS队列以打断之前的语音
+        if is_first_chunk and self.use_tts:
+            # 清空响应队列中待发送的音频数据
+            while not self.tts_response_queue.empty():
+                try:
+                    self.tts_response_queue.get_nowait()
+                except:
+                    break
+        
+        # 文本模式下，无论是否使用TTS，都要发送文本到前端显示
+        await self.send_lanlan_response(text, is_first_chunk)
+        
+        # 如果配置了TTS，将文本发送到TTS队列进行语音合成
         if self.use_tts:
             self.tts_request_queue.put((self.current_speech_id, text))
-            await self.send_lanlan_response(text, is_first_chunk)
-        else:
-            pass
-            # logger.info(f"\nAssistant: {text}")
 
     async def handle_response_complete(self):
         """Qwen完成回调：用于处理Core API的响应完成事件，包含TTS和热切换逻辑"""
@@ -236,9 +250,22 @@ class LLMSessionManager:
             self.current_speech_id = str(uuid4())
 
     async def handle_output_transcript(self, text: str, is_first_chunk: bool = False):
+        """输出转录回调：处理文本显示和TTS（用于语音模式）"""
+        # 如果是新消息的第一个chunk，清空TTS队列以打断之前的语音
+        if is_first_chunk and self.use_tts:
+            # 清空响应队列中待发送的音频数据
+            while not self.tts_response_queue.empty():
+                try:
+                    self.tts_response_queue.get_nowait()
+                except:
+                    break
+        
+        # 无论是否使用TTS，都要发送文本到前端显示
+        await self.send_lanlan_response(text, is_first_chunk)
+        
+        # 如果配置了TTS，将文本发送到TTS队列进行语音合成
         if self.use_tts:
             self.tts_request_queue.put((self.current_speech_id, text))
-        await self.send_lanlan_response(text, is_first_chunk)
 
     async def send_lanlan_response(self, text: str, is_first_chunk: bool = False):
         """Qwen输出转录回调：可用于前端显示/缓存/同步。"""
@@ -327,22 +354,49 @@ class LLMSessionManager:
             return ""
         return text
 
-    async def start_session(self, websocket: WebSocket, new=False):
+    async def start_session(self, websocket: WebSocket, new=False, input_mode='audio'):
         self.websocket = websocket
+        self.input_mode = input_mode
+        
+        # 根据 input_mode 设置 use_tts
+        if input_mode == 'text':
+            # 文本模式总是需要 TTS（使用默认或自定义音色）
+            self.use_tts = True
+        elif self.voice_id:
+            # 语音模式下有自定义音色时使用 TTS
+            self.use_tts = True
+        else:
+            # 语音模式下无自定义音色，使用 realtime API 原生语音
+            self.use_tts = False
+        
         async with self.lock:
             if self.is_active:
                 return
 
         # new session时重置部分状态
         if self.use_tts:
-            # 启动TTS子进程
+            # 启动TTS子进程（如果配置了自定义语音）
+            # 文本模式和语音模式都需要TTS支持
             if self.tts_process is None or not self.tts_process.is_alive():
+                # 使用工厂函数获取合适的 TTS worker
+                has_custom_voice = bool(self.voice_id)
+                tts_worker = get_tts_worker(
+                    core_api_type=CORE_API_TYPE,
+                    has_custom_voice=has_custom_voice
+                )
+                
+                self.tts_request_queue = MPQueue() # TTS request (多进程队列)
+                self.tts_response_queue = MPQueue() # TTS response (多进程队列)
                 self.tts_process = Process(
-                    target=speech_synthesis_worker,
+                    target=tts_worker,
                     args=(self.tts_request_queue, self.tts_response_queue, self.audio_api_key, self.voice_id)
                 )
                 self.tts_process.daemon = True
                 self.tts_process.start()
+                
+                # 记录使用的 TTS 类型
+                tts_type = "自定义音色(CosyVoice)" if has_custom_voice else f"{CORE_API_TYPE}默认TTS"
+                logger.info(f"TTS进程已启动，使用: {tts_type}")
             if self.tts_handler_task is None or not self.tts_handler_task.done():
                 self.tts_handler_task = asyncio.create_task(self.tts_response_handler())
 
@@ -355,20 +409,45 @@ class LLMSessionManager:
 
         try:
             # 获取初始 prompt
-            initial_prompt = (f"你是一个角色扮演大师，并且精通电脑操作。请按要求扮演以下角色（self.lanlan_name），并在对方请求时、回答“我试试”并尝试操纵电脑。" if self._is_agent_enabled() else f"你是一个角色扮演大师。请按要求扮演以下角色（self.lanlan_name）。") + self.lanlan_prompt
+            initial_prompt = (f"你是一个角色扮演大师，并且精通电脑操作。请按要求扮演以下角色（{self.lanlan_name}），并在对方请求时、回答'我试试'并尝试操纵电脑。" if self._is_agent_enabled() else f"你是一个角色扮演大师。请按要求扮演以下角色（{self.lanlan_name}）。") + self.lanlan_prompt
             initial_prompt += requests.get(f"http://localhost:{self.memory_server_port}/new_dialog/{self.lanlan_name}").text
             # logger.info("====Initial Prompt=====")
             # logger.info(initial_prompt)
+
+            # 根据input_mode创建不同的session
+            if input_mode == 'text':
+                # 文本模式：使用 OmniOfflineClient with OpenAI-compatible API
+                self.session = OmniOfflineClient(
+                    base_url=self.openrouter_url,
+                    api_key=self.openrouter_api_key,
+                    model=self.text_model,  # Use text model (SUMMARY_MODEL) for text mode
+                    on_text_delta=self.handle_text_data,
+                    on_input_transcript=self.handle_input_transcript,
+                    on_output_transcript=self.handle_output_transcript,
+                    on_connection_error=self.handle_connection_error,
+                    on_response_done=self.handle_response_complete
+                )
+            else:
+                # 语音模式：使用 OmniRealtimeClient
+                self.session = OmniRealtimeClient(
+                    base_url=self.core_url,
+                    api_key=self.core_api_key,
+                    model=self.model,
+                    on_text_delta=self.handle_text_data,
+                    on_audio_delta=self.handle_audio_data,
+                    on_interrupt=self.handle_interrupt,
+                    on_input_transcript=self.handle_input_transcript,
+                    on_output_transcript=self.handle_output_transcript,
+                    on_connection_error=self.handle_connection_error,
+                    on_response_done=self.handle_response_complete
+                )
 
             # 标记 session 激活
             if self.session:
                 await self.session.connect(initial_prompt, native_audio = not self.use_tts)
                 async with self.lock:
                     self.is_active = True
-                # await self.session.create_response("SYSTEM_MESSAGE | " + initial_prompt)
-                # await self.session.create_response("SYSTEM_MESSAGE | 当前时间：" + str(
-                #             datetime.now().strftime(
-                #                 "%Y-%m-%d %H:%M")) + f'。 现在请{self.lanlan_name}准备，即将开始用语音与{MASTER_NAME}继续对话。\n')
+                    
                 self.session_start_time = datetime.now()
                 
                 # 启动消息处理任务
@@ -419,7 +498,6 @@ class LLMSessionManager:
                 base_url=self.core_url,
                 api_key=self.core_api_key,
                 model=self.model,
-                voice="Cherry",
                 on_text_delta=self.handle_text_data,
                 on_audio_delta=self.handle_audio_data,
                 on_interrupt=self.handle_interrupt,
@@ -618,15 +696,27 @@ class LLMSessionManager:
     async def stream_data(self, message: dict):  # 向Core API发送Media数据
         if not self.is_active or not self.session:
             return
-            
-        # 额外检查session是否有效
-        if not hasattr(self.session, 'ws') or not self.session.ws:
-            logger.error("💥 Stream: Session websocket not available")
-            return
-            
+        
         data = message.get("data")
         input_type = message.get("input_type")
+        
         try:
+            if input_type == 'text':
+                # 文本模式：直接发送文本
+                if isinstance(data, str):
+                    # 为每次文本输入生成新的speech_id（用于TTS和lipsync）
+                    async with self.lock:
+                        self.current_speech_id = str(uuid4())
+                    await self.session.stream_text(data)
+                else:
+                    logger.error(f"💥 Stream: Invalid text data type: {type(data)}")
+                return
+            
+            # 语音/图像模式：需要检查WebSocket连接
+            if not hasattr(self.session, 'ws') or not self.session.ws:
+                logger.error("💥 Stream: Session websocket not available")
+                return
+            
             if input_type == 'audio':
                 try:
                     if isinstance(data, list):
@@ -813,88 +903,4 @@ class LLMSessionManager:
                 data = self.tts_response_queue.get_nowait()
                 await self.send_speech(data)
             await asyncio.sleep(0.01)
-
-# TTS多进程worker函数，供主进程Process(target=...)调用
-
-def speech_synthesis_worker(request_queue, response_queue, audio_api_key, voice_id):
-    import dashscope
-    from dashscope.audio.tts_v2 import ResultCallback, SpeechSynthesizer, AudioFormat
-    import numpy as np
-    from librosa import resample
-    import re
-    import time
-    dashscope.api_key = audio_api_key
-    class Callback(ResultCallback):
-        def __init__(self, response_queue):
-            self.response_queue = response_queue
-            self.cache = np.zeros(0).astype(np.float32)
-        def on_open(self): pass
-        def on_complete(self): 
-            if len(self.cache)>0:
-                data = (resample(self.cache, orig_sr=24000, target_sr=48000)*32768.).clip(-32768, 32767).astype(np.int16).tobytes()
-                self.response_queue.put(data)
-                self.cache = np.zeros(0).astype(np.float32)
-        def on_error(self, message: str): print(f"TTS Error: {message}")
-        def on_close(self): pass
-        def on_event(self, message): pass
-        def on_data(self, data: bytes) -> None:
-            audio = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
-            self.cache = np.concatenate([self.cache, audio])
-            if len(self.cache)>=8000:
-                data = self.cache[:8000]
-                data = (resample(data, orig_sr=24000, target_sr=48000)*32768.).clip(-32768, 32767).astype(np.int16).tobytes()
-                self.response_queue.put(data)
-                self.cache = self.cache[8000:]
-            
-            
-    callback = Callback(response_queue)
-    current_speech_id = None
-    synthesizer = None
-    while True:
-        # 非阻塞检查队列，优先处理打断
-        if request_queue.empty():
-            time.sleep(0.01)
-            continue
-
-        sid, tts_text = request_queue.get()
-        if sid is None and synthesizer is not None:
-            # 合成完毕
-            try:
-                current_speech_id = None
-                synthesizer.streaming_complete()
-            except Exception:
-                synthesizer = None
-            continue
-        if current_speech_id is None or current_speech_id != sid or synthesizer is None:
-            current_speech_id = sid
-            try:
-                if synthesizer is not None:
-                    try:
-                        synthesizer.streaming_complete()
-                        synthesizer.close()
-                    except Exception:
-                        pass
-                synthesizer = SpeechSynthesizer(
-                    model="cosyvoice-v2",
-                    voice=voice_id,
-                    speech_rate=1.1,
-                    format=AudioFormat.PCM_24000HZ_MONO_16BIT,
-                    callback=callback,
-                )
-            except Exception as e:
-                print("TTS Error: ", e)
-                synthesizer = None
-                current_speech_id = None
-                continue
-        if not tts_text:
-            time.sleep(0.01)
-            continue
-        # 处理表情等逻辑
-        try:
-            synthesizer.streaming_call(tts_text)
-        except Exception as e:
-            print("TTS Error: ", e)
-            synthesizer = None
-            current_speech_id = None
-            continue
 

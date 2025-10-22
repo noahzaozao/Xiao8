@@ -10,6 +10,7 @@ import uuid
 import logging
 from datetime import datetime
 import webbrowser
+import io
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, File, UploadFile, Form, Body
 from fastapi.staticfiles import StaticFiles
@@ -250,6 +251,8 @@ async def get_core_config():
             "assistApiKeyOpenai": core_cfg.get('assistApiKeyOpenai', ''),
             "assistApiKeyGlm": core_cfg.get('assistApiKeyGlm', ''),
             "assistApiKeyStep": core_cfg.get('assistApiKeyStep', ''),
+            "assistApiKeySilicon": core_cfg.get('assistApiKeySilicon', ''),
+            "mcpToken": core_cfg.get('mcpToken', ''),  # 添加mcpToken字段
             "success": True
         }
     except Exception as e:
@@ -295,6 +298,10 @@ async def update_core_config(request: Request):
             core_cfg['assistApiKeyGlm'] = data['assistApiKeyGlm']
         if 'assistApiKeyStep' in data:
             core_cfg['assistApiKeyStep'] = data['assistApiKeyStep']
+        if 'assistApiKeySilicon' in data:
+            core_cfg['assistApiKeySilicon'] = data['assistApiKeySilicon']
+        if 'mcpToken' in data:
+            core_cfg['mcpToken'] = data['mcpToken']
         with open('./config/core_config.json', 'w', encoding='utf-8') as f:
             json.dump(core_cfg, f, indent=2, ensure_ascii=False)
         
@@ -390,9 +397,11 @@ async def websocket_endpoint(websocket: WebSocket, lanlan_name: str):
 
             if action == "start_session":
                 session_manager[lanlan_name].active_session_is_idle = False
-                input_type = message.get("input_type")
-                if input_type in ['audio', 'screen', 'camera']:
-                    asyncio.create_task(session_manager[lanlan_name].start_session(websocket, message.get("new_session", False)))
+                input_type = message.get("input_type", "audio")
+                if input_type in ['audio', 'screen', 'camera', 'text']:
+                    # 传递input_mode参数，告知session manager使用何种模式
+                    mode = 'text' if input_type == 'text' else 'audio'
+                    asyncio.create_task(session_manager[lanlan_name].start_session(websocket, message.get("new_session", False), mode))
                 else:
                     await session_manager[lanlan_name].send_status(f"Invalid input type: {input_type}")
 
@@ -722,18 +731,21 @@ async def get_microphone():
 
 @app.post('/api/voice_clone')
 async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
-    import os
-    temp_path = f'tmp_{file.filename}'
-    with open(temp_path, 'wb') as f:
-        f.write(await file.read())
-    tmp_url = None
+    # 直接读取到内存
+    try:
+        file_content = await file.read()
+        file_buffer = io.BytesIO(file_content)
+    except Exception as e:
+        logger.error(f"读取文件到内存失败: {e}")
+        return JSONResponse({'error': f'读取文件失败: {e}'}, status_code=500)
 
-    def validate_audio_file(file_path: str) -> tuple[str, str]:
+
+    def validate_audio_file(file_buffer: io.BytesIO, filename: str) -> tuple[str, str]:
         """
         验证音频文件类型和格式
         返回: (mime_type, error_message)
         """
-        file_path_obj = pathlib.Path(file_path)
+        file_path_obj = pathlib.Path(filename)
         file_extension = file_path_obj.suffix.lower()
         
         # 检查文件扩展名
@@ -745,7 +757,8 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
             mime_type = "audio/wav"
             # 检查WAV文件是否为16bit
             try:
-                with wave.open(file_path, 'rb') as wav_file:
+                file_buffer.seek(0)
+                with wave.open(file_buffer, 'rb') as wav_file:
                     # 检查采样宽度（bit depth）
                     if wav_file.getsampwidth() != 2:  # 2 bytes = 16 bits
                         return "", f"WAV文件必须是16bit格式，当前文件是{wav_file.getsampwidth() * 8}bit。"
@@ -759,39 +772,40 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
                     sample_rate = wav_file.getframerate()
                     if sample_rate not in [8000, 16000, 22050, 44100, 48000]:
                         return "", f"建议使用标准采样率(8000, 16000, 22050, 44100, 48000)，当前文件采样率: {sample_rate}Hz。"
-                    
+                file_buffer.seek(0)
             except Exception as e:
                 return "", f"WAV文件格式错误: {str(e)}。请确认您的文件是合法的WAV文件。"
                 
         elif file_extension == '.mp3':
             mime_type = "audio/mpeg"
             try:
-                with open(file_path, 'rb') as f:
-                    # 读取更多字节以支持不同的MP3格式
-                    header = f.read(32)
+                file_buffer.seek(0)
+                # 读取更多字节以支持不同的MP3格式
+                header = file_buffer.read(32)
+                file_buffer.seek(0)
 
-                    # 检查文件大小是否合理
-                    file_size = os.path.getsize(file_path)
-                    if file_size < 1024:  # 至少1KB
-                        return "", "MP3文件太小，可能不是有效的音频文件。"
-                    if file_size > 1024 * 1024 * 10:  # 10MB
-                        return "", "MP3文件太大，可能不是有效的音频文件。"
-                    
-                    # 更宽松的MP3文件头检查
-                    # MP3文件通常以ID3标签或帧同步字开头
-                    # 检查是否以ID3标签开头 (ID3v2)
-                    has_id3_header = header.startswith(b'ID3')
-                    # 检查是否有帧同步字 (FF FA, FF FB, FF F2, FF F3, FF E3等)
-                    has_frame_sync = False
-                    for i in range(len(header) - 1):
-                        if header[i] == 0xFF and (header[i+1] & 0xE0) == 0xE0:
-                            has_frame_sync = True
-                            break
-                    
-                    # 如果既没有ID3标签也没有帧同步字，则认为文件可能无效
-                    # 但这只是一个警告，不应该严格拒绝
-                    if not has_id3_header and not has_frame_sync:
-                        return mime_type, "警告: MP3文件可能格式不标准，文件头: {header[:4].hex()}"
+                # 检查文件大小是否合理
+                file_size = len(file_buffer.getvalue())
+                if file_size < 1024:  # 至少1KB
+                    return "", "MP3文件太小，可能不是有效的音频文件。"
+                if file_size > 1024 * 1024 * 10:  # 10MB
+                    return "", "MP3文件太大，可能不是有效的音频文件。"
+                
+                # 更宽松的MP3文件头检查
+                # MP3文件通常以ID3标签或帧同步字开头
+                # 检查是否以ID3标签开头 (ID3v2)
+                has_id3_header = header.startswith(b'ID3')
+                # 检查是否有帧同步字 (FF FA, FF FB, FF F2, FF F3, FF E3等)
+                has_frame_sync = False
+                for i in range(len(header) - 1):
+                    if header[i] == 0xFF and (header[i+1] & 0xE0) == 0xE0:
+                        has_frame_sync = True
+                        break
+                
+                # 如果既没有ID3标签也没有帧同步字，则认为文件可能无效
+                # 但这只是一个警告，不应该严格拒绝
+                if not has_id3_header and not has_frame_sync:
+                    return mime_type, "警告: MP3文件可能格式不标准，文件头: {header[:4].hex()}"
                         
             except Exception as e:
                 return "", f"MP3文件读取错误: {str(e)}。请确认您的文件是合法的MP3文件。"
@@ -799,22 +813,23 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
         elif file_extension == '.m4a':
             mime_type = "audio/mp4"
             try:
-                with open(file_path, 'rb') as f:
-                    # 读取文件头来验证M4A格式
-                    header = f.read(32)
-                    
-                    # M4A文件应该以'ftyp'盒子开始，通常在偏移4字节处
-                    # 检查是否包含'ftyp'标识
-                    if b'ftyp' not in header:
-                        return "", "M4A文件格式无效或已损坏。请确认您的文件是合法的M4A文件。"
-                    
-                    # 进一步验证：检查是否包含常见的M4A类型标识
-                    # M4A通常包含'mp4a', 'M4A ', 'M4V '等类型
-                    valid_types = [b'mp4a', b'M4A ', b'M4V ', b'isom', b'iso2', b'avc1']
-                    has_valid_type = any(t in header for t in valid_types)
-                    
-                    if not has_valid_type:
-                        return mime_type,  "警告: M4A文件格式无效或已损坏。请确认您的文件是合法的M4A文件。"
+                file_buffer.seek(0)
+                # 读取文件头来验证M4A格式
+                header = file_buffer.read(32)
+                file_buffer.seek(0)
+                
+                # M4A文件应该以'ftyp'盒子开始，通常在偏移4字节处
+                # 检查是否包含'ftyp'标识
+                if b'ftyp' not in header:
+                    return "", "M4A文件格式无效或已损坏。请确认您的文件是合法的M4A文件。"
+                
+                # 进一步验证：检查是否包含常见的M4A类型标识
+                # M4A通常包含'mp4a', 'M4A ', 'M4V '等类型
+                valid_types = [b'mp4a', b'M4A ', b'M4V ', b'isom', b'iso2', b'avc1']
+                has_valid_type = any(t in header for t in valid_types)
+                
+                if not has_valid_type:
+                    return mime_type,  "警告: M4A文件格式无效或已损坏。请确认您的文件是合法的M4A文件。"
                         
             except Exception as e:
                 return "", f"M4A文件读取错误: {str(e)}。请确认您的文件是合法的M4A文件。"
@@ -822,41 +837,159 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
         return mime_type, ""
 
     try:
-        # 1. 上传到 tmpfiles.org
-        mime_type, error_msg = validate_audio_file(temp_path)
+        # 1. 验证音频文件
+        mime_type, error_msg = validate_audio_file(file_buffer, file.filename)
         if not mime_type:
             return JSONResponse({'error': error_msg}, status_code=400)
-        with open(temp_path, 'rb') as f2:
-            files = {'file': (file.filename, f2)}
-            resp = requests.post('https://tmpfiles.org/api/v1/upload', files=files, timeout=30)
+        
+        # 检查文件大小（tfLink支持最大100MB）
+        file_size = len(file_content)
+        if file_size > 100 * 1024 * 1024:  # 100MB
+            return JSONResponse({'error': '文件大小超过100MB，超过tfLink的限制'}, status_code=400)
+        
+        # 2. 上传到 tfLink - 直接使用内存中的内容
+        file_buffer.seek(0)
+        # 根据tfLink API文档，使用multipart/form-data上传文件
+        # 参数名应为'file'
+        files = {'file': (file.filename, file_buffer, mime_type)}
+        
+        # 添加更多的请求头，确保兼容性
+        headers = {
+            'Accept': 'application/json'
+        }
+        
+        logger.info(f"正在上传文件到tfLink，文件名: {file.filename}, 大小: {file_size} bytes, MIME类型: {mime_type}")
+        resp = requests.post('https://tmpfile.link/api/upload', files=files, headers=headers, timeout=60)
+        
+        # 检查响应状态
+        if resp.status_code != 200:
+            logger.error(f"上传到tfLink失败，状态码: {resp.status_code}, 响应内容: {resp.text}")
+            return JSONResponse({'error': f'上传到tfLink失败，状态码: {resp.status_code}, 详情: {resp.text[:200]}'}, status_code=500)
+            
+        try:
+            # 解析JSON响应
             data = resp.json()
-            if not data or 'data' not in data or 'url' not in data['data']:
-                return JSONResponse({'error': '上传到 tmpfiles.org 失败'}, status_code=500)
-            page_url = data['data']['url']
-            # 替换域名部分为直链
-            if page_url.startswith('http://tmpfiles.org/'):
-                tmp_url = page_url.replace('http://tmpfiles.org/', 'http://tmpfiles.org/dl/', 1)
-            elif page_url.startswith('https://tmpfiles.org/'):
-                tmp_url = page_url.replace('https://tmpfiles.org/', 'https://tmpfiles.org/dl/', 1)
-            else:
-                tmp_url = page_url  # 兜底
-        # 2. 用直链注册音色
+            logger.info(f"tfLink原始响应: {data}")
+            
+            # 获取下载链接
+            tmp_url = None
+            possible_keys = ['downloadLink', 'download_link', 'url', 'direct_link', 'link']
+            for key in possible_keys:
+                if key in data:
+                    tmp_url = data[key]
+                    logger.info(f"找到下载链接键: {key}")
+                    break
+            
+            if not tmp_url:
+                logger.error(f"无法从响应中提取URL: {data}")
+                return JSONResponse({'error': f'上传成功但无法从响应中提取URL'}, status_code=500)
+            
+            # 确保URL有效
+            if not tmp_url.startswith(('http://', 'https://')):
+                logger.error(f"无效的URL格式: {tmp_url}")
+                return JSONResponse({'error': f'无效的URL格式: {tmp_url}'}, status_code=500)
+                
+            # 测试URL是否可访问
+            test_resp = requests.head(tmp_url, timeout=10)
+            if test_resp.status_code >= 400:
+                logger.error(f"生成的URL无法访问: {tmp_url}, 状态码: {test_resp.status_code}")
+                return JSONResponse({'error': f'生成的临时URL无法访问，请重试'}, status_code=500)
+                
+            logger.info(f"成功获取临时URL并验证可访问性: {tmp_url}")
+                
+        except ValueError:
+            raw_text = resp.text
+            logger.error(f"上传成功但响应格式无法解析: {raw_text}")
+            return JSONResponse({'error': f'上传成功但响应格式无法解析: {raw_text[:200]}'}, status_code=500)
+        
+        # 3. 用直链注册音色
         dashscope.api_key = AUDIO_API_KEY
         service = VoiceEnrollmentService()
         target_model = "cosyvoice-v2"
-        voice_id = service.create_voice(target_model=target_model, prefix=prefix, url=tmp_url)
-        return JSONResponse({
-            'voice_id': voice_id,
-            'request_id': service.get_last_request_id(),
-            'file_url': tmp_url
-        })
+        
+        # 重试配置
+        max_retries = 3
+        retry_delay = 3  # 重试前等待的秒数
+        
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"开始音色注册（尝试 {attempt + 1}/{max_retries}），使用URL: {tmp_url}")
+                # 设置超时参数
+                import time
+                start_time = time.time()
+                
+                # 添加超时装饰器或使用上下文管理器
+                # 这里使用try-except块和时间检查来实现简单的超时控制
+                voice_id = None
+                
+                # 创建一个超时标志
+                timeout_occurred = False
+                
+                try:
+                    # 尝试执行音色注册，设置一个较大的超时时间
+                    voice_id = service.create_voice(target_model=target_model, prefix=prefix, url=tmp_url)
+                except Exception as inner_e:
+                    error_str = str(inner_e)
+                    if "ResponseTimeout" in error_str or "response timeout" in error_str.lower():
+                        timeout_occurred = True
+                        logger.warning(f"音色注册超时: {error_str}")
+                    else:
+                        raise inner_e
+                
+                if timeout_occurred:
+                    return JSONResponse({
+                        'error': '音色注册超时，请稍后重试',
+                        'detail': '服务器响应超时，这可能是由于网络延迟或服务繁忙导致的',
+                        'file_url': tmp_url,
+                        'suggestion': '请检查您的网络连接，或稍后再试'
+                    }, status_code=408)
+                    
+                logger.info(f"音色注册成功，voice_id: {voice_id}")
+                return JSONResponse({
+                    'voice_id': voice_id,
+                    'request_id': service.get_last_request_id(),
+                    'file_url': tmp_url
+                })
+            except Exception as e:
+                logger.error(f"音色注册失败（尝试 {attempt + 1}/{max_retries}）: {str(e)}")
+                # 详细的错误信息
+                error_detail = str(e)
+                
+                # 添加对ResponseTimeout的专门处理
+                if "ResponseTimeout" in error_detail or "response timeout" in error_detail.lower():
+                    return JSONResponse({
+                        'error': '音色注册超时，请稍后重试',
+                        'detail': error_detail,
+                        'file_url': tmp_url,
+                        'suggestion': '请检查您的网络连接，或稍后再试'
+                    }, status_code=408)
+                
+                # 处理415错误（文件下载失败）- 如果不是最后一次尝试，则等待后重试
+                elif "download audio failed" in error_detail or "415" in error_detail:
+                    if attempt < max_retries - 1:
+                        logger.warning(f"检测到文件下载失败（415错误），等待 {retry_delay} 秒后重试...")
+                        await asyncio.sleep(retry_delay)
+                        continue  # 重试
+                    else:
+                        logger.error(f"音色注册失败: 达到最大重试次数（{max_retries}次）")
+                        return JSONResponse({
+                            'error': f'音色注册失败: 无法下载音频文件，已尝试{max_retries}次',
+                            'detail': error_detail,
+                            'file_url': tmp_url,
+                            'suggestion': '请检查文件URL是否可访问，或稍后重试'
+                        }, status_code=415)
+                
+                # 其他错误直接返回
+                return JSONResponse({
+                    'error': f'音色注册失败: {error_detail}',
+                    'file_url': tmp_url
+                }, status_code=500)
     except Exception as e:
-        return JSONResponse({'error': str(e), 'file_url': tmp_url}, status_code=500)
-    finally:
-        try:
-            os.remove(temp_path)
-        except Exception:
-            pass
+        # 确保tmp_url在出现异常时也有定义
+        tmp_url = locals().get('tmp_url', '未获取到URL')
+        logger.error(f"注册音色时发生未预期的错误: {str(e)}")
+        return JSONResponse({'error': f'注册音色时发生错误: {str(e)}', 'file_url': tmp_url}, status_code=500)
+
 
 @app.delete('/api/characters/catgirl/{name}')
 async def delete_catgirl(name: str):

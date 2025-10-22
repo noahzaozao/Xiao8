@@ -14,7 +14,7 @@ class CompressedRecentHistoryManager:
         _, _, _, _, name_mapping, _, _, _, _, recent_log = get_character_data()
         # 修复API key类型问题
         api_key = OPENROUTER_API_KEY if OPENROUTER_API_KEY and OPENROUTER_API_KEY != '' else None
-        self.llm = ChatOpenAI(model=SUMMARY_MODEL, base_url=OPENROUTER_URL, api_key=api_key, temperature=0.3)
+        self.llm = ChatOpenAI(model=SUMMARY_MODEL, base_url=OPENROUTER_URL, api_key=api_key, temperature=0.3, extra_body={"enable_thinking": False})
         self.review_llm = ChatOpenAI(model=CORRECTION_MODEL, base_url=OPENROUTER_URL, api_key=api_key, temperature=0.1)
         self.max_history_length = max_history_length
         self.log_file_path = recent_log
@@ -192,7 +192,7 @@ class CompressedRecentHistoryManager:
         try:
             # 使用LLM审阅历史记录
             prompt = history_review_prompt % (self.name_mapping['human'], name_mapping['ai'], history_text, self.name_mapping['human'], name_mapping['ai'])
-            response_content = self.llm.invoke(prompt).content
+            response_content = self.review_llm.invoke(prompt).content
             
             # 确保response_content是字符串
             if isinstance(response_content, list):

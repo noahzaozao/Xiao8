@@ -342,14 +342,15 @@
             </div>
             <div class="field-row">
                 <label for="assistApiSelect">
-                    辅助API（记忆管理/自定义语音）
+                    辅助API（记忆管理/自定义语音/文本聊天）
                     <div class="tooltip-container">
                         <span class="tooltip-icon">?</span>
                         <div class="tooltip-content">
                             <strong>辅助API负责记忆管理和自定义语音：</strong><br>
                             • <strong>阿里</strong>：推荐选择，支持自定义语音<br>
-                            • <strong>智谱</strong>：永久免费且稳定<br><br>
-                            • <strong>阶跃星辰</strong>：价格相对便宜<br><br>
+                            • <strong>智谱</strong>：永久免费且稳定<br>
+                            • <strong>阶跃星辰</strong>：价格相对便宜<br>
+                            • <strong>硅基流动</strong>：性价比高<br>
                             • <strong>OpenAI</strong>：记忆管理能力强<br>
                             <strong>注意：</strong>只有阿里支持自定义语音功能
                         </div>
@@ -360,6 +361,7 @@
                     <option value="openai">OpenAI</option>
                     <option value="glm">智谱</option>
                     <option value="step">阶跃星辰</option>
+                    <option value="silicon">硅基流动</option>
                 </select>
             </div>
             <div class="field-row">
@@ -377,6 +379,25 @@
             <div class="field-row">
                 <label for="assistApiKeyInputStep">辅助API Key - 阶跃星辰<em>（仅当辅助API为阶跃星辰时需要填写）</em></label>
                 <input type="text" id="assistApiKeyInputStep" placeholder="可选，默认为核心API Key" value="" style="max-width: 600px;">
+            </div>
+            <div class="field-row">
+                <label for="assistApiKeyInputSilicon">辅助API Key - 硅基流动<em>（仅当辅助API为硅基流动时需要填写）</em></label>
+                <input type="text" id="assistApiKeyInputSilicon" placeholder="可选，默认为核心API Key" value="" style="max-width: 600px;">
+            </div>
+            
+            <!-- 添加MCP Router Token设置 -->
+            <div class="field-row">
+                <label for="mcpTokenInput">
+                    MCP Router Token
+                    <div class="tooltip-container">
+                        <span class="tooltip-icon">?</span>
+                        <div class="tooltip-content">
+                            <strong>MCP Router Token说明：</strong><br>
+                            用于访问MCP Router服务的认证令牌，启用MCP功能时需要填写。如果您的MCP Router不需要认证，可以留空。
+                        </div>
+                    </div>
+                </label>
+                <input type="text" id="mcpTokenInput" placeholder="请输入MCP Router Token（可选）" value="" style="max-width: 600px;">
             </div>
         </div>
     </div>
@@ -473,6 +494,15 @@ async function loadCurrentApiKey() {
                 document.getElementById('assistApiKeyInputStep').value = data.assistApiKeyStep;
                 document.getElementById('assistApiKeyInputStep').placeholder = data.assistApiKeyStep || '可选，默认为核心API Key';
             }
+            if (typeof data.assistApiKeySilicon === 'string' && document.getElementById('assistApiKeyInputSilicon')) {
+                document.getElementById('assistApiKeyInputSilicon').value = data.assistApiKeySilicon;
+                document.getElementById('assistApiKeyInputSilicon').placeholder = data.assistApiKeySilicon || '可选，默认为核心API Key';
+            }
+            
+            // 加载MCPR_TOKEN
+            if (typeof data.mcpToken === 'string' && document.getElementById('mcpTokenInput')) {
+                document.getElementById('mcpTokenInput').value = data.mcpToken;
+            }
         } else {
             showCurrentApiKey('📋 获取当前API Key失败');
         }
@@ -496,6 +526,8 @@ document.getElementById('api-key-form').addEventListener('submit', async functio
     const assistApiKeyOpenai = document.getElementById('assistApiKeyInputOpenai') ? document.getElementById('assistApiKeyInputOpenai').value.trim() : '';
     const assistApiKeyGlm = document.getElementById('assistApiKeyInputGlm') ? document.getElementById('assistApiKeyInputGlm').value.trim() : '';
     const assistApiKeyStep = document.getElementById('assistApiKeyInputStep') ? document.getElementById('assistApiKeyInputStep').value.trim() : '';
+    const assistApiKeySilicon = document.getElementById('assistApiKeyInputSilicon') ? document.getElementById('assistApiKeyInputSilicon').value.trim() : '';
+    const mcpToken = document.getElementById('mcpTokenInput') ? document.getElementById('mcpTokenInput').value.trim() : '';
 
     if (!apiKey) {
         showStatus('请输入API Key', 'error');
@@ -506,15 +538,15 @@ document.getElementById('api-key-form').addEventListener('submit', async functio
     const currentApiKeyDiv = document.getElementById('current-api-key');
     if (currentApiKeyDiv.style.display !== 'none') {
         // 已有API Key，显示警告弹窗
-        pendingApiKey = { apiKey, coreApi, assistApi, assistApiKeyQwen, assistApiKeyOpenai, assistApiKeyGlm, assistApiKeyStep };
+        pendingApiKey = { apiKey, coreApi, assistApi, assistApiKeyQwen, assistApiKeyOpenai, assistApiKeyGlm, assistApiKeyStep, assistApiKeySilicon, mcpToken };
         showWarningModal();
     } else {
         // 没有现有API Key，直接保存
-        await saveApiKey({ apiKey, coreApi, assistApi, assistApiKeyQwen, assistApiKeyOpenai, assistApiKeyGlm, assistApiKeyStep });
+        await saveApiKey({ apiKey, coreApi, assistApi, assistApiKeyQwen, assistApiKeyOpenai, assistApiKeyGlm, assistApiKeyStep, assistApiKeySilicon, mcpToken });
     }
 });
 
-async function saveApiKey({ apiKey, coreApi, assistApi, assistApiKeyQwen, assistApiKeyOpenai, assistApiKeyGlm, assistApiKeyStep }) {
+async function saveApiKey({ apiKey, coreApi, assistApi, assistApiKeyQwen, assistApiKeyOpenai, assistApiKeyGlm, assistApiKeyStep, assistApiKeySilicon, mcpToken }) {
     // 确保apiKey是有效的字符串
     if (!apiKey || typeof apiKey !== 'string') {
         showStatus('API Key无效', 'error');
@@ -534,7 +566,9 @@ async function saveApiKey({ apiKey, coreApi, assistApi, assistApiKeyQwen, assist
                 assistApiKeyQwen: assistApiKeyQwen || undefined,
                 assistApiKeyOpenai: assistApiKeyOpenai || undefined,
                 assistApiKeyGlm: assistApiKeyGlm || undefined,
-                assistApiKeyStep: assistApiKeyStep || undefined
+                assistApiKeyStep: assistApiKeyStep || undefined,
+                assistApiKeySilicon: assistApiKeySilicon || undefined,
+                mcpToken: mcpToken || undefined
             })
         });
         
@@ -647,8 +681,9 @@ function updateAssistApiRecommendation() {
         assistApiTooltip.innerHTML = `
             <strong>辅助API负责记忆管理和自定义语音：</strong><br>
             • <strong>阿里</strong>：推荐选择，支持自定义语音<br>
-            • <strong>智谱</strong>：永久免费且稳定，支持联网搜索<br><br>
-            • <strong>阶跃星辰</strong>：相对便宜<br><br>
+            • <strong>智谱</strong>：永久免费且稳定，支持联网搜索<br>
+            • <strong>阶跃星辰</strong>：相对便宜<br>
+            • <strong>硅基流动</strong>：性价比高<br>
             • <strong>OpenAI</strong>：记忆管理能力强<br>
             <strong>当前建议：</strong>${recommendation}
         `;
@@ -726,4 +761,4 @@ function closeApiKeySettings() {
 }
 </script>
 </body>
-</html> 
+</html>

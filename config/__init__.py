@@ -73,6 +73,10 @@ try:
     if 'coreApiKey' in core_cfg and core_cfg['coreApiKey'] and core_cfg['coreApiKey'] != CORE_API_KEY:
         logger.warning("coreApiKey in core_config.json is updated. Overwriting CORE_API_KEY.")
         CORE_API_KEY = core_cfg['coreApiKey']
+    
+    # 读取 core_api 类型
+    CORE_API_TYPE = core_cfg.get('coreApi', 'qwen')
+    
     if 'coreApi' in core_cfg and core_cfg['coreApi']:
         logger.warning("coreApi: " + core_cfg['coreApi'])
         if core_cfg['coreApi'] == 'qwen':
@@ -96,6 +100,11 @@ try:
     ASSIST_API_KEY_OPENAI = core_cfg['assistApiKeyOpenai'] if 'assistApiKeyOpenai' in core_cfg and core_cfg['assistApiKeyOpenai'] != '' else CORE_API_KEY
     ASSIST_API_KEY_GLM = core_cfg['assistApiKeyGlm'] if 'assistApiKeyGlm' in core_cfg and core_cfg['assistApiKeyGlm'] != '' else CORE_API_KEY
     ASSIST_API_KEY_STEP = core_cfg['assistApiKeyStep'] if 'assistApiKeyStep' in core_cfg and core_cfg['assistApiKeyStep'] != '' else CORE_API_KEY
+    ASSIST_API_KEY_SILICON = core_cfg['assistApiKeySilicon'] if 'assistApiKeySilicon' in core_cfg and core_cfg['assistApiKeySilicon'] != '' else CORE_API_KEY
+    # 读取MCP Token
+    if 'mcpToken' in core_cfg and core_cfg['mcpToken'] != '':
+        MCP_ROUTER_API_KEY = core_cfg['mcpToken']
+        logger.info("MCP_ROUTER_API_KEY loaded from core_config.json")
     COMPUTER_USE_MODEL = 'glm-4.5v'
     COMPUTER_USE_GROUND_MODEL = 'glm-4.5v'
     COMPUTER_USE_MODEL_URL = COMPUTER_USE_GROUND_URL = 'https://open.bigmodel.cn/api/paas/v4'  # reuse
@@ -105,22 +114,22 @@ try:
         if core_cfg['assistApi'] == 'qwen':
             logger.warning("assistApi: " + core_cfg['assistApi'])
             OPENROUTER_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-            SUMMARY_MODEL = "qwen-plus-2025-07-14"
+            SUMMARY_MODEL = "qwen3-next-80b-a3b-instruct"
             CORRECTION_MODEL = "qwen3-235b-a22b-instruct-2507"
-            EMOTION_MODEL = "qwen-turbo-2025-07-15"
+            EMOTION_MODEL = "qwen-flash-2025-07-28"
             AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_QWEN
         elif core_cfg['assistApi'] == 'openai':
             logger.warning("assistApi: " + core_cfg['assistApi'])
             OPENROUTER_URL = "https://api.openai.com/v1"
-            SUMMARY_MODEL= "gpt-4.1"
-            CORRECTION_MODEL = "o4-mini"
-            EMOTION_MODEL = "gpt-4.1-mini"
+            SUMMARY_MODEL= "gpt-4.1-mini"
+            CORRECTION_MODEL = "gpt-5-chat-latest"
+            EMOTION_MODEL = "gpt-4.1-nano"
             AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_OPENAI
         elif core_cfg['assistApi'] == 'glm':
             OPENROUTER_URL = "https://open.bigmodel.cn/api/paas/v4"
             SUMMARY_MODEL = "glm-4.5-flash" # <-永久免费模型
-            CORRECTION_MODEL = "glm-z1-flash"  # <-永久免费模型
-            EMOTION_MODEL = "glm-4.5-flash"
+            CORRECTION_MODEL = "glm-4.5-air"
+            EMOTION_MODEL = "glm-4.5-flash" # <-永久免费模型
             AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_GLM
         elif core_cfg['assistApi'] == 'step':
             OPENROUTER_URL = "https://api.stepfun.com/v1"
@@ -128,6 +137,12 @@ try:
             CORRECTION_MODEL = "step-3"
             EMOTION_MODEL = "step-2-mini"
             AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_STEP
+        elif core_cfg['assistApi'] == 'silicon':
+            OPENROUTER_URL = "https://api.siliconflow.cn/v1"
+            SUMMARY_MODEL = "Qwen/Qwen3-Next-80B-A3B-Instruct"
+            CORRECTION_MODEL = "deepseek-ai/DeepSeek-V3.2-Exp"
+            EMOTION_MODEL = "THUDM/GLM-4-9B-0414"
+            AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_SILICON
         else:
             logger.error("💥 Unknown assistApi: " + core_cfg['assistApi']) 
     else:
@@ -138,9 +153,11 @@ try:
         AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_QWEN
 
 except FileNotFoundError:
+    CORE_API_TYPE = 'qwen'  # 默认使用 qwen
     pass
 except Exception as e:
     logger.error(f"Error parsing Core API Key: {e}")
+    CORE_API_TYPE = 'qwen'  # 默认使用 qwen
 
 if  AUDIO_API_KEY == '':
     AUDIO_API_KEY = CORE_API_KEY

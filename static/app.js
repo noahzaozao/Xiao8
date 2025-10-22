@@ -6,6 +6,9 @@ function init_app(){
     const resetSessionButton = document.getElementById('resetSessionButton');
     const statusElement = document.getElementById('status');
     const chatContainer = document.getElementById('chatContainer');
+    const textInputBox = document.getElementById('textInputBox');
+    const textSendButton = document.getElementById('textSendButton');
+    const modeHint = document.getElementById('mode-hint');
 
     let audioContext;
     let workletNode;
@@ -26,6 +29,9 @@ function init_app(){
     let screenCaptureStream = null; // 暂存屏幕共享stream，不再需要每次都弹窗选择共享区域，方便自动重连
     // 新增：当前选择的麦克风设备ID
     let selectedMicrophoneId = null;
+    
+    // 模式管理
+    let isTextSessionActive = false;
 
     function isMobile() {
       return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -82,8 +88,10 @@ function init_app(){
                 } else if (response.type === 'status') {
                     statusElement.textContent = response.message;
                     if (response.message === `${lanlan_config.lanlan_name}失联了，即将重启！`){
-                        if (isRecording === false){
+                        if (isRecording === false && !isTextSessionActive){
                             statusElement.textContent = `${lanlan_config.lanlan_name}正在打盹...`;
+                        } else if (isTextSessionActive) {
+                            statusElement.textContent = `正在文本聊天中...`;
                         } else {
                             stopRecording();
                             if (socket.readyState === WebSocket.OPEN) {
@@ -177,7 +185,10 @@ function init_app(){
             // 创建新消息
             const messageDiv = document.createElement('div');
             messageDiv.classList.add('message', sender);
-            messageDiv.textContent = "[" + getCurrentTimeString() + "] 🎀 " + text;
+            
+            // 根据sender设置不同的图标
+            const icon = sender === 'user' ? '💬' : '🎀';
+            messageDiv.textContent = "[" + getCurrentTimeString() + "] " + icon + " " + text;
             chatContainer.appendChild(messageDiv);
 
             // 如果是Gemini消息，更新当前消息引用
@@ -220,14 +231,14 @@ function init_app(){
             if (micList.classList.contains('show')) {
                 micList.classList.remove('show');
                 // 列表收起时，箭头变为向右
-                toggleButton.textContent = '▶️';
+                toggleButton.textContent = '▶';
             } else {
                 try {
                     // 快速显示缓存的列表
                     if (cachedMicrophones && (Date.now() - cacheTimestamp < CACHE_DURATION)) {
                         renderMicrophoneList(cachedMicrophones);
                         micList.classList.add('show');
-                        toggleButton.textContent = '◀️';
+                        toggleButton.textContent = '◀';
                         console.log('使用缓存的麦克风列表');
                         
                         // 后台刷新缓存，不阻塞UI
@@ -238,7 +249,7 @@ function init_app(){
                         // 缓存过期或不存在，重新加载
                         await loadMicrophoneList();
                         micList.classList.add('show');
-                        toggleButton.textContent = '◀️';
+                        toggleButton.textContent = '◀';
                     }
                     // 添加调试信息
                     console.log('麦克风列表已显示');
@@ -260,7 +271,7 @@ function init_app(){
             if (!micList.contains(event.target) && event.target !== toggleButton) {
                 micList.classList.remove('show');
                 // 列表收起时，箭头变为向右
-                toggleButton.textContent = '▶️';
+                toggleButton.textContent = '▶';
             }
         });
         
@@ -355,9 +366,6 @@ function init_app(){
         // 保存选择到服务器
         await saveSelectedMicrophone(deviceId);
         
-        // 隐藏列表
-        document.getElementById('mic-list').classList.remove('show');
-        
         // 如果正在录音，重启录音以使用新选择的麦克风
         if (isRecording) {
             const wasRecording = isRecording;
@@ -406,6 +414,14 @@ function init_app(){
     // 开麦，按钮on click
     async function startMicCapture() {
         try {
+            // 开始录音前添加录音状态类到两个按钮
+            micButton.classList.add('recording');
+            // 同步更新麦克风选择器按钮样式
+            const toggleButton = document.getElementById('toggle-mic-selector');
+            if (toggleButton) {
+                toggleButton.classList.add('recording');
+            }
+            
             if (!audioPlayerContext) {
                 audioPlayerContext = new (window.AudioContext || window.webkitAudioContext)();
             }
@@ -448,16 +464,35 @@ function init_app(){
         } catch (err) {
             console.error('获取麦克风权限失败:', err);
             statusElement.textContent = '无法访问麦克风';
+            // 失败时移除两个按钮的录音状态类
+            micButton.classList.remove('recording');
+            const toggleButton = document.getElementById('toggle-mic-selector');
+            if (toggleButton) {
+                toggleButton.classList.remove('recording');
+            }
         }
     }
 
     async function stopMicCapture(){ // 闭麦，按钮on click
+        // 停止录音时移除两个按钮的录音状态类
+        micButton.classList.remove('recording');
+        const toggleButton = document.getElementById('toggle-mic-selector');
+        if (toggleButton) {
+            toggleButton.classList.remove('recording');
+        }
+        
         stopRecording();
         micButton.disabled = false;
         muteButton.disabled = true;
         screenButton.disabled = true;
         stopButton.disabled = true;
         resetSessionButton.disabled = false;
+        
+        // 显示文本输入区
+        const textInputArea = document.getElementById('text-input-area');
+        textInputArea.classList.remove('hidden');
+        
+        // 如果是从语音模式切换回来，显示待机状态
         statusElement.textContent = `${lanlan_config.lanlan_name}待机中...`;
     }
 
@@ -594,7 +629,23 @@ function init_app(){
 
     // 开始麦克风录音
     micButton.addEventListener('click', async () => {
-        // 立即禁用所有按钮
+        // 如果有活跃的文本会话，先结束它
+        if (isTextSessionActive) {
+            if (socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    action: 'end_session'
+                }));
+            }
+            isTextSessionActive = false;
+            statusElement.textContent = '正在切换到语音模式...';
+            await new Promise(resolve => setTimeout(resolve, 500)); // 等待结束
+        }
+        
+        // 隐藏文本输入区
+        const textInputArea = document.getElementById('text-input-area');
+        textInputArea.classList.add('hidden');
+        
+        // 立即禁用所有语音按钮
         micButton.disabled = true;
         muteButton.disabled = true;
         screenButton.disabled = true;
@@ -619,12 +670,13 @@ function init_app(){
                 await startMicCapture();
             } catch (error) {
                 console.error('启动麦克风失败:', error);
-                // 如果失败，恢复按钮状态
+                // 如果失败，恢复按钮状态和文本输入区
                 micButton.disabled = false;
                 muteButton.disabled = true;
                 screenButton.disabled = true;
                 stopButton.disabled = true;
                 resetSessionButton.disabled = false;
+                textInputArea.classList.remove('hidden');
                 statusElement.textContent = '麦克风启动失败';
             }
         }, 2500);
@@ -648,11 +700,98 @@ function init_app(){
         }
         stopRecording();
         clearAudioQueue();
+        
+        // 重置所有状态
+        isTextSessionActive = false;
+        
+        // 显示文本输入区
+        const textInputArea = document.getElementById('text-input-area');
+        textInputArea.classList.remove('hidden');
+        
+        // 启用所有输入
         micButton.disabled = false;
+        textSendButton.disabled = false;
+        textInputBox.disabled = false;
+        
+        // 禁用语音控制按钮
         muteButton.disabled = true;
         screenButton.disabled = true;
         stopButton.disabled = true;
         resetSessionButton.disabled = true;
+        
+        // 更新提示文字
+        modeHint.textContent = '文本聊天模式 - 直接输入消息发送';
+        modeHint.classList.remove('voice-active');
+        
+        statusElement.textContent = '会话已结束';
+    });
+    
+    // 文本发送按钮事件
+    textSendButton.addEventListener('click', async () => {
+        const text = textInputBox.value.trim();
+        if (!text) {
+            return; // 静默返回，不显示错误
+        }
+        
+        // 如果还没有启动session，先启动
+        if (!isTextSessionActive) {
+            // 临时禁用文本输入
+            textSendButton.disabled = true;
+            textInputBox.disabled = true;
+            resetSessionButton.disabled = false;
+            
+            // 启动文本session
+            if (socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    action: 'start_session',
+                    input_type: 'text',
+                    new_session: false
+                }));
+            }
+            
+            statusElement.textContent = '正在初始化文本对话...';
+            modeHint.textContent = '正在连接...';
+            
+            // 等待session初始化
+            await new Promise(resolve => setTimeout(resolve, 2500));
+            
+            isTextSessionActive = true;
+            showLive2d();
+            
+            // 重新启用文本输入
+            textSendButton.disabled = false;
+            textInputBox.disabled = false;
+            
+            statusElement.textContent = '正在文本聊天中';
+            modeHint.textContent = '文本聊天模式 - 可点击"开始语音"切换到语音模式';
+        }
+        
+        // 发送文本消息
+        if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({
+                action: 'stream_data',
+                data: text,
+                input_type: 'text'
+            }));
+            
+            // 清空输入框
+            textInputBox.value = '';
+            
+            // 在聊天界面显示用户消息
+            appendMessage(text, 'user', true);
+            
+            statusElement.textContent = '正在文本聊天中';
+        } else {
+            statusElement.textContent = 'WebSocket未连接！';
+        }
+    });
+    
+    // 支持Enter键发送（Shift+Enter换行）
+    textInputBox.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            textSendButton.click();
+        }
     });
 
     // 情感分析功能

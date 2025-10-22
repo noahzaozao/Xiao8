@@ -59,7 +59,7 @@ class OmniRealtimeClient:
         base_url,
         api_key: str,
         model: str = "",
-        voice: str = "Cherry",
+        voice: str = None,
         turn_detection_mode: TurnDetectionMode = TurnDetectionMode.SERVER_VAD,
         on_text_delta: Optional[Callable[[str, bool], Awaitable[None]]] = None,
         on_audio_delta: Optional[Callable[[bytes], Awaitable[None]]] = None,
@@ -115,7 +115,7 @@ class OmniRealtimeClient:
                 await self.update_session({
                     "instructions": instructions,
                     "modalities": self._modalities ,
-                    "voice": "tongtong",
+                    "voice": self.voice if self.voice else "tongtong",
                     "input_audio_format": "pcm16",
                     "output_audio_format": "pcm",
                     "turn_detection": {
@@ -134,7 +134,7 @@ class OmniRealtimeClient:
                 await self.update_session({
                     "instructions": instructions,
                     "modalities": self._modalities ,
-                    "voice": self.voice,
+                    "voice": self.voice if self.voice else "cherry",
                     "input_audio_format": "pcm16",
                     "output_audio_format": "pcm16",
                     "input_audio_transcription": {
@@ -146,7 +146,7 @@ class OmniRealtimeClient:
                         "prefix_padding_ms":300,
                         "silence_duration_ms": 500
                     },
-                    "temperature": 0.3
+                    "temperature": 0.4
                 })
             elif "gpt" in self.model:
                 await self.update_session({
@@ -164,7 +164,7 @@ class OmniRealtimeClient:
                             },
                         },
                         "output": {
-                            "voice": "marin",
+                            "voice": self.voice if self.voice else "marin",
                             "speed": 1.0
                         }
                     }
@@ -173,7 +173,7 @@ class OmniRealtimeClient:
                 await self.update_session({
                     "instructions": instructions + '\n请使用默认女声与用户交流。\n',
                     "modalities": ['text', 'audio'],
-                    "voice": "qingchunshaonv",
+                    "voice": self.voice if self.voice else "qingchunshaonv",
                     "input_audio_format": "pcm16",
                     "output_audio_format": "pcm16",
                     "turn_detection": {
