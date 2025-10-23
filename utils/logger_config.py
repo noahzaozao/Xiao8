@@ -332,12 +332,7 @@ def setup_logging(app_name="Xiao8", log_level=None):
     
     # 记录日志配置信息
     logger.info(f"=== {app_name} 日志系统已初始化 ===")
-    logger.info(f"日志目录: {config.get_log_directory_path()}")
-    logger.info(f"日志文件: {config.get_log_file_path()}")
     logger.info(f"日志级别: {logging.getLevelName(config.log_level)}")
-    logger.info(f"单文件最大: {config.max_bytes / (1024*1024):.1f}MB")
-    logger.info(f"备份文件数: {config.backup_count}")
-    logger.info(f"保留天数: {config.retention_days}")
     logger.info("=" * 50)
     
     return logger, config

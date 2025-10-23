@@ -220,7 +220,7 @@ async def set_preferred_model(request: Request):
         return {"success": False, "error": str(e)}
 
 @app.get("/api/config/core_api")
-async def get_core_config():
+async def get_core_config_api():
     """获取核心配置（API Key）"""
     try:
         # 尝试从core_config.json读取
@@ -230,7 +230,8 @@ async def get_core_config():
                 api_key = core_cfg.get('coreApiKey', '')
         except FileNotFoundError:
             # 如果文件不存在，返回当前配置中的CORE_API_KEY
-            core_config = get_core_config()
+            from config import get_core_config as get_core_config_sync
+            core_config = get_core_config_sync()
             api_key = core_config['CORE_API_KEY']
         
         return {
@@ -1529,13 +1530,18 @@ async def emotion_analysis(request: Request):
         ]
         
         # 异步调用模型
-        response = await client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=0.3,
-            max_tokens=100,
-            extra_body={"enable_thinking": False} if model in MODELS_WITH_EXTRA_BODY else None
-        )
+        request_params = {
+            "model": model,
+            "messages": messages,
+            "temperature": 0.3,
+            "max_tokens": 100
+        }
+        
+        # 只有在需要时才添加 extra_body
+        if model in MODELS_WITH_EXTRA_BODY:
+            request_params["extra_body"] = {"enable_thinking": False}
+        
+        response = await client.chat.completions.create(**request_params)
         
         # 解析响应
         result_text = response.choices[0].message.content.strip()
@@ -1565,6 +1571,8 @@ async def emotion_analysis(request: Request):
             
     except Exception as e:
         logger.error(f"情感分析失败: {e}")
+        import traceback
+        traceback.print_exc()
         return {
             "error": f"情感分析失败: {str(e)}",
             "emotion": "neutral",

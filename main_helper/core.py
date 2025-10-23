@@ -135,6 +135,11 @@ class LLMSessionManager:
         self.tts_ready = False  # TTS是否完全就绪
         self.tts_pending_chunks = []  # 待处理的TTS文本chunk: [(speech_id, text), ...]
         self.tts_cache_lock = asyncio.Lock()  # 保护缓存的锁
+        
+        # 输入数据缓存机制：确保session初始化期间的输入不丢失
+        self.session_ready = False  # Session是否完全就绪
+        self.pending_input_data = []  # 待处理的输入数据: [message_dict, ...]
+        self.input_cache_lock = asyncio.Lock()  # 保护输入缓存的锁
 
     async def handle_new_message(self):
         """处理新模型输出：清空TTS队列并通知前端"""
@@ -417,6 +422,26 @@ class LLMSessionManager:
             # 清空缓存
             self.tts_pending_chunks.clear()
     
+    async def _flush_pending_input_data(self):
+        """将缓存的输入数据发送到session"""
+        async with self.input_cache_lock:
+            if not self.pending_input_data:
+                return
+            
+            if self.session and self.is_active:
+                for message in self.pending_input_data:
+                    try:
+                        # 重新调用stream_data处理缓存的数据
+                        # 注意：这里直接处理，不再缓存（因为session_ready已设为True）
+                        await self._process_stream_data_internal(message)
+                    except Exception as e:
+                        logger.error(f"💥 发送缓存的输入数据失败: {e}")
+                        traceback.print_exc()
+                        break
+            
+            # 清空缓存
+            self.pending_input_data.clear()
+    
     def normalize_text(self, text): # 对文本进行基本预处理
         text = text.strip()
         text = text.replace("\n", "")
@@ -453,6 +478,11 @@ class LLMSessionManager:
         async with self.tts_cache_lock:
             self.tts_ready = False
             self.tts_pending_chunks.clear()
+        
+        # 重置输入缓存状态
+        async with self.input_cache_lock:
+            self.session_ready = False
+            # 注意：不清空 pending_input_data，因为可能已有数据在缓存中
         
         # 根据 input_mode 设置 use_tts
         if input_mode == 'text':
@@ -544,6 +574,9 @@ class LLMSessionManager:
             self.is_preparing_new_session = False
             self.summary_triggered_time = None
             self.initial_cache_snapshot_len = 0
+            # 清空输入缓存（新对话时不需要保留旧的输入）
+            async with self.input_cache_lock:
+                self.pending_input_data.clear()
 
         try:
             # 获取初始 prompt
@@ -594,6 +627,16 @@ class LLMSessionManager:
                 # 启动成功，重置失败计数器
                 self.session_start_failure_count = 0
                 self.session_start_last_failure_time = None
+                
+                # 通知前端 session 已成功启动
+                await self.send_session_started(input_mode)
+                
+                # 标记session为就绪状态并处理可能已缓存的输入数据
+                async with self.input_cache_lock:
+                    self.session_ready = True
+                
+                # 处理在session启动期间可能已经缓存的输入数据
+                await self._flush_pending_input_data()
             else:
                 raise Exception("Session not initialized")
         
@@ -866,9 +909,28 @@ class LLMSessionManager:
         data = message.get("data")
         input_type = message.get("input_type")
         
-        # 如果正在启动session，等待完成
+        # 检查session是否就绪
+        async with self.input_cache_lock:
+            if not self.session_ready:
+                # Session未就绪，缓存输入数据
+                self.pending_input_data.append(message)
+                if len(self.pending_input_data) == 1:
+                    logger.info(f"Session未就绪，开始缓存输入数据...")
+                else:
+                    logger.debug(f"继续缓存输入数据 (总计: {len(self.pending_input_data)} 条)...")
+                return
+        
+        # Session已就绪，直接处理
+        await self._process_stream_data_internal(message)
+    
+    async def _process_stream_data_internal(self, message: dict):
+        """内部方法：实际处理stream_data的逻辑"""
+        data = message.get("data")
+        input_type = message.get("input_type")
+        
+        # 如果正在启动session，这不应该发生（因为stream_data已经检查过了）
         if self.is_starting_session:
-            logger.debug(f"Session正在启动中，等待...")
+            logger.debug(f"Session正在启动中，跳过...")
             return
         
         # 如果 session 不存在或不活跃，检查是否可以自动重建
@@ -1103,6 +1165,11 @@ class LLMSessionManager:
         async with self.tts_cache_lock:
             self.tts_ready = False
             self.tts_pending_chunks.clear()
+        
+        # 重置输入缓存状态
+        async with self.input_cache_lock:
+            self.session_ready = False
+            self.pending_input_data.clear()
 
         self.last_time = None
         await self.send_expressions()
@@ -1127,6 +1194,17 @@ class LLMSessionManager:
             pass
         except Exception as e:
             logger.error(f"💥 WS Send Status Error: {e}")
+    
+    async def send_session_started(self, input_mode: str): # 通知前端session已启动
+        try:
+            if self.websocket and hasattr(self.websocket, 'client_state') and self.websocket.client_state == self.websocket.client_state.CONNECTED:
+                data = json.dumps({"type": "session_started", "input_mode": input_mode})
+                await self.websocket.send_text(data)
+                logger.info(f"✅ Session启动成功通知已发送到前端 (mode: {input_mode})")
+        except WebSocketDisconnect:
+            pass
+        except Exception as e:
+            logger.error(f"💥 WS Send Session Started Error: {e}")
 
     async def send_expressions(self, prompt=""):
         '''这个函数在直播版本中有用，用于控制Live2D模型的表情动作。但是在开源版本目前没有实际用途。'''

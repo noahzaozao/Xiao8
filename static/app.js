@@ -8,7 +8,6 @@ function init_app(){
     const chatContainer = document.getElementById('chatContainer');
     const textInputBox = document.getElementById('textInputBox');
     const textSendButton = document.getElementById('textSendButton');
-    const modeHint = document.getElementById('mode-hint');
 
     let audioContext;
     let workletNode;
@@ -38,6 +37,7 @@ function init_app(){
     // 模式管理
     let isTextSessionActive = false;
     let isSwitchingMode = false; // 新增：模式切换标志
+    let sessionStartedResolver = null; // 用于等待 session_started 消息
     
     // WebSocket心跳保活
     let heartbeatInterval = null;
@@ -135,14 +135,27 @@ function init_app(){
 
                             setTimeout(async () => {
                                 try {
+                                    // 创建一个 Promise 来等待 session_started 消息
+                                    const sessionStartPromise = new Promise((resolve, reject) => {
+                                        sessionStartedResolver = resolve;
+                                        
+                                        // 设置超时（15秒），如果超时则拒绝
+                                        setTimeout(() => {
+                                            if (sessionStartedResolver) {
+                                                sessionStartedResolver = null;
+                                                reject(new Error('Session启动超时'));
+                                            }
+                                        }, 10000);
+                                    });
+                                    
                                     // 发送start session事件
                                     socket.send(JSON.stringify({
                                         action: 'start_session',
                                         input_type: 'audio'
                                     }));
                                     
-                                    // 等待2.5秒后执行后续操作
-                                    await new Promise(resolve => setTimeout(resolve, 2500));
+                                    // 等待session真正启动成功
+                                    await sessionStartPromise;
                                     
                                     showLive2d();
                                     await startMicCapture();
@@ -152,7 +165,7 @@ function init_app(){
                                     statusElement.textContent = `重启完成，${lanlan_config.lanlan_name}回来了！`;
                                 } catch (error) {
                                     console.error("重启时出错:", error);
-                                    statusElement.textContent = "重启失败，请手动刷新。";
+                                    statusElement.textContent = `重启失败: ${error.message}`;
                                 }
                             }, 7500); // 7.5秒后执行
                         }
@@ -172,6 +185,13 @@ function init_app(){
                                 applyEmotion(emotionResult.emotion);
                             }
                         }, 100);
+                    }
+                } else if (response.type === 'session_started') {
+                    console.log('收到session_started事件，模式:', response.input_mode);
+                    // 解析 session_started Promise
+                    if (sessionStartedResolver) {
+                        sessionStartedResolver(response.input_mode);
+                        sessionStartedResolver = null;
                     }
                 }
             } catch (error) {
@@ -701,36 +721,53 @@ function init_app(){
         stopButton.disabled = true;
         resetSessionButton.disabled = true;
         
-        // 发送start session事件
-        if (socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({
-                action: 'start_session',
-                input_type: 'audio'
-            }));
-        }
+        statusElement.textContent = '正在初始化语音对话...';
         
-        statusElement.textContent = '正在初始化麦克风...';
-        
-        // 3秒后执行正常的麦克风启动逻辑
-        setTimeout(async () => {
-            try {
-                // 显示Live2D
-                showLive2d();
-                await startMicCapture();
-                isSwitchingMode = false; // 模式切换完成
-            } catch (error) {
-                console.error('启动麦克风失败:', error);
-                // 如果失败，恢复按钮状态和文本输入区
-                micButton.disabled = false;
-                muteButton.disabled = true;
-                screenButton.disabled = true;
-                stopButton.disabled = true;
-                resetSessionButton.disabled = false;
-                textInputArea.classList.remove('hidden');
-                statusElement.textContent = '麦克风启动失败';
-                isSwitchingMode = false; // 切换失败，重置标志
+        try {
+            // 创建一个 Promise 来等待 session_started 消息
+            const sessionStartPromise = new Promise((resolve, reject) => {
+                sessionStartedResolver = resolve;
+                
+                // 设置超时（15秒），如果超时则拒绝
+                setTimeout(() => {
+                    if (sessionStartedResolver) {
+                        sessionStartedResolver = null;
+                        reject(new Error('Session启动超时'));
+                    }
+                }, 15000);
+            });
+            
+            // 发送start session事件
+            if (socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    action: 'start_session',
+                    input_type: 'audio'
+                }));
+            } else {
+                throw new Error('WebSocket未连接');
             }
-        }, 2500);
+            
+            // 等待session真正启动成功
+            await sessionStartPromise;
+            
+            statusElement.textContent = '正在初始化麦克风...';
+            
+            // 显示Live2D
+            showLive2d();
+            await startMicCapture();
+            isSwitchingMode = false; // 模式切换完成
+        } catch (error) {
+            console.error('启动语音会话失败:', error);
+            // 如果失败，恢复按钮状态和文本输入区
+            micButton.disabled = false;
+            muteButton.disabled = true;
+            screenButton.disabled = true;
+            stopButton.disabled = true;
+            resetSessionButton.disabled = false;
+            textInputArea.classList.remove('hidden');
+            statusElement.textContent = `启动失败: ${error.message}`;
+            isSwitchingMode = false; // 切换失败，重置标志
+        }
     });
 
     // 开始屏幕共享
@@ -771,10 +808,7 @@ function init_app(){
         stopButton.disabled = true;
         resetSessionButton.disabled = true;
         
-        // 更新提示文字
-        modeHint.textContent = '文本聊天模式 - 直接输入消息发送';
-        modeHint.classList.remove('voice-active');
-        
+
         statusElement.textContent = '会话已结束';
         
         // 延迟重置模式切换标志，确保"已离开"消息已经被忽略
@@ -797,30 +831,54 @@ function init_app(){
             textInputBox.disabled = true;
             resetSessionButton.disabled = false;
             
-            // 启动文本session
-            if (socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({
-                    action: 'start_session',
-                    input_type: 'text',
-                    new_session: false
-                }));
-            }
-            
             statusElement.textContent = '正在初始化文本对话...';
-            modeHint.textContent = '正在连接...';
             
-            // 等待session初始化
-            await new Promise(resolve => setTimeout(resolve, 2500));
-            
-            isTextSessionActive = true;
-            showLive2d();
-            
-            // 重新启用文本输入
-            textSendButton.disabled = false;
-            textInputBox.disabled = false;
-            
-            statusElement.textContent = '正在文本聊天中';
-            modeHint.textContent = '文本聊天模式 - 可点击"开始语音"切换到语音模式';
+            try {
+                // 创建一个 Promise 来等待 session_started 消息
+                const sessionStartPromise = new Promise((resolve, reject) => {
+                    sessionStartedResolver = resolve;
+                    
+                    // 设置超时（15秒），如果超时则拒绝
+                    setTimeout(() => {
+                        if (sessionStartedResolver) {
+                            sessionStartedResolver = null;
+                            reject(new Error('Session启动超时'));
+                        }
+                    }, 15000);
+                });
+                
+                // 启动文本session
+                if (socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({
+                        action: 'start_session',
+                        input_type: 'text',
+                        new_session: false
+                    }));
+                } else {
+                    throw new Error('WebSocket未连接');
+                }
+                
+                // 等待session真正启动成功
+                await sessionStartPromise;
+                
+                isTextSessionActive = true;
+                showLive2d();
+                
+                // 重新启用文本输入
+                textSendButton.disabled = false;
+                textInputBox.disabled = false;
+                
+                statusElement.textContent = '正在文本聊天中';
+            } catch (error) {
+                console.error('启动文本session失败:', error);
+                statusElement.textContent = `启动失败: ${error.message}`;
+                
+                // 重新启用按钮，允许用户重试
+                textSendButton.disabled = false;
+                textInputBox.disabled = false;
+                
+                return; // 启动失败，不继续发送消息
+            }
         }
         
         // 发送文本消息

@@ -206,7 +206,7 @@ def get_core_config():
                 config['OPENROUTER_URL'] = "https://api.siliconflow.cn/v1"
                 config['SUMMARY_MODEL'] = "Qwen/Qwen3-Next-80B-A3B-Instruct"
                 config['CORRECTION_MODEL'] = "deepseek-ai/DeepSeek-V3.2-Exp"
-                config['EMOTION_MODEL'] = "THUDM/GLM-4-9B-0414"
+                config['EMOTION_MODEL'] = "inclusionAI/Ling-mini-2.0"
                 config['AUDIO_API_KEY'] = config['OPENROUTER_API_KEY'] = config['ASSIST_API_KEY_SILICON']
         else:
             # 默认使用qwen
