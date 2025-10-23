@@ -416,8 +416,6 @@ class LLMSessionManager:
                     except Exception as e:
                         logger.error(f"💥 发送缓存的TTS请求失败: {e}")
                         break
-                
-                logger.info(f"✅ 成功发送 {chunk_count} 个缓存的文本chunk到TTS")
             
             # 清空缓存
             self.tts_pending_chunks.clear()
@@ -473,6 +471,18 @@ class LLMSessionManager:
         logger.info(f"启动新session: input_mode={input_mode}, new={new}")
         self.websocket = websocket
         self.input_mode = input_mode
+        
+        # 重新读取核心配置以支持热重载
+        core_config = get_core_config()
+        self.model = core_config['CORE_MODEL']
+        self.text_model = core_config['CORRECTION_MODEL']
+        self.core_url = core_config['CORE_URL']
+        self.core_api_key = core_config['CORE_API_KEY']
+        self.core_api_type = core_config['CORE_API_TYPE']
+        self.openrouter_url = core_config['OPENROUTER_URL']
+        self.openrouter_api_key = core_config['OPENROUTER_API_KEY']
+        self.audio_api_key = core_config['AUDIO_API_KEY']
+        logger.info(f"📌 已重新加载配置: core_api={self.core_api_type}, model={self.model}, text_model={self.text_model}")
         
         # 重置TTS缓存状态
         async with self.tts_cache_lock:
@@ -563,7 +573,6 @@ class LLMSessionManager:
             # 标记TTS为就绪状态并处理可能已缓存的chunk
             async with self.tts_cache_lock:
                 self.tts_ready = True
-            logger.info("✅ TTS基础设施已就绪")
             
             # 处理在TTS启动期间可能已经缓存的文本chunk
             await self._flush_tts_pending_chunks()
@@ -705,6 +714,18 @@ class LLMSessionManager:
 
         # 2. Create PENDING session components (as before, store in self.pending_connector, self.pending_session)
         try:
+            # 重新读取核心配置以支持热重载
+            core_config = get_core_config()
+            self.model = core_config['CORE_MODEL']
+            self.text_model = core_config['CORRECTION_MODEL']
+            self.core_url = core_config['CORE_URL']
+            self.core_api_key = core_config['CORE_API_KEY']
+            self.core_api_type = core_config['CORE_API_TYPE']
+            self.openrouter_url = core_config['OPENROUTER_URL']
+            self.openrouter_api_key = core_config['OPENROUTER_API_KEY']
+            self.audio_api_key = core_config['AUDIO_API_KEY']
+            logger.info(f"🔄 热切换准备: 已重新加载配置")
+            
             # 创建新的pending session
             self.pending_session = OmniRealtimeClient(
                 base_url=self.core_url,
@@ -1200,7 +1221,6 @@ class LLMSessionManager:
             if self.websocket and hasattr(self.websocket, 'client_state') and self.websocket.client_state == self.websocket.client_state.CONNECTED:
                 data = json.dumps({"type": "session_started", "input_mode": input_mode})
                 await self.websocket.send_text(data)
-                logger.info(f"✅ Session启动成功通知已发送到前端 (mode: {input_mode})")
         except WebSocketDisconnect:
             pass
         except Exception as e:

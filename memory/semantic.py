@@ -20,8 +20,11 @@ class SemanticMemory:
         for i in persist_directory:
             self.original_memory[i] = SemanticMemoryOriginal(persist_directory, i, name_mapping)
             self.compressed_memory[i] = SemanticMemoryCompressed(persist_directory, i, recent_history_manager, name_mapping)
+    
+    def _get_reranker(self):
+        """动态获取Reranker LLM实例以支持配置热重载"""
         core_config = get_core_config()
-        self.reranker = ChatOpenAI(model=RERANKER_MODEL, base_url=core_config['OPENROUTER_URL'], api_key=core_config['OPENROUTER_API_KEY'], temperature=0.1, extra_body={"enable_thinking": False} if RERANKER_MODEL in MODELS_WITH_EXTRA_BODY else None)
+        return ChatOpenAI(model=RERANKER_MODEL, base_url=core_config['OPENROUTER_URL'], api_key=core_config['OPENROUTER_API_KEY'], temperature=0.1, extra_body={"enable_thinking": False} if RERANKER_MODEL in MODELS_WITH_EXTRA_BODY else None)
 
     def store_conversation(self, event_id, messages, lanlan_name):
         self.original_memory[lanlan_name].store_conversation(event_id, messages)
@@ -56,7 +59,8 @@ class SemanticMemory:
         retries = 0
         while retries < 3:
             try:
-                response = self.reranker.invoke(prompt)
+                reranker = self._get_reranker()
+                response = reranker.invoke(prompt)
             except Exception as e:
                 retries += 1
                 print('Rerank query失败', e)

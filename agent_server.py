@@ -80,13 +80,13 @@ def _collect_existing_task_descriptions(lanlan_name: Optional[str] = None) -> li
     return items
 
 
-def _is_duplicate_task(query: str, lanlan_name: Optional[str] = None) -> tuple[bool, Optional[str]]:
+async def _is_duplicate_task(query: str, lanlan_name: Optional[str] = None) -> tuple[bool, Optional[str]]:
     """Use LLM to judge if query duplicates any existing queued/running task."""
     try:
         if not Modules.deduper:
             return False, None
         candidates = _collect_existing_task_descriptions(lanlan_name)
-        res = Modules.deduper.judge(query, candidates)
+        res = await Modules.deduper.judge(query, candidates)
         return bool(res.get("duplicate")), res.get("matched_id")
     except Exception as e:
         return False, None
@@ -311,9 +311,8 @@ async def _background_analyze_and_plan(messages: list[dict[str, Any]], lanlan_na
     if not Modules.analyzer or not Modules.planner:
         return
     try:
-        loop = asyncio.get_running_loop()
-        # Offload sync LLM call to threadpool to avoid blocking event loop
-        analysis = await loop.run_in_executor(None, Modules.analyzer.analyze, messages)
+        # Analyzer.analyze is now async, no need for executor
+        analysis = await Modules.analyzer.analyze(messages)
     except Exception:
         return
     try:
@@ -335,7 +334,7 @@ async def _background_analyze_and_plan(messages: list[dict[str, Any]], lanlan_na
                     pass
                 if t.meta.get("mcp", {}).get("can_execute") and Modules.agent_flags.get("mcp_enabled", False):
                     for step in t.steps:
-                        dup, matched = _is_duplicate_task(step, lanlan_name)
+                        dup, matched = await _is_duplicate_task(step, lanlan_name)
                         if dup:
                             continue
                         ti = _spawn_task("processor", {"query": step})
@@ -343,7 +342,7 @@ async def _background_analyze_and_plan(messages: list[dict[str, Any]], lanlan_na
                 else:
                     cu_dec = t.meta.get("computer_use_decision") or {}
                     if cu_dec.get("use_computer") and Modules.agent_flags.get("computer_use_enabled", False):
-                        dup, matched = _is_duplicate_task(t.original_query, lanlan_name)
+                        dup, matched = await _is_duplicate_task(t.original_query, lanlan_name)
                         if not dup:
                             ti = _spawn_task("computer_use", {"instruction": t.original_query, "screenshot": None})
                             ti["lanlan_name"] = lanlan_name
@@ -390,7 +389,7 @@ async def process_query(payload: Dict[str, Any]):
     logger.info(f"[MCP] Received process request from {lanlan_name}: {query[:100]}...")
     
     # Dedup check
-    dup, matched = _is_duplicate_task(query, lanlan_name)
+    dup, matched = await _is_duplicate_task(query, lanlan_name)
     if dup:
         logger.info(f"[MCP] Duplicate task detected, matched with {matched}")
         return JSONResponse(content={"success": False, "duplicate": True, "matched_id": matched}, status_code=409)
@@ -416,7 +415,7 @@ async def plan_task(payload: Dict[str, Any]):
     logger.info(f"[MCP] Received plan request from {lanlan_name} for task {task_id}: {query[:100]}...")
     
     # Dedup check against existing tasks
-    dup, matched = _is_duplicate_task(query, lanlan_name)
+    dup, matched = await _is_duplicate_task(query, lanlan_name)
     if dup:
         logger.info(f"[MCP] Duplicate task detected, matched with {matched}")
         return JSONResponse(content={"success": False, "duplicate": True, "matched_id": matched}, status_code=409)
@@ -431,7 +430,7 @@ async def plan_task(payload: Dict[str, Any]):
     if task.meta.get("mcp", {}).get("can_execute"):
         logger.info(f"[MCP] Task {task_id} will be executed by MCP with {len(task.steps)} steps")
         for step in task.steps:
-            d2, m2 = _is_duplicate_task(step, lanlan_name)
+            d2, m2 = await _is_duplicate_task(step, lanlan_name)
             if d2:
                 scheduled.append({"duplicate": True, "matched_id": m2, "query": step})
                 continue
@@ -444,7 +443,7 @@ async def plan_task(payload: Dict[str, Any]):
         cu_dec = task.meta.get("computer_use_decision") or {}
         if cu_dec.get("use_computer"):
             logger.info(f"[MCP] Task {task_id} will be executed by Computer Use")
-            d3, m3 = _is_duplicate_task(task.original_query, lanlan_name)
+            d3, m3 = await _is_duplicate_task(task.original_query, lanlan_name)
             if d3:
                 scheduled.append({"duplicate": True, "matched_id": m3, "query": task.original_query})
             else:
@@ -534,7 +533,7 @@ async def computer_use_run(payload: Dict[str, Any]):
         return JSONResponse(content={"success": False, "error": f"availability check failed: {e}"}, status_code=503)
     lanlan_name = (payload or {}).get("lanlan_name")
     # Dedup check
-    dup, matched = _is_duplicate_task(instruction, lanlan_name)
+    dup, matched = await _is_duplicate_task(instruction, lanlan_name)
     if dup:
         return JSONResponse(content={"success": False, "duplicate": True, "matched_id": matched}, status_code=409)
     info = _spawn_task("computer_use", {"instruction": instruction, "screenshot": screenshot})
@@ -565,35 +564,64 @@ async def mcp_availability():
 
 @app.get("/tasks")
 async def list_tasks():
+    """快速返回当前所有任务状态，优化响应速度"""
     items = []
     
-    # 添加运行时任务 (task_registry)
-    for tid, info in Modules.task_registry.items():
-        task_item = {k: v for k, v in info.items() if k != "_proc"}
-        task_item["source"] = "runtime"
-        items.append(task_item)
-    
-    # 添加规划器任务 (task_pool)
-    if Modules.planner:
-        for tid, task in Modules.planner.task_pool.items():
-            if hasattr(task, '__dict__'):
-                task_item = task.__dict__.copy()
-                task_item["source"] = "planner"
-                # 确保有基本字段
-                if "id" not in task_item:
-                    task_item["id"] = tid
-                if "status" not in task_item:
-                    task_item["status"] = "queued"  # 默认状态
+    try:
+        # 添加运行时任务 (task_registry) - 只复制必要字段以提高速度
+        for tid, info in Modules.task_registry.items():
+            try:
+                task_item = {
+                    "id": info.get("id", tid),
+                    "type": info.get("type"),
+                    "status": info.get("status"),
+                    "start_time": info.get("start_time"),
+                    "params": info.get("params"),
+                    "result": info.get("result"),
+                    "error": info.get("error"),
+                    "lanlan_name": info.get("lanlan_name"),
+                    "source": "runtime"
+                }
                 items.append(task_item)
+            except Exception:
+                continue
+        
+        # 添加规划器任务 (task_pool) - 只在planner存在时处理
+        if Modules.planner and hasattr(Modules.planner, 'task_pool'):
+            for tid, task in Modules.planner.task_pool.items():
+                try:
+                    if hasattr(task, '__dict__'):
+                        task_dict = task.__dict__
+                        task_item = {
+                            "id": task_dict.get("id", tid),
+                            "status": task_dict.get("status", "queued"),
+                            "original_query": task_dict.get("original_query"),
+                            "meta": task_dict.get("meta"),
+                            "source": "planner"
+                        }
+                        items.append(task_item)
+                except Exception:
+                    continue
+        
+        # 简化调试信息
+        debug_info = {
+            "task_registry_count": len(Modules.task_registry),
+            "task_pool_count": len(Modules.planner.task_pool) if (Modules.planner and hasattr(Modules.planner, 'task_pool')) else 0,
+            "total_returned": len(items)
+        }
+        
+        return {"tasks": items, "debug": debug_info}
     
-    # 添加调试信息
-    debug_info = {
-        "task_registry_count": len(Modules.task_registry),
-        "task_pool_count": len(Modules.planner.task_pool) if Modules.planner else 0,
-        "total_returned": len(items)
-    }
-    
-    return {"tasks": items, "debug": debug_info}
+    except Exception as e:
+        # 即使出错也返回部分结果，避免完全失败（静默处理）
+        return {
+            "tasks": items,
+            "debug": {
+                "error": str(e),
+                "partial_results": True,
+                "total_returned": len(items)
+            }
+        }
 
 
 @app.post("/admin/control")

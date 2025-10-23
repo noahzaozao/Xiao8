@@ -11,12 +11,6 @@ class CompressedRecentHistoryManager:
     def __init__(self, max_history_length=10):
         # 通过get_character_data获取相关变量
         _, _, _, _, name_mapping, _, _, _, _, recent_log = get_character_data()
-        # 修复API key类型问题
-        # 动态获取配置
-        core_config = get_core_config()
-        api_key = core_config['OPENROUTER_API_KEY'] if core_config['OPENROUTER_API_KEY'] else None
-        self.llm = ChatOpenAI(model=core_config['SUMMARY_MODEL'], base_url=core_config['OPENROUTER_URL'], api_key=api_key, temperature=0.3, extra_body={"enable_thinking": False} if core_config['SUMMARY_MODEL'] in MODELS_WITH_EXTRA_BODY else None)
-        self.review_llm = ChatOpenAI(model=core_config['CORRECTION_MODEL'], base_url=core_config['OPENROUTER_URL'], api_key=api_key, temperature=0.1, extra_body={"enable_thinking": False} if core_config['CORRECTION_MODEL'] in MODELS_WITH_EXTRA_BODY else None)
         self.max_history_length = max_history_length
         self.log_file_path = recent_log
         self.name_mapping = name_mapping
@@ -27,7 +21,18 @@ class CompressedRecentHistoryManager:
                     self.user_histories[ln] = messages_from_dict(json.load(f))
             else:
                 self.user_histories[ln] = []
-
+    
+    def _get_llm(self):
+        """动态获取LLM实例以支持配置热重载"""
+        core_config = get_core_config()
+        api_key = core_config['OPENROUTER_API_KEY'] if core_config['OPENROUTER_API_KEY'] else None
+        return ChatOpenAI(model=core_config['SUMMARY_MODEL'], base_url=core_config['OPENROUTER_URL'], api_key=api_key, temperature=0.3, extra_body={"enable_thinking": False} if core_config['SUMMARY_MODEL'] in MODELS_WITH_EXTRA_BODY else None)
+    
+    def _get_review_llm(self):
+        """动态获取审核LLM实例以支持配置热重载"""
+        core_config = get_core_config()
+        api_key = core_config['OPENROUTER_API_KEY'] if core_config['OPENROUTER_API_KEY'] else None
+        return ChatOpenAI(model=core_config['CORRECTION_MODEL'], base_url=core_config['OPENROUTER_URL'], api_key=api_key, temperature=0.1, extra_body={"enable_thinking": False} if core_config['CORRECTION_MODEL'] in MODELS_WITH_EXTRA_BODY else None)
 
     def update_history(self, new_messages, lanlan_name, detailed=False):
         if os.path.exists(self.log_file_path[lanlan_name]):
@@ -86,7 +91,8 @@ class CompressedRecentHistoryManager:
         while retries < 3:
             try:
                 # 尝试将响应内容解析为JSON
-                response_content = self.llm.invoke(prompt).content
+                llm = self._get_llm()
+                response_content = llm.invoke(prompt).content
                 # 修复类型问题：确保response_content是字符串
                 if isinstance(response_content, list):
                     response_content = str(response_content)
@@ -118,7 +124,8 @@ class CompressedRecentHistoryManager:
         while retries < 3:
             try:
                 # 尝试将响应内容解析为JSON
-                response_content = self.llm.invoke(further_summarize_prompt % initial_summary).content
+                llm = self._get_llm()
+                response_content = llm.invoke(further_summarize_prompt % initial_summary).content
                 # 修复类型问题：确保response_content是字符串
                 if isinstance(response_content, list):
                     response_content = str(response_content)
@@ -211,7 +218,8 @@ class CompressedRecentHistoryManager:
         try:
             # 使用LLM审阅历史记录
             prompt = history_review_prompt % (self.name_mapping['human'], name_mapping['ai'], history_text, self.name_mapping['human'], name_mapping['ai'])
-            response_content = self.review_llm.invoke(prompt).content
+            review_llm = self._get_review_llm()
+            response_content = review_llm.invoke(prompt).content
             
             # 检查是否被取消（LLM调用后）
             if cancel_event and cancel_event.is_set():

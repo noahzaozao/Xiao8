@@ -1696,7 +1696,7 @@ async def proxy_mcp_availability():
 async def proxy_tasks():
     """Get all tasks from tool server via main_server proxy."""
     try:
-        async with httpx.AsyncClient(timeout=1.5) as client:
+        async with httpx.AsyncClient(timeout=2.5) as client:
             r = await client.get(f"http://localhost:{TOOL_SERVER_PORT}/tasks")
             if not r.is_success:
                 return JSONResponse({"tasks": [], "error": f"tool_server responded {r.status_code}"}, status_code=502)
@@ -1723,8 +1723,8 @@ async def proxy_task_detail(task_id: str):
 async def get_task_status():
     """Get current task status for frontend polling - returns all tasks with their current status."""
     try:
-        # Get tasks from tool server using async client
-        async with httpx.AsyncClient(timeout=1.5) as client:
+        # Get tasks from tool server using async client with increased timeout
+        async with httpx.AsyncClient(timeout=2.5) as client:
             r = await client.get(f"http://localhost:{TOOL_SERVER_PORT}/tasks")
             if not r.is_success:
                 return JSONResponse({"tasks": [], "error": f"tool_server responded {r.status_code}"}, status_code=502)
@@ -1732,10 +1732,6 @@ async def get_task_status():
             tasks_data = r.json()
             tasks = tasks_data.get("tasks", [])
             debug_info = tasks_data.get("debug", {})
-            
-            # Log debug information
-            logger.info(f"Agent server debug info: {debug_info}")
-            logger.info(f"Raw tasks from agent server: {len(tasks)} tasks")
             
             # Enhance task data with additional information if needed
             enhanced_tasks = []

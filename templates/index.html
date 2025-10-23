@@ -363,18 +363,6 @@
             opacity: 0.6;
         }
         
-        /* 模式提示文字 */
-        #mode-hint {
-            font-size: 0.85rem;
-            color: #666;
-            text-align: center;
-            padding: 4px 0;
-        }
-        
-        #mode-hint.voice-active {
-            color: #4f8cff;
-        }
-        
         .toggle-mic-selector {
             background: #333; /* 与side-btn一致的背景色 */
             color: #fff; /* 与side-btn一致的文字颜色 */
@@ -1026,10 +1014,6 @@
                 font-size: 0.9rem;
             }
             
-            #mode-hint {
-                font-size: 0.8rem;
-            }
-            
             .message {
                 font-size: 0.9rem;
                 max-width: 85%;
@@ -1139,8 +1123,8 @@
     </style>
 </head>
 <body>
-<div id="agent-panel">
-    <button id="agent-collapse-btn" title="收起/展开">−</button>
+<div id="agent-panel" class="collapsed">
+    <button id="agent-collapse-btn" title="展开">+</button>
     <div id="agent-controls">
         <div class="master-control-row">
             <div class="control-item">
@@ -1327,7 +1311,6 @@
       clearInterval(taskPollingInterval);
     }
     // 持续轮询，固定1秒间隔，不根据任务状态停止
-    console.log('启动持续轮询，间隔1秒');
     taskPollingInterval = setInterval(updateTaskStatus, 1000);
     updateTaskStatus(); // 立即执行一次
   }
@@ -1357,11 +1340,9 @@
       
       if (!response.ok) {
         pollingErrorCount++;
-        console.warn('Task status request failed:', response.status);
         
-        // 不允许停止轮询，只记录错误
+        // 只在连续多次失败后才显示提示，避免短暂错误导致提示闪现
         if (pollingErrorCount >= maxPollingErrors) {
-          console.warn('Too many polling errors, but continuing to poll');
           setStatus('任务状态更新失败，但继续尝试');
         }
         return;
@@ -1384,16 +1365,15 @@
     } catch (error) {
       pollingErrorCount++;
       
-      // 区分不同类型的错误
+      // 区分不同类型的错误（静默处理）
       if (error.name === 'AbortError') {
-        console.warn('Task status request timeout, continuing to poll');
-        setStatus('任务状态请求超时，继续尝试');
+        // 只在连续超时多次后才显示提示，避免偶尔超时导致提示闪现
+        if (pollingErrorCount >= 2) {
+          setStatus('任务状态查询较慢，请稍候...');
+        }
       } else {
-        console.warn('Task status update failed:', error);
-        
-        // 不允许停止轮询，只记录错误
+        // 只在连续多次失败后才显示提示
         if (pollingErrorCount >= maxPollingErrors) {
-          console.warn('Too many polling errors, but continuing to poll');
           setStatus('任务状态更新失败，但继续尝试');
         }
       }
@@ -1488,6 +1468,14 @@
     });
   }
   
+  // 重置任务显示状态
+  function resetTaskDisplay() {
+    runningCountEl.textContent = '0';
+    completedCountEl.textContent = '0';
+    queuedCountEl.textContent = '0';
+    taskListEl.innerHTML = '<div style="text-align: center; color: #999; padding: 10px;">暂无任务</div>';
+  }
+  
   // Collapse/Expand functionality
   function toggleAgentPanel() {
     agentPanel.classList.toggle('collapsed');
@@ -1530,15 +1518,18 @@
       
       // Show task progress and start continuous polling
       taskProgressEl.classList.add('show');
-      console.log('Agent模式已开启，显示任务进度面板，启动持续轮询');
       
       try {
         const r = await fetch('/api/agent/flags', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({lanlan_name: lanlan_config.lanlan_name, flags: {agent_enabled:true, computer_use_enabled:false, mcp_enabled:false}})});
         if (!r.ok) throw new Error('main_server rejected');
         
         // 开启成功后，立即启动持续轮询
-        console.log('Agent标志设置成功，启动持续轮询');
         startTaskPolling();
+        
+        // 检查所有能力并显示错误信息
+        setTimeout(() => {
+          checkAllCapabilities();
+        }, 500);
         
       } catch(e) {
         // auto close on failure
@@ -1549,9 +1540,13 @@
         stopTaskPolling();
       }
     } else {
-      setStatus('');
-      cuToggle.checked = false; cuToggle.disabled = true;
-      mcpToggle.disabled = false; mcpToggle.disabled = true;
+      setStatus('Agent模式已关闭');
+      
+      // 重置所有子开关状态
+      cuToggle.checked = false;
+      cuToggle.disabled = true;
+      mcpToggle.checked = false;
+      mcpToggle.disabled = true;
       
       // Collapse master control row (remove border and padding)
       const masterControlRow = document.querySelector('.master-control-row');
@@ -1565,9 +1560,12 @@
       taskProgressEl.classList.remove('show');
       stopTaskPolling();
       
-      // 停止所有任务并重置状态
+      // 立即重置前端任务显示
+      resetTaskDisplay();
+      
+      // 停止所有任务并重置状态（静默处理）
       try {
-        console.log('Agent模式已关闭，停止所有任务并重置状态');
+        // 先停止所有正在运行的任务
         const stopResponse = await fetch('/api/agent/admin/control', {
           method: 'POST', 
           headers: {'Content-Type': 'application/json'}, 
@@ -1575,36 +1573,38 @@
         });
         
         if (stopResponse.ok) {
-          const stopResult = await stopResponse.json();
-          console.log('任务停止结果:', stopResult);
-        } else {
-          console.warn('停止任务失败:', stopResponse.status);
+          const result = await stopResponse.json();
+          if (result.success) {
+            setStatus('所有任务已停止，Agent模式已关闭');
+          }
         }
         
-        // 设置Agent标志为关闭
+        // 设置Agent标志为关闭（包括所有子功能）
         await fetch('/api/agent/flags', {
           method: 'POST', 
           headers: {'Content-Type': 'application/json'}, 
           body: JSON.stringify({
             lanlan_name: lanlan_config.lanlan_name, 
-            flags: {agent_enabled:false, computer_use_enabled:false, mcp_enabled:false}
+            flags: {agent_enabled: false, computer_use_enabled: false, mcp_enabled: false}
           })
         });
         
       } catch(e) {
-        console.warn('关闭Agent时出错:', e);
+        setStatus('Agent模式已关闭（部分清理失败）');
       }
     }
   });
 
-  async function checkCapability(kind) {
+  async function checkCapability(kind, showError = true) {
     try {
       if (kind === 'computer_use') {
         const r = await fetch(`/api/agent/computer_use/availability`);
         if (!r.ok) return false;
         const j = await r.json();
         if (!j.ready) {
-          setStatus((j.reasons && j.reasons[0]) || '键鼠控制不可用');
+          if (showError) {
+            setStatus((j.reasons && j.reasons[0]) || '键鼠控制不可用');
+          }
           return false;
         }
         return true;
@@ -1613,7 +1613,9 @@
         if (!r.ok) return false;
         const j = await r.json();
         if (!j.ready) {
-          setStatus((j.reasons && j.reasons[0]) || 'MCP不可用');
+          if (showError) {
+            setStatus((j.reasons && j.reasons[0]) || 'MCP不可用');
+          }
           return false;
         }
         return true;
@@ -1621,6 +1623,38 @@
       return false;
     } catch (e) {
       return false;
+    }
+  }
+  
+  // 检查所有能力并显示错误信息
+  async function checkAllCapabilities() {
+    const cuOk = await checkCapability('computer_use', false);
+    const mcpOk = await checkCapability('mcp', false);
+    
+    if (!cuOk || !mcpOk) {
+      const errors = [];
+      if (!cuOk) {
+        try {
+          const r = await fetch(`/api/agent/computer_use/availability`);
+          const j = await r.json();
+          if (j.reasons && j.reasons.length > 0) {
+            errors.push(`❌ 键鼠控制: ${j.reasons.join('; ')}`);
+          }
+        } catch (e) {}
+      }
+    //   if (!mcpOk) {
+    //     try {
+    //       const r = await fetch(`/api/agent/mcp/availability`);
+    //       const j = await r.json();
+    //       if (j.reasons && j.reasons.length > 0) {
+    //         errors.push(`⚠️ MCP: ${j.reasons.join('; ')}`);
+    //       }
+    //     } catch (e) {}
+    //   }
+      
+      if (errors.length > 0) {
+        setStatus(errors.join(' | '));
+      }
     }
   }
 
@@ -1686,7 +1720,6 @@
     subControlsRow.classList.add('show');
     
     taskProgressEl.classList.add('show');
-    console.log('页面加载时Agent模式已开启，启动持续轮询');
     // 页面加载时如果Agent模式已开启，立即启动持续轮询
     startTaskPolling();
   } else {
@@ -1698,6 +1731,11 @@
     const subControlsRow = document.getElementById('sub-controls-row');
     subControlsRow.classList.remove('show');
   }
+  
+  // 页面加载时检查所有能力并显示错误信息（延迟1秒，确保服务器启动完成）
+  setTimeout(() => {
+    checkAllCapabilities();
+  }, 1000);
 </script>
 </body>
 </html>

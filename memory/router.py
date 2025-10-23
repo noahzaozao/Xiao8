@@ -22,9 +22,12 @@ class MemoryQueryRouter:
         self.semantic_memory = semantic_memory
         self.recent_history = recent_history
         self.settings_manager = settings_manager
-        core_config = get_core_config()
-        self.llm = ChatOpenAI(model=ROUTER_MODEL, base_url=core_config['OPENROUTER_URL'], api_key=core_config['OPENROUTER_API_KEY'])
         self.graph = self._build_graph()
+    
+    def _get_llm(self):
+        """动态获取LLM实例以支持配置热重载"""
+        core_config = get_core_config()
+        return ChatOpenAI(model=ROUTER_MODEL, base_url=core_config['OPENROUTER_URL'], api_key=core_config['OPENROUTER_API_KEY'])
 
     def _build_graph(self):
         # 构建LangGraph流程图
@@ -65,7 +68,8 @@ class MemoryQueryRouter:
 
 只返回类型名称，不要有其他文本。"""
 
-        response = self.llm.invoke(prompt)
+        llm = self._get_llm()
+        response = llm.invoke(prompt)
         query_type = response.content.strip().lower()
 
         return {"query_type": query_type}
@@ -88,7 +92,8 @@ class MemoryQueryRouter:
         }}
         """
 
-        response = self.llm.invoke(prompt)
+        llm = self._get_llm()
+        response = llm.invoke(prompt)
         try:
             time_range = json.loads(response.content)
             results = self.time_memory.retrieve_by_timeframe(

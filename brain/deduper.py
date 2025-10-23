@@ -32,12 +32,12 @@ class TaskDeduper:
         )
         return "\n".join(lines)
 
-    def judge(self, new_task: str, candidates: List[Tuple[str, str]]) -> Dict[str, Any]:
+    async def judge(self, new_task: str, candidates: List[Tuple[str, str]]) -> Dict[str, Any]:
         if not new_task or not candidates:
             return {"duplicate": False, "matched_id": None}
 
         prompt = self._build_prompt(new_task, candidates)
-        resp = self.llm.invoke([
+        resp = await self.llm.ainvoke([
             {"role": "system", "content": "You are a careful deduplication judge."},
             {"role": "user", "content": prompt},
         ])

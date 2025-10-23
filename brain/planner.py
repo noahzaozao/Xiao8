@@ -27,12 +27,15 @@ class TaskPlanner:
     Planner module: preloads server capabilities, judges executability, decomposes task into executable queries.
     """
     def __init__(self, computer_use: Optional[ComputerUseAdapter] = None):
-        core_config = get_core_config()
-        self.llm = ChatOpenAI(model=core_config['SUMMARY_MODEL'], base_url=core_config['OPENROUTER_URL'], api_key=core_config['OPENROUTER_API_KEY'], temperature=0, extra_body={"enable_thinking": False} if core_config['SUMMARY_MODEL'] in MODELS_WITH_EXTRA_BODY else None)
         self.router = McpRouterClient()
         self.catalog = McpToolCatalog(self.router)
         self.task_pool: Dict[str, Task] = {}
         self.computer_use = computer_use or ComputerUseAdapter()
+    
+    def _get_llm(self):
+        """动态获取LLM实例以支持配置热重载"""
+        core_config = get_core_config()
+        return ChatOpenAI(model=core_config['SUMMARY_MODEL'], base_url=core_config['OPENROUTER_URL'], api_key=core_config['OPENROUTER_API_KEY'], temperature=0, extra_body={"enable_thinking": False} if core_config['SUMMARY_MODEL'] in MODELS_WITH_EXTRA_BODY else None)
 
     async def refresh_capabilities(self) -> Dict[str, Dict[str, Any]]:
         try:
@@ -56,7 +59,8 @@ class TaskPlanner:
             " steps should be granular tool queries for the MCP processor."
         )
         mcp_user = f"Capabilities:\n{tools_brief}\n\nTask: {query}"
-        resp1 = self.llm.invoke([
+        llm = self._get_llm()
+        resp1 = await llm.ainvoke([
             {"role": "system", "content": mcp_system},
             {"role": "user", "content": mcp_user},
         ])
@@ -93,7 +97,7 @@ class TaskPlanner:
                     " {use_computer: bool, reason: string}"
                 )
                 cu_user = f"Task: {query}"
-                resp2 = self.llm.invoke([
+                resp2 = await llm.ainvoke([
                     {"role": "system", "content": cu_system},
                     {"role": "user", "content": cu_user},
                 ])

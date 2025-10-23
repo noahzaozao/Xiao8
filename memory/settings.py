@@ -6,15 +6,18 @@ from config.prompts_sys import settings_extractor_prompt, settings_verifier_prom
 
 class ImportantSettingsManager:
     def __init__(self):
-        core_config = get_core_config()
-        self.proposer = ChatOpenAI(model=SETTING_PROPOSER_MODEL, base_url=core_config['OPENROUTER_URL'], api_key=core_config['OPENROUTER_API_KEY'], temperature=0.5)
-        self.verifier = ChatOpenAI(model=SETTING_VERIFIER_MODEL, base_url=core_config['OPENROUTER_URL'], api_key=core_config['OPENROUTER_API_KEY'], temperature=0.5)
         self.settings = {}
         self.settings_file = None
-        self.master_basic_config = None
-        self.lanlan_basic_config = None
-        self.name_mapping = None
-        self.load_settings()
+    
+    def _get_proposer(self):
+        """动态获取Proposer LLM实例以支持配置热重载"""
+        core_config = get_core_config()
+        return ChatOpenAI(model=SETTING_PROPOSER_MODEL, base_url=core_config['OPENROUTER_URL'], api_key=core_config['OPENROUTER_API_KEY'], temperature=0.5)
+    
+    def _get_verifier(self):
+        """动态获取Verifier LLM实例以支持配置热重载"""
+        core_config = get_core_config()
+        return ChatOpenAI(model=SETTING_VERIFIER_MODEL, base_url=core_config['OPENROUTER_URL'], api_key=core_config['OPENROUTER_API_KEY'], temperature=0.5)
 
     def load_settings(self):
         # It is important to update the settings with the latest character on-disk files
@@ -46,7 +49,8 @@ class ImportantSettingsManager:
         retries = 0
         while retries < 3:
             try:
-                response = self.verifier.invoke(prompt)
+                verifier = self._get_verifier()
+                response = verifier.invoke(prompt)
                 result = response.content
                 if result.startswith("```"):
                     result = result .replace("```json", "").replace("```", "").strip()
@@ -85,7 +89,8 @@ class ImportantSettingsManager:
         new_settings = ""
         while retries < 3:
             try:
-                response = self.proposer.invoke(prompt)
+                proposer = self._get_proposer()
+                response = proposer.invoke(prompt)
             except Exception as e:
                 print("Setting LLM query出错", e)
                 retries += 1

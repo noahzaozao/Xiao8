@@ -9,8 +9,12 @@ class ConversationAnalyzer:
     Input is textual transcript snippets from cross-server; output is zero or more normalized task queries.
     """
     def __init__(self):
+        pass
+    
+    def _get_llm(self):
+        """动态获取LLM实例以支持配置热重载"""
         core_config = get_core_config()
-        self.llm = ChatOpenAI(model=core_config['SUMMARY_MODEL'], base_url=core_config['OPENROUTER_URL'], api_key=core_config['OPENROUTER_API_KEY'], temperature=0, extra_body={"enable_thinking": False} if core_config['SUMMARY_MODEL'] in MODELS_WITH_EXTRA_BODY else None)
+        return ChatOpenAI(model=core_config['SUMMARY_MODEL'], base_url=core_config['OPENROUTER_URL'], api_key=core_config['OPENROUTER_API_KEY'], temperature=0, extra_body={"enable_thinking": False} if core_config['SUMMARY_MODEL'] in MODELS_WITH_EXTRA_BODY else None)
 
     def _build_prompt(self, messages: List[Dict[str, str]]) -> str:
         lines = []
@@ -26,9 +30,10 @@ class ConversationAnalyzer:
             f"\nConversation:\n{conversation}"
         )
 
-    def analyze(self, messages: List[Dict[str, str]]):
+    async def analyze(self, messages: List[Dict[str, str]]):
         prompt = self._build_prompt(messages)
-        resp = self.llm.invoke([
+        llm = self._get_llm()
+        resp = await llm.ainvoke([
             {"role": "system", "content": "You are a precise task intent extractor."},
             {"role": "user", "content": prompt},
         ])
