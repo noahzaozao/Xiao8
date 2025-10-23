@@ -82,6 +82,9 @@ function init_app(){
                     // 检查是否是新消息的开始
                     const isNewMessage = response.isNewMessage || false;
                     appendMessage(response.text, 'gemini', isNewMessage);
+                } else if (response.type === 'user_transcript') {
+                    // 处理用户语音转录，显示在聊天界面
+                    appendMessage(response.text, 'user', true);
                 } else if (response.type === 'user_activity') {
                     clearAudioQueue();
                 } if (response.type === 'cozy_audio') {

@@ -275,9 +275,23 @@ class LLMSessionManager:
                 pass  # websocket未连接时忽略
 
     async def handle_input_transcript(self, transcript: str):
-        """Qwen输入转录回调：同步转录文本到消息队列和缓存"""
+        """输入转录回调：同步转录文本到消息队列和缓存，并发送到前端显示"""
         # 推送到同步消息队列
         self.sync_message_queue.put({"type": "user", "data": {"input_type": "transcript", "data": transcript.strip()}})
+        
+        # 只在语音模式（OmniRealtimeClient）下发送到前端显示用户转录
+        # 文本模式下前端会自己显示，无需后端发送，避免重复
+        if isinstance(self.session, OmniRealtimeClient):
+            if self.websocket and hasattr(self.websocket, 'client_state') and self.websocket.client_state == self.websocket.client_state.CONNECTED:
+                try:
+                    message = {
+                        "type": "user_transcript",
+                        "text": transcript.strip()
+                    }
+                    await self.websocket.send_json(message)
+                except Exception as e:
+                    logger.error(f"⚠️ 发送用户转录到前端失败: {e}")
+        
         # 缓存到session cache
         if hasattr(self, 'is_preparing_new_session') and self.is_preparing_new_session:
             if not hasattr(self, 'message_cache_for_new_session'):
