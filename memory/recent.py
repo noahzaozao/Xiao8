@@ -143,10 +143,17 @@ class CompressedRecentHistoryManager:
                 self.user_histories[lanlan_name] = messages_from_dict(json.load(f))
         return self.user_histories[lanlan_name]
 
-    def review_history(self, lanlan_name):
+    def review_history(self, lanlan_name, cancel_event=None):
         """
         审阅历史记录，寻找并修正矛盾、冗余、逻辑混乱或复读的部分
+        :param lanlan_name: 角色名称
+        :param cancel_event: asyncio.Event对象，用于取消操作
         """
+        # 检查是否被取消
+        if cancel_event and cancel_event.is_set():
+            print(f"⚠️ {lanlan_name} 的记忆审阅被取消（启动前）")
+            return False
+            
         # 检查配置文件中是否禁用自动审阅
         try:
             from config import CORE_CONFIG_PATH
@@ -166,6 +173,11 @@ class CompressedRecentHistoryManager:
         
         if not current_history:
             print(f"💡 {lanlan_name} 的历史记录为空，无需审阅")
+            return False
+        
+        # 检查是否被取消
+        if cancel_event and cancel_event.is_set():
+            print(f"⚠️ {lanlan_name} 的记忆审阅被取消（获取历史后）")
             return False
         
         # 将消息转换为可读的文本格式
@@ -191,10 +203,20 @@ class CompressedRecentHistoryManager:
             
             history_text += f"{role}: {content}\n\n"
         
+        # 检查是否被取消
+        if cancel_event and cancel_event.is_set():
+            print(f"⚠️ {lanlan_name} 的记忆审阅被取消（准备调用LLM前）")
+            return False
+        
         try:
             # 使用LLM审阅历史记录
             prompt = history_review_prompt % (self.name_mapping['human'], name_mapping['ai'], history_text, self.name_mapping['human'], name_mapping['ai'])
             response_content = self.review_llm.invoke(prompt).content
+            
+            # 检查是否被取消（LLM调用后）
+            if cancel_event and cancel_event.is_set():
+                print(f"⚠️ {lanlan_name} 的记忆审阅被取消（LLM调用后，保存前）")
+                return False
             
             # 确保response_content是字符串
             if isinstance(response_content, list):

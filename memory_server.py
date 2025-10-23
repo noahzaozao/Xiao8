@@ -33,6 +33,9 @@ time_manager = TimeIndexedMemory(recent_history_manager)
 shutdown_event = asyncio.Event()
 # 全局变量控制是否响应退出请求
 enable_shutdown = False
+# 全局变量用于管理correction任务
+correction_tasks = {}  # {lanlan_name: asyncio.Task}
+correction_cancel_flags = {}  # {lanlan_name: asyncio.Event}
 
 @app.post("/shutdown")
 async def shutdown_memory_server():
@@ -58,8 +61,36 @@ async def shutdown_event_handler():
     logger.info("Memory server已关闭")
 
 
+async def _run_review_in_background(lanlan_name: str):
+    """在后台运行review_history，支持取消"""
+    global correction_tasks, correction_cancel_flags
+    
+    # 获取该角色的取消标志
+    cancel_event = correction_cancel_flags.get(lanlan_name)
+    if not cancel_event:
+        cancel_event = asyncio.Event()
+        correction_cancel_flags[lanlan_name] = cancel_event
+    
+    try:
+        # 在线程池中运行同步的review_history方法
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, recent_history_manager.review_history, lanlan_name, cancel_event)
+        logger.info(f"✅ {lanlan_name} 的记忆审阅任务完成")
+    except asyncio.CancelledError:
+        logger.info(f"⚠️ {lanlan_name} 的记忆审阅任务被取消")
+    except Exception as e:
+        logger.error(f"❌ {lanlan_name} 的记忆审阅任务出错: {e}")
+    finally:
+        # 清理任务记录
+        if lanlan_name in correction_tasks:
+            del correction_tasks[lanlan_name]
+        # 重置取消标志
+        if lanlan_name in correction_cancel_flags:
+            correction_cancel_flags[lanlan_name].clear()
+
 @app.post("/process/{lanlan_name}")
-def process_conversation(request: HistoryRequest, lanlan_name: str):
+async def process_conversation(request: HistoryRequest, lanlan_name: str):
+    global correction_tasks
     try:
         uid = str(uuid4())
         input_history = convert_to_messages(json.loads(request.input_history))
@@ -70,7 +101,20 @@ def process_conversation(request: HistoryRequest, lanlan_name: str):
         # settings_manager.extract_and_update_settings(input_history, lanlan_name)
         # semantic_manager.store_conversation(uid, input_history, lanlan_name)
         time_manager.store_conversation(uid, input_history, lanlan_name)
-        recent_history_manager.review_history(lanlan_name)
+        
+        # 在后台启动review_history任务
+        if lanlan_name in correction_tasks and not correction_tasks[lanlan_name].done():
+            # 如果已有任务在运行，取消它
+            correction_tasks[lanlan_name].cancel()
+            try:
+                await correction_tasks[lanlan_name]
+            except asyncio.CancelledError:
+                pass
+        
+        # 启动新的review任务
+        task = asyncio.create_task(_run_review_in_background(lanlan_name))
+        correction_tasks[lanlan_name] = task
+        
         return {"status": "processed"}
     except Exception as e:
         import traceback
@@ -78,7 +122,8 @@ def process_conversation(request: HistoryRequest, lanlan_name: str):
         return {"status": "error", "message": str(e)}
 
 @app.post("/renew/{lanlan_name}")
-def process_conversation_for_renew(request: HistoryRequest, lanlan_name: str):
+async def process_conversation_for_renew(request: HistoryRequest, lanlan_name: str):
+    global correction_tasks
     try:
         uid = str(uuid4())
         input_history = convert_to_messages(json.loads(request.input_history))
@@ -86,7 +131,20 @@ def process_conversation_for_renew(request: HistoryRequest, lanlan_name: str):
         # settings_manager.extract_and_update_settings(input_history, lanlan_name)
         # semantic_manager.store_conversation(uid, input_history, lanlan_name)
         time_manager.store_conversation(uid, input_history, lanlan_name)
-        recent_history_manager.review_history(lanlan_name)
+        
+        # 在后台启动review_history任务
+        if lanlan_name in correction_tasks and not correction_tasks[lanlan_name].done():
+            # 如果已有任务在运行，取消它
+            correction_tasks[lanlan_name].cancel()
+            try:
+                await correction_tasks[lanlan_name]
+            except asyncio.CancelledError:
+                pass
+        
+        # 启动新的review任务
+        task = asyncio.create_task(_run_review_in_background(lanlan_name))
+        correction_tasks[lanlan_name] = task
+        
         return {"status": "processed"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -116,7 +174,26 @@ def get_settings(lanlan_name: str):
     return result
 
 @app.get("/new_dialog/{lanlan_name}")
-def new_dialog(lanlan_name: str):
+async def new_dialog(lanlan_name: str):
+    global correction_tasks, correction_cancel_flags
+    
+    # 中断正在进行的correction任务
+    if lanlan_name in correction_tasks and not correction_tasks[lanlan_name].done():
+        logger.info(f"🛑 收到new_dialog请求，中断 {lanlan_name} 的correction任务")
+        
+        # 设置取消标志
+        if lanlan_name in correction_cancel_flags:
+            correction_cancel_flags[lanlan_name].set()
+        
+        # 取消任务
+        correction_tasks[lanlan_name].cancel()
+        try:
+            await correction_tasks[lanlan_name]
+        except asyncio.CancelledError:
+            logger.info(f"✅ {lanlan_name} 的correction任务已成功中断")
+        except Exception as e:
+            logger.warning(f"⚠️ 中断 {lanlan_name} 的correction任务时出现异常: {e}")
+    
     # 正则表达式：删除所有类型括号及其内容（包括[]、()、{}、<>、【】、（）等）
     brackets_pattern = re.compile(r'(\[.*?\]|\(.*?\)|（.*?）|【.*?】|\{.*?\}|<.*?>)')
     master_name, _, _, _, name_mapping, _, _, _, _, _ = get_character_data()
