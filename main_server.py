@@ -416,6 +416,11 @@ async def websocket_endpoint(websocket: WebSocket, lanlan_name: str):
                 session_manager[lanlan_name].active_session_is_idle = True
                 asyncio.create_task(session_manager[lanlan_name].end_session())
 
+            elif action == "ping":
+                # 心跳保活消息，回复pong
+                await websocket.send_text(json.dumps({"type": "pong"}))
+                # logger.debug(f"收到心跳ping，已回复pong")
+
             else:
                 logger.warning(f"Unknown action received: {action}")
                 await session_manager[lanlan_name].send_status(f"Unknown action: {action}")

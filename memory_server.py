@@ -116,16 +116,18 @@ def get_settings(lanlan_name: str):
 
 @app.get("/new_dialog/{lanlan_name}")
 def new_dialog(lanlan_name: str):
-    m1 = re.compile('$$.*?$$')
+    # 正则表达式：删除所有类型括号及其内容（包括[]、()、{}、<>、【】、（）等）
+    brackets_pattern = re.compile(r'(\[.*?\]|\(.*?\)|（.*?）|【.*?】|\{.*?\}|<.*?>)')
     master_name, _, _, _, name_mapping, _, _, _, _, _ = get_character_data()
     name_mapping['ai'] = lanlan_name
     result = f"\n========{lanlan_name}的内心活动========\n{lanlan_name}的脑海里经常想着自己和{master_name}的事情，她记得{json.dumps(settings_manager.get_settings(lanlan_name), ensure_ascii=False)}\n\n"
     result += f"开始聊天前，{lanlan_name}又在脑海内整理了近期发生的事情。\n"
     for i in recent_history_manager.get_recent_history(lanlan_name):
         if type(i.content) == str:
-            result += f"{name_mapping[i.type]} | {i.content}\n"
+            cleaned_content = brackets_pattern.sub('', i.content).strip()
+            result += f"{name_mapping[i.type]} | {cleaned_content}\n"
         else:
-            texts = [m1.sub(j['text'], '') for j in i.content if j['type'] == 'text']
+            texts = [brackets_pattern.sub('', j['text']).strip() for j in i.content if j['type'] == 'text']
             result += f"{name_mapping[i.type]} | " + "\n".join(texts) + "\n"
     return result
 

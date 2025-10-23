@@ -134,7 +134,7 @@ class OmniRealtimeClient:
                 await self.update_session({
                     "instructions": instructions,
                     "modalities": self._modalities ,
-                    "voice": self.voice if self.voice else "cherry",
+                    "voice": self.voice if self.voice else "Cherry",
                     "input_audio_format": "pcm16",
                     "output_audio_format": "pcm16",
                     "input_audio_transcription": {
@@ -326,18 +326,14 @@ class OmniRealtimeClient:
                 elif event_type == "conversation.item.input_audio_transcription.completed":
                     self._print_input_transcript = True
                 elif event_type in ["response.audio_transcript.done", "response.output_audio_transcript.done"]:
-                    if self.on_output_transcript and self._is_first_transcript_chunk:
-                        transcript = event.get("transcript", "")
-                        if transcript:
-                            await self.on_output_transcript(transcript, True)
-                            self._is_first_transcript_chunk = False
                     self._print_input_transcript = False
 
                 if not self._skip_until_next_response:
                     if event_type in ["response.text.delta", "response.output_text.delta"]:
                         if self.on_text_delta:
-                            await self.on_text_delta(event["delta"], self._is_first_text_chunk)
-                            self._is_first_text_chunk = False
+                            if "glm" not in self.model:
+                                await self.on_text_delta(event["delta"], self._is_first_text_chunk)
+                                self._is_first_text_chunk = False
                     elif event_type in ["response.audio.delta", "response.output_audio.delta"]:
                         if self.on_audio_delta:
                             audio_bytes = base64.b64decode(event["delta"])
@@ -347,7 +343,11 @@ class OmniRealtimeClient:
                         if self.on_input_transcript:
                             await self.on_input_transcript(transcript)
                     elif event_type in ["response.audio_transcript.done", "response.output_audio_transcript.done"]:
-                        self._print_input_transcript = False
+                        if self.on_output_transcript and self._is_first_transcript_chunk:
+                            transcript = event.get("transcript", "")
+                            if transcript:
+                                await self.on_output_transcript(transcript, True)
+                                self._is_first_transcript_chunk = False
                     elif event_type in ["response.audio_transcript.delta", "response.output_audio_transcript.delta"]:
                         if self.on_output_transcript:
                             delta = event.get("delta", "")

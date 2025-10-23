@@ -15,6 +15,7 @@ from multiprocessing import Queue as MPQueue, Process
 import threading
 import io
 import wave
+import aiohttp
 
 logger = logging.getLogger(__name__)
 
@@ -316,13 +317,12 @@ def qwen_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice
         request_queue: 多进程请求队列，接收(speech_id, text)元组
         response_queue: 多进程响应队列，发送音频数据
         audio_api_key: API密钥
-        voice_id: 音色ID，默认使用"cherry"
+        voice_id: 音色ID，默认使用"Cherry"
     """
     import asyncio
-    
-    # 使用默认音色 "cherry"
+
     if not voice_id:
-        voice_id = "cherry"
+        voice_id = "Cherry"
     
     async def async_worker():
         """异步TTS worker主循环"""
@@ -648,12 +648,196 @@ def cosyvoice_vc_tts_worker(request_queue, response_queue, audio_api_key, voice_
             continue
 
 
+def cogtts_tts_worker(request_queue, response_queue, audio_api_key, voice_id):
+    """
+    智谱AI CogTTS worker（用于默认音色）
+    使用智谱AI的CogTTS API（cogtts）
+    注意：CogTTS不支持流式输入，只支持流式输出
+    因此需要累积文本后一次性发送，但可以流式接收音频
+    
+    Args:
+        request_queue: 多进程请求队列，接收(speech_id, text)元组
+        response_queue: 多进程响应队列，发送音频数据
+        audio_api_key: API密钥
+        voice_id: 音色ID，默认使用"tongtong"（支持：tongtong, chuichui, xiaochen, jam, kazi, douji, luodo）
+    """
+    import asyncio
+    
+    # 使用默认音色 "tongtong"
+    if not voice_id:
+        voice_id = "tongtong"
+    
+    async def async_worker():
+        """异步TTS worker主循环"""
+        tts_url = "https://open.bigmodel.cn/api/paas/v4/audio/speech"
+        current_speech_id = None
+        text_buffer = []  # 累积文本缓冲区
+        
+        try:
+            loop = asyncio.get_running_loop()
+            
+            while True:
+                try:
+                    sid, tts_text = await loop.run_in_executor(None, request_queue.get)
+                except Exception:
+                    break
+                
+                # 新的语音ID，清空缓冲区并重新开始
+                if current_speech_id != sid and sid is not None:
+                    current_speech_id = sid
+                    text_buffer = []
+                
+                if sid is None:
+                    # 收到终止信号，合成累积的文本
+                    if text_buffer and current_speech_id is not None:
+                        full_text = "".join(text_buffer)
+                        if full_text.strip():
+                            try:
+                                # 发送HTTP请求进行TTS合成
+                                headers = {
+                                    "Authorization": f"Bearer {audio_api_key}",
+                                    "Content-Type": "application/json"
+                                }
+                                
+                                payload = {
+                                    "model": "cogtts",
+                                    "input": full_text[:1024],  # CogTTS最大支持1024字符
+                                    "voice": voice_id,
+                                    "response_format": "pcm",
+                                    "encode_format": "base64",  # 返回base64编码的PCM
+                                    "speed": 1.0,
+                                    "volume": 1.0,
+                                    "stream": True,
+                                }
+                                
+                                # 使用异步HTTP客户端流式接收SSE响应
+                                async with aiohttp.ClientSession() as session:
+                                    async with session.post(tts_url, headers=headers, json=payload) as resp:
+                                        if resp.status == 200:
+                                            # CogTTS返回SSE格式: data: {...JSON...}
+                                            # 使用缓冲区逐块读取，避免 "Chunk too big" 错误
+                                            buffer = ""
+                                            first_audio_received = False  # 用于调试第一个音频块
+                                            async for chunk in resp.content.iter_any():
+                                                # 解码并添加到缓冲区
+                                                buffer += chunk.decode('utf-8')
+                                                
+                                                # 按行分割处理
+                                                while '\n' in buffer:
+                                                    line, buffer = buffer.split('\n', 1)
+                                                    line = line.strip()
+                                                    
+                                                    # 跳过空行
+                                                    if not line:
+                                                        continue
+                                                    
+                                                    # 解析SSE格式: data: {...}
+                                                    if line.startswith('data: '):
+                                                        json_str = line[6:]  # 去掉 "data: " 前缀
+                                                        try:
+                                                            event_data = json.loads(json_str)
+                                                            
+                                                            # 提取音频数据: choices[0].delta.content
+                                                            choices = event_data.get('choices', [])
+                                                            if choices and 'delta' in choices[0]:
+                                                                delta = choices[0]['delta']
+                                                                audio_b64 = delta.get('content', '')
+                                                                
+                                                                if audio_b64:
+                                                                    # Base64解码得到PCM数据
+                                                                    audio_bytes = base64.b64decode(audio_b64)
+                                                                    
+                                                                    # 跳过过小的音频块（可能是初始化数据）
+                                                                    # 至少需要 100 个采样点（约 4ms@24kHz）才处理
+                                                                    if len(audio_bytes) < 200:  # 100 samples * 2 bytes
+                                                                        logger.debug(f"跳过过小的音频块: {len(audio_bytes)} bytes")
+                                                                        continue
+                                                                    
+                                                                    # CogTTS返回PCM格式（24000Hz, mono, 16bit）
+                                                                    # 从返回的 return_sample_rate 获取采样率
+                                                                    sample_rate = delta.get('return_sample_rate', 24000)
+                                                                    
+                                                                    # 转换为 float32 进行高质量重采样
+                                                                    audio_array = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+                                                                    
+                                                                    # 对第一个音频块，裁剪掉开头的噪音部分（CogTTS有初始化噪音）
+                                                                    if not first_audio_received:
+                                                                        first_audio_received = True
+                                                                        # 裁剪掉前 1s 的音频（通常包含初始化噪音）
+                                                                        trim_samples = int(sample_rate)
+                                                                        if len(audio_array) > trim_samples:
+                                                                            audio_array = audio_array[trim_samples:]
+                                                                            logger.debug(f"裁剪第一个音频块的前 {trim_samples} 个采样点（{trim_samples/sample_rate:.2f}秒）")
+                                                                        # 对裁剪后的开头应用短淡入（10ms），平滑过渡
+                                                                        fade_samples = min(int(sample_rate * 0.01), len(audio_array))
+                                                                        if fade_samples > 0:
+                                                                            fade_curve = np.linspace(0.0, 1.0, fade_samples)
+                                                                            audio_array[:fade_samples] *= fade_curve
+                                                                    
+                                                                    # 使用 librosa 进行高质量重采样
+                                                                    resampled = resample(audio_array, orig_sr=sample_rate, target_sr=48000)
+                                                                    # 转回 int16 格式
+                                                                    resampled_int16 = (resampled * 32768.0).clip(-32768, 32767).astype(np.int16)
+                                                                    response_queue.put(resampled_int16.tobytes())
+                                                        except json.JSONDecodeError as e:
+                                                            logger.warning(f"解析SSE JSON失败: {e}")
+                                                        except Exception as e:
+                                                            logger.error(f"处理音频数据时出错: {e}")
+                                        else:
+                                            error_text = await resp.text()
+                                            logger.error(f"CogTTS API错误 ({resp.status}): {error_text}")
+                            except Exception as e:
+                                logger.error(f"CogTTS合成失败: {e}")
+                    
+                    # 清空缓冲区
+                    text_buffer = []
+                    continue
+                
+                # 累积文本到缓冲区（不立即发送）
+                if tts_text and tts_text.strip():
+                    text_buffer.append(tts_text)
+        
+        except Exception as e:
+            logger.error(f"CogTTS Worker错误: {e}")
+    
+    # 运行异步worker
+    try:
+        asyncio.run(async_worker())
+    except Exception as e:
+        logger.error(f"CogTTS Worker启动失败: {e}")
+
+
+def dummy_tts_worker(request_queue, response_queue, audio_api_key, voice_id):
+    """
+    空的TTS worker（用于不支持TTS的core_api）
+    持续清空请求队列但不生成任何音频，使程序正常运行但无语音输出
+    
+    Args:
+        request_queue: 多进程请求队列，接收(speech_id, text)元组
+        response_queue: 多进程响应队列（不使用）
+        audio_api_key: API密钥（不使用）
+        voice_id: 音色ID（不使用）
+    """
+    logger.warning("TTS Worker 未启用，不会生成语音")
+    
+    while True:
+        try:
+            # 持续清空队列以避免阻塞，但不做任何处理
+            sid, tts_text = request_queue.get()
+            # 如果收到结束信号，继续等待下一个请求
+            if sid is None:
+                continue
+        except Exception as e:
+            logger.error(f"Dummy TTS Worker 错误: {e}")
+            break
+
+
 def get_tts_worker(core_api_type='qwen', has_custom_voice=False):
     """
     根据 core_api 类型和是否有自定义音色，返回对应的 TTS worker 函数
     
     Args:
-        core_api_type: core API 类型 ('qwen', 'step' 等)
+        core_api_type: core API 类型 ('qwen', 'step', 'glm' 等)
         has_custom_voice: 是否有自定义音色 (voice_id)
     
     Returns:
@@ -668,7 +852,8 @@ def get_tts_worker(core_api_type='qwen', has_custom_voice=False):
         return qwen_realtime_tts_worker
     elif core_api_type == 'step':
         return step_realtime_tts_worker
+    elif core_api_type == 'glm':
+        return cogtts_tts_worker
     else:
-        logger.warning(f"未知的 core_api 类型: {core_api_type}，使用 qwen 默认 TTS")
-        return qwen_realtime_tts_worker
-
+        logger.error(f"{core_api_type}不支持原生TTS，请使用自定义语音")
+        return dummy_tts_worker

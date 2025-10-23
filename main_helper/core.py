@@ -542,7 +542,7 @@ class LLMSessionManager:
                 self.session = OmniOfflineClient(
                     base_url=self.openrouter_url,
                     api_key=self.openrouter_api_key,
-                    model=self.text_model,  # Use text model (SUMMARY_MODEL) for text mode
+                    model=self.text_model, 
                     on_text_delta=self.handle_text_data,
                     on_input_transcript=self.handle_input_transcript,
                     on_output_transcript=self.handle_output_transcript,
@@ -869,10 +869,17 @@ class LLMSessionManager:
                 has_state = hasattr(self.websocket, 'client_state')
                 if has_state:
                     logger.info(f"  └─ WebSocket状态: exists=True, state={self.websocket.client_state}")
+                    # 进一步检查连接状态
+                    if self.websocket.client_state != self.websocket.client_state.CONNECTED:
+                        logger.error(f"  └─ WebSocket未连接，状态: {self.websocket.client_state}")
+                        self.sync_message_queue.put({'type': 'system', 'data': 'websocket disconnected'})
+                        return
                 else:
                     logger.warning(f"  └─ WebSocket状态: exists=True, 但没有client_state属性!")
             else:
-                logger.error(f"  └─ WebSocket状态: exists=False! 无法创建session")
+                logger.error(f"  └─ WebSocket状态: exists=False! 连接可能已断开，请刷新页面")
+                # 通过sync_message_queue发送错误提示
+                self.sync_message_queue.put({'type': 'system', 'data': 'websocket disconnected'})
                 return
             
             # 根据输入类型确定模式
@@ -1081,6 +1088,8 @@ class LLMSessionManager:
 
     async def cleanup(self):
         await self.end_session(by_server=True)
+        # 清理websocket引用，防止保留失效的连接
+        self.websocket = None
 
     async def send_status(self, message: str): # 向前端发送status message
         try:

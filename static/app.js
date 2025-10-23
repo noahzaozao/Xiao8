@@ -32,6 +32,10 @@ function init_app(){
     
     // 模式管理
     let isTextSessionActive = false;
+    
+    // WebSocket心跳保活
+    let heartbeatInterval = null;
+    const HEARTBEAT_INTERVAL = 30000; // 30秒发送一次心跳
 
     function isMobile() {
       return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -46,6 +50,20 @@ function init_app(){
 
         socket.onopen = () => {
             console.log('WebSocket连接已建立');
+            
+            // 启动心跳保活机制
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+            }
+            heartbeatInterval = setInterval(() => {
+                if (socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({
+                        action: 'ping'
+                    }));
+                    console.log('发送心跳ping');
+                }
+            }, HEARTBEAT_INTERVAL);
+            console.log('心跳保活机制已启动');
         };
 
         socket.onmessage = (event) => {
@@ -149,6 +167,19 @@ function init_app(){
 
         socket.onclose = () => {
             console.log('WebSocket连接已关闭');
+            
+            // 清理心跳定时器
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+                heartbeatInterval = null;
+                console.log('心跳保活机制已停止');
+            }
+            
+            // 重置文本session状态，因为后端会清理session
+            if (isTextSessionActive) {
+                isTextSessionActive = false;
+                console.log('WebSocket断开，已重置文本session状态');
+            }
             // 尝试重新连接
             setTimeout(connectWebSocket, 3000);
         };
