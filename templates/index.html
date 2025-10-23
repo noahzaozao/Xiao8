@@ -94,7 +94,7 @@
             max-height: 500px;
             height: 500px;
             background: #f7f8fa;
-            opacity: 0.95;
+            opacity: 0.9;
             border-radius: 12px;
             padding: 0;
             box-sizing: border-box;
@@ -318,7 +318,9 @@
             min-height: 40px;
             max-height: 120px;
             box-sizing: border-box;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+            cursor: text;
+            caret-color: #222;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
             font-weight: 400;
             line-height: 1.5;
             -webkit-font-smoothing: antialiased;
@@ -328,6 +330,7 @@
         #textInputBox:focus {
             outline: none;
             border-color: #4f8cff;
+            box-shadow: none;
         }
         
         #textInputBox:disabled {
