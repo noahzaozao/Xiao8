@@ -3,7 +3,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from langchain_openai import ChatOpenAI
-from config import OPENROUTER_API_KEY, OPENROUTER_URL, SUMMARY_MODEL
+from config import get_core_config, MODELS_WITH_EXTRA_BODY
 from .mcp_client import McpRouterClient, McpToolCatalog
 from .computer_use import ComputerUseAdapter
 
@@ -27,7 +27,8 @@ class TaskPlanner:
     Planner module: preloads server capabilities, judges executability, decomposes task into executable queries.
     """
     def __init__(self, computer_use: Optional[ComputerUseAdapter] = None):
-        self.llm = ChatOpenAI(model=SUMMARY_MODEL, base_url=OPENROUTER_URL, api_key=OPENROUTER_API_KEY, temperature=0)
+        core_config = get_core_config()
+        self.llm = ChatOpenAI(model=core_config['SUMMARY_MODEL'], base_url=core_config['OPENROUTER_URL'], api_key=core_config['OPENROUTER_API_KEY'], temperature=0, extra_body={"enable_thinking": False} if core_config['SUMMARY_MODEL'] in MODELS_WITH_EXTRA_BODY else None)
         self.router = McpRouterClient()
         self.catalog = McpToolCatalog(self.router)
         self.task_pool: Dict[str, Task] = {}

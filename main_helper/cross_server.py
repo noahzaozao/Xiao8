@@ -230,6 +230,37 @@ def sync_connector_process(message_queue, shutdown_event, lanlan_name, sync_serv
                                     pass
 
                             elif message["data"] == 'session end': # 当前session结束了
+                                # 先处理未完成的输出缓存（如果有）
+                                current_turn = 'user'
+                                text_output_cache = normalize_text(text_output_cache)
+                                if len(text_output_cache) > 0:
+                                    chat_history.append(
+                                        {'role': 'assistant', 'content': [{'type': 'text', 'text': text_output_cache}]})
+                                text_output_cache = ''
+                                
+                                # 向tool_server发送最近对话，供分析器识别潜在任务（与turn end逻辑相同）
+                                try:
+                                    # 构造最近的消息摘要
+                                    recent = []
+                                    for item in chat_history[-6:]:
+                                        if item.get('role') in ['user', 'assistant']:
+                                            try:
+                                                txt = item['content'][0]['text'] if item.get('content') else ''
+                                            except Exception:
+                                                txt = ''
+                                            if txt == '':
+                                                continue
+                                            recent.append({'role': item.get('role'), 'text': txt})
+                                    if recent:
+                                        requests.post(
+                                            f"http://localhost:{TOOL_SERVER_PORT}/analyze_and_plan",
+                                            json={'messages': recent, 'lanlan_name': lanlan_name},
+                                            timeout=0.2
+                                        )
+                                except Exception:
+                                    pass
+                                
+                                # 处理聊天历史
                                 print("💗开始处理聊天历史")
                                 response = requests.post(
                                     f"http://localhost:{MEMORY_SERVER_PORT}/process/{lanlan_name}",
@@ -237,8 +268,6 @@ def sync_connector_process(message_queue, shutdown_event, lanlan_name, sync_serv
                                 )
                                 if response.json()['status'] == 'error':
                                     print("💥 Conversation processing error", response.json()['message'])
-                                text_output_cache = ''  # lanlan的当前消息
-                                current_turn = 'user'
                                 chat_history.clear()
                         except Exception as e:
                             print('❗️❗️❗️System message error: ', e)

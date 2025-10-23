@@ -9,7 +9,7 @@ from typing import TypedDict, List, Dict, Any
 from langchain_core.messages import BaseMessage
 import json
 from langchain_openai import ChatOpenAI
-from config import OPENROUTER_API_KEY, ROUTER_MODEL, OPENROUTER_URL
+from config import get_core_config, ROUTER_MODEL
 
 class RouterState(TypedDict):
     messages: List[BaseMessage]
@@ -22,7 +22,8 @@ class MemoryQueryRouter:
         self.semantic_memory = semantic_memory
         self.recent_history = recent_history
         self.settings_manager = settings_manager
-        self.llm = ChatOpenAI(model=ROUTER_MODEL, base_url=OPENROUTER_URL, api_key=OPENROUTER_API_KEY)
+        core_config = get_core_config()
+        self.llm = ChatOpenAI(model=ROUTER_MODEL, base_url=core_config['OPENROUTER_URL'], api_key=core_config['OPENROUTER_API_KEY'])
         self.graph = self._build_graph()
 
     def _build_graph(self):

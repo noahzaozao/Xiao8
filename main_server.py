@@ -27,27 +27,16 @@ import requests
 import httpx
 import pathlib, wave
 from openai import AsyncOpenAI
-from config import get_character_data, MAIN_SERVER_PORT, CORE_API_KEY, AUDIO_API_KEY, EMOTION_MODEL, OPENROUTER_API_KEY, OPENROUTER_URL, MODELS_WITH_EXTRA_BODY, load_characters, save_characters, TOOL_SERVER_PORT
+from config import get_character_data, get_core_config, MAIN_SERVER_PORT, MODELS_WITH_EXTRA_BODY, load_characters, save_characters, TOOL_SERVER_PORT, CORE_CONFIG_PATH
 from config.prompts_sys import emotion_analysis_prompt
 import glob
 
 templates = Jinja2Templates(directory="./")
 
 # Configure logging
-def setup_logging():
-    """Setup logging configuration"""
-    log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    logging.basicConfig(
-        level=logging.INFO,
-        format=log_format,
-        handlers=[
-            logging.StreamHandler(sys.stdout),
-            logging.FileHandler(f'lanlan_server_{datetime.now().strftime("%Y%m%d")}.log', encoding='utf-8')
-        ]
-    )
-    return logging.getLogger(__name__)
+from utils.logger_config import setup_logging
 
-logger = setup_logging()
+logger, log_config = setup_logging(app_name="Xiao8_Main", log_level=logging.INFO)
 
 def cleanup():
     logger.info("Starting cleanup process")
@@ -236,12 +225,13 @@ async def get_core_config():
     try:
         # 尝试从core_config.json读取
         try:
-            with open('./config/core_config.json', 'r', encoding='utf-8') as f:
+            with open(CORE_CONFIG_PATH, 'r', encoding='utf-8') as f:
                 core_cfg = json.load(f)
                 api_key = core_cfg.get('coreApiKey', '')
         except FileNotFoundError:
-            # 如果文件不存在，返回当前内存中的CORE_API_KEY
-            api_key = CORE_API_KEY
+            # 如果文件不存在，返回当前配置中的CORE_API_KEY
+            core_config = get_core_config()
+            api_key = core_config['CORE_API_KEY']
         
         return {
             "api_key": api_key,
@@ -285,6 +275,10 @@ async def update_core_config(request: Request):
             return {"success": False, "error": "API Key不能为空"}
         
         # 保存到core_config.json
+        from pathlib import Path
+        # 确保配置目录存在
+        Path(CORE_CONFIG_PATH).parent.mkdir(parents=True, exist_ok=True)
+        
         core_cfg = {"coreApiKey": api_key}
         if 'coreApi' in data:
             core_cfg['coreApi'] = data['coreApi']
@@ -302,7 +296,7 @@ async def update_core_config(request: Request):
             core_cfg['assistApiKeySilicon'] = data['assistApiKeySilicon']
         if 'mcpToken' in data:
             core_cfg['mcpToken'] = data['mcpToken']
-        with open('./config/core_config.json', 'w', encoding='utf-8') as f:
+        with open(CORE_CONFIG_PATH, 'w', encoding='utf-8') as f:
             json.dump(core_cfg, f, indent=2, ensure_ascii=False)
         
         return {"success": True, "message": "API Key已保存"}
@@ -909,7 +903,8 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
             return JSONResponse({'error': f'上传成功但响应格式无法解析: {raw_text[:200]}'}, status_code=500)
         
         # 3. 用直链注册音色
-        dashscope.api_key = AUDIO_API_KEY
+        core_config = get_core_config()
+        dashscope.api_key = core_config['AUDIO_API_KEY']
         service = VoiceEnrollmentService()
         target_model = "cosyvoice-v2"
         
@@ -1091,8 +1086,10 @@ async def unregister_voice(name: str):
 
 @app.get('/api/memory/recent_files')
 async def get_recent_files():
-    """获取 memory/store 下所有 recent*.json 文件名列表"""
-    files = glob.glob('memory/store/recent*.json')
+    """获取 memory 目录下所有 recent*.json 文件名列表"""
+    from utils.config_manager import get_config_manager
+    cm = get_config_manager()
+    files = glob.glob(str(cm.memory_dir / 'recent*.json'))
     file_names = [os.path.basename(f) for f in files]
     return {"files": file_names}
 
@@ -1100,7 +1097,7 @@ async def get_recent_files():
 async def get_review_config():
     """获取记忆审阅配置"""
     try:
-        config_path = './config/core_config.json'
+        config_path = CORE_CONFIG_PATH
         if os.path.exists(config_path):
             with open(config_path, 'r', encoding='utf-8') as f:
                 config_data = json.load(f)
@@ -1120,7 +1117,7 @@ async def update_review_config(request: Request):
         data = await request.json()
         enabled = data.get('enabled', True)
         
-        config_path = './config/core_config.json'
+        config_path = CORE_CONFIG_PATH
         config_data = {}
         
         # 读取现有配置
@@ -1144,7 +1141,9 @@ async def update_review_config(request: Request):
 @app.get('/api/memory/recent_file')
 async def get_recent_file(filename: str):
     """获取指定 recent*.json 文件内容"""
-    file_path = os.path.join('memory/store', filename)
+    from utils.config_manager import get_config_manager
+    cm = get_config_manager()
+    file_path = str(cm.memory_dir / filename)
     if not (filename.startswith('recent') and filename.endswith('.json')):
         return JSONResponse({"success": False, "error": "文件名不合法"}, status_code=400)
     if not os.path.exists(file_path):
@@ -1463,7 +1462,9 @@ async def save_recent_file(request: Request):
     data = await request.json()
     filename = data.get('filename')
     chat = data.get('chat')
-    file_path = os.path.join('memory/store', filename)
+    from utils.config_manager import get_config_manager
+    cm = get_config_manager()
+    file_path = str(cm.memory_dir / filename)
     if not (filename and filename.startswith('recent') and filename.endswith('.json')):
         return JSONResponse({"success": False, "error": "文件名不合法"}, status_code=400)
     arr = []
@@ -1502,8 +1503,9 @@ async def emotion_analysis(request: Request):
         model = data.get('model')
         
         # 使用参数或默认配置
-        api_key = api_key or OPENROUTER_API_KEY
-        model = model or EMOTION_MODEL
+        core_config = get_core_config()
+        api_key = api_key or core_config['OPENROUTER_API_KEY']
+        model = model or core_config['EMOTION_MODEL']
         
         if not api_key:
             return {"error": "API密钥未提供且配置中未设置默认密钥"}
@@ -1512,7 +1514,7 @@ async def emotion_analysis(request: Request):
             return {"error": "模型名称未提供且配置中未设置默认模型"}
         
         # 创建异步客户端
-        client = AsyncOpenAI(api_key=api_key, base_url=OPENROUTER_URL)
+        client = AsyncOpenAI(api_key=api_key, base_url=core_config['OPENROUTER_URL'])
         
         # 构建请求消息
         messages = [

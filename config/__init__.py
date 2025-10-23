@@ -1,34 +1,53 @@
-from config.api import *
-from config.prompts_chara import *
+# 不再使用 import *，只导入需要的
+from config.prompts_chara import lanlan_prompt
 import json
 import os
 import logging
 import os
 from pathlib import Path
+from utils.config_manager import get_config_manager
 
 # Setup logger for this module
 logger = logging.getLogger(__name__)
 
+# 初始化配置管理器（自动迁移配置文件）
+_config_manager = get_config_manager()
+
 # 读取角色配置
-CHARACTER_JSON_PATH = os.path.join(os.path.dirname(__file__), 'characters.json')
+CHARACTER_JSON_PATH = str(_config_manager.get_config_path('characters.json'))
+CORE_CONFIG_PATH = str(_config_manager.get_config_path('core_config.json'))
+USER_PREFERENCES_PATH = str(_config_manager.get_config_path('user_preferences.json'))
 # 默认值
 _default_master = {"档案名": "哥哥", "性别": "男", "昵称": "哥哥"}
 _default_lanlan = {"test": {"性别": "女", "年龄": 15, "昵称": "T酱, 小T", "live2d": "mao_pro", "voice_id": "", "system_prompt": lanlan_prompt}}
 
 
-def load_characters(character_json_path=CHARACTER_JSON_PATH):
+def load_characters(character_json_path=None):
+    """加载角色配置"""
+    if character_json_path is None:
+        character_json_path = CHARACTER_JSON_PATH
+    
     try:
-        with open(CHARACTER_JSON_PATH, 'r', encoding='utf-8') as f:
+        with open(character_json_path, 'r', encoding='utf-8') as f:
             character_data = json.load(f)
     except FileNotFoundError:
-        logger.info(f"未找到猫娘配置文件: {CHARACTER_JSON_PATH}，请检查文件是否存在。使用默认人设。")
+        logger.info(f"未找到猫娘配置文件: {character_json_path}，创建默认配置。")
         character_data = {"主人": _default_master, "猫娘": _default_lanlan}
+        # 保存默认配置
+        save_characters(character_data, character_json_path)
     except Exception as e:
         logger.error(f"💥 读取猫娘配置文件出错: {e}，使用默认人设。")
         character_data = {"主人": _default_master, "猫娘": _default_lanlan}
     return character_data
 
-def save_characters(data, character_json_path=CHARACTER_JSON_PATH):
+def save_characters(data, character_json_path=None):
+    """保存角色配置"""
+    if character_json_path is None:
+        character_json_path = CHARACTER_JSON_PATH
+    
+    # 确保目录存在
+    Path(character_json_path).parent.mkdir(parents=True, exist_ok=True)
+    
     with open(character_json_path, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
@@ -55,12 +74,15 @@ def get_character_data():
     lanlan_basic_config = character_data['猫娘'] if catgirl_names else _default_lanlan
 
     NAME_MAPPING = {'human': master_name, 'system': "SYSTEM_MESSAGE"}
-    # 生成以猫娘名为key的各类store
+    # 生成以猫娘名为key的各类store（现在使用我的文档下的memory目录）
     LANLAN_PROMPT = {name: character_data['猫娘'][name].get('system_prompt', lanlan_prompt) for name in catgirl_names}
-    SEMANTIC_STORE = {name: f'memory/store/semantic_memory_{name}' for name in catgirl_names}
-    TIME_STORE = {name: f'memory/store/time_indexed_{name}' for name in catgirl_names}
-    SETTING_STORE = {name: f'memory/store/settings_{name}.json' for name in catgirl_names}
-    RECENT_LOG = {name: f'memory/store/recent_{name}.json' for name in catgirl_names}
+    
+    # 使用配置管理器获取memory目录
+    memory_base = str(_config_manager.memory_dir)
+    SEMANTIC_STORE = {name: f'{memory_base}/semantic_memory_{name}' for name in catgirl_names}
+    TIME_STORE = {name: f'{memory_base}/time_indexed_{name}' for name in catgirl_names}
+    SETTING_STORE = {name: f'{memory_base}/settings_{name}.json' for name in catgirl_names}
+    RECENT_LOG = {name: f'{memory_base}/recent_{name}.json' for name in catgirl_names}
 
     return master_name, her_name, master_basic_config, lanlan_basic_config, NAME_MAPPING, LANLAN_PROMPT, SEMANTIC_STORE, TIME_STORE, SETTING_STORE, RECENT_LOG
 
@@ -68,102 +90,184 @@ TIME_ORIGINAL_TABLE_NAME = "time_indexed_original"
 TIME_COMPRESSED_TABLE_NAME = "time_indexed_compressed"
 
 MODELS_WITH_EXTRA_BODY = ["qwen-flash-2025-07-28"]
-try:
-    with open('./config/core_config.json', 'r', encoding='utf-8') as f:
-        core_cfg = json.load(f)
-    if 'coreApiKey' in core_cfg and core_cfg['coreApiKey'] and core_cfg['coreApiKey'] != CORE_API_KEY:
-        logger.warning("coreApiKey in core_config.json is updated. Overwriting CORE_API_KEY.")
-        CORE_API_KEY = core_cfg['coreApiKey']
+
+def get_core_config():
+    """
+    动态读取核心配置
+    返回一个包含所有核心配置的字典
+    """
+    # 从 config/api.py 导入默认值
+    from config.api import (
+        CORE_API_KEY as DEFAULT_CORE_API_KEY,
+        AUDIO_API_KEY as DEFAULT_AUDIO_API_KEY,
+        OPENROUTER_API_KEY as DEFAULT_OPENROUTER_API_KEY,
+        MCP_ROUTER_API_KEY as DEFAULT_MCP_ROUTER_API_KEY,
+        CORE_URL as DEFAULT_CORE_URL,
+        CORE_MODEL as DEFAULT_CORE_MODEL,
+        OPENROUTER_URL as DEFAULT_OPENROUTER_URL,
+        SUMMARY_MODEL as DEFAULT_SUMMARY_MODEL,
+        CORRECTION_MODEL as DEFAULT_CORRECTION_MODEL,
+        EMOTION_MODEL as DEFAULT_EMOTION_MODEL
+    )
     
-    # 读取 core_api 类型
-    CORE_API_TYPE = core_cfg.get('coreApi', 'qwen')
+    # 初始化配置
+    config = {
+        'CORE_API_KEY': DEFAULT_CORE_API_KEY,
+        'AUDIO_API_KEY': DEFAULT_AUDIO_API_KEY,
+        'OPENROUTER_API_KEY': DEFAULT_OPENROUTER_API_KEY,
+        'MCP_ROUTER_API_KEY': DEFAULT_MCP_ROUTER_API_KEY,
+        'CORE_URL': DEFAULT_CORE_URL,
+        'CORE_MODEL': DEFAULT_CORE_MODEL,
+        'CORE_API_TYPE': 'qwen',
+        'OPENROUTER_URL': DEFAULT_OPENROUTER_URL,
+        'SUMMARY_MODEL': DEFAULT_SUMMARY_MODEL,
+        'CORRECTION_MODEL': DEFAULT_CORRECTION_MODEL,
+        'EMOTION_MODEL': DEFAULT_EMOTION_MODEL,
+        'ASSIST_API_KEY_QWEN': DEFAULT_CORE_API_KEY,
+        'ASSIST_API_KEY_OPENAI': DEFAULT_CORE_API_KEY,
+        'ASSIST_API_KEY_GLM': DEFAULT_CORE_API_KEY,
+        'ASSIST_API_KEY_STEP': DEFAULT_CORE_API_KEY,
+        'ASSIST_API_KEY_SILICON': DEFAULT_CORE_API_KEY,
+        'COMPUTER_USE_MODEL': 'glm-4.5v',
+        'COMPUTER_USE_GROUND_MODEL': 'glm-4.5v',
+        'COMPUTER_USE_MODEL_URL': 'https://open.bigmodel.cn/api/paas/v4',
+        'COMPUTER_USE_GROUND_URL': 'https://open.bigmodel.cn/api/paas/v4',
+        'COMPUTER_USE_MODEL_API_KEY': '',
+        'COMPUTER_USE_GROUND_API_KEY': '',
+    }
     
-    if 'coreApi' in core_cfg and core_cfg['coreApi']:
-        logger.warning("coreApi: " + core_cfg['coreApi'])
-        if core_cfg['coreApi'] == 'qwen':
-            CORE_URL = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
-            CORE_MODEL = "qwen3-omni-flash-realtime-2025-09-15"
-        elif core_cfg['coreApi'] == 'glm':
-            CORE_URL = "wss://open.bigmodel.cn/api/paas/v4/realtime"
-            CORE_MODEL = "glm-realtime-air" 
-        elif core_cfg['coreApi'] == 'openai':
-            CORE_URL = "wss://api.openai.com/v1/realtime"
-            CORE_MODEL = "gpt-realtime"
-        elif core_cfg['coreApi'] == 'step':
-            CORE_URL = "wss://api.stepfun.com/v1/realtime"
-            CORE_MODEL = "step-audio-2"
+    try:
+        with open(CORE_CONFIG_PATH, 'r', encoding='utf-8') as f:
+            core_cfg = json.load(f)
+        
+        # 更新API Key
+        if 'coreApiKey' in core_cfg and core_cfg['coreApiKey']:
+            config['CORE_API_KEY'] = core_cfg['coreApiKey']
+        
+        # 读取 core_api 类型
+        config['CORE_API_TYPE'] = core_cfg.get('coreApi', 'qwen')
+        
+        # 根据 coreApi 类型设置 CORE_URL 和 CORE_MODEL
+        if 'coreApi' in core_cfg and core_cfg['coreApi']:
+            if core_cfg['coreApi'] == 'qwen':
+                config['CORE_URL'] = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
+                config['CORE_MODEL'] = "qwen3-omni-flash-realtime-2025-09-15"
+            elif core_cfg['coreApi'] == 'glm':
+                config['CORE_URL'] = "wss://open.bigmodel.cn/api/paas/v4/realtime"
+                config['CORE_MODEL'] = "glm-realtime-air"
+            elif core_cfg['coreApi'] == 'openai':
+                config['CORE_URL'] = "wss://api.openai.com/v1/realtime"
+                config['CORE_MODEL'] = "gpt-realtime"
+            elif core_cfg['coreApi'] == 'step':
+                config['CORE_URL'] = "wss://api.stepfun.com/v1/realtime"
+                config['CORE_MODEL'] = "step-audio-2"
+        
+        # 读取各种辅助API Key
+        config['ASSIST_API_KEY_QWEN'] = core_cfg.get('assistApiKeyQwen', '') or config['CORE_API_KEY']
+        config['ASSIST_API_KEY_OPENAI'] = core_cfg.get('assistApiKeyOpenai', '') or config['CORE_API_KEY']
+        config['ASSIST_API_KEY_GLM'] = core_cfg.get('assistApiKeyGlm', '') or config['CORE_API_KEY']
+        config['ASSIST_API_KEY_STEP'] = core_cfg.get('assistApiKeyStep', '') or config['CORE_API_KEY']
+        config['ASSIST_API_KEY_SILICON'] = core_cfg.get('assistApiKeySilicon', '') or config['CORE_API_KEY']
+        
+        # 读取MCP Token
+        if 'mcpToken' in core_cfg and core_cfg['mcpToken']:
+            config['MCP_ROUTER_API_KEY'] = core_cfg['mcpToken']
+        
+        # Computer Use配置
+        config['COMPUTER_USE_MODEL_API_KEY'] = config['COMPUTER_USE_GROUND_API_KEY'] = config['ASSIST_API_KEY_GLM']
+        
+        # 根据 assistApi 类型设置辅助模型
+        if 'assistApi' in core_cfg and core_cfg['assistApi']:
+            if core_cfg['assistApi'] == 'qwen':
+                config['OPENROUTER_URL'] = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+                config['SUMMARY_MODEL'] = "qwen3-next-80b-a3b-instruct"
+                config['CORRECTION_MODEL'] = "qwen3-235b-a22b-instruct-2507"
+                config['EMOTION_MODEL'] = "qwen-flash-2025-07-28"
+                config['AUDIO_API_KEY'] = config['OPENROUTER_API_KEY'] = config['ASSIST_API_KEY_QWEN']
+            elif core_cfg['assistApi'] == 'openai':
+                config['OPENROUTER_URL'] = "https://api.openai.com/v1"
+                config['SUMMARY_MODEL'] = "gpt-4.1-mini"
+                config['CORRECTION_MODEL'] = "gpt-5-chat-latest"
+                config['EMOTION_MODEL'] = "gpt-4.1-nano"
+                config['AUDIO_API_KEY'] = config['OPENROUTER_API_KEY'] = config['ASSIST_API_KEY_OPENAI']
+            elif core_cfg['assistApi'] == 'glm':
+                config['OPENROUTER_URL'] = "https://open.bigmodel.cn/api/paas/v4"
+                config['SUMMARY_MODEL'] = "glm-4.5-flash"
+                config['CORRECTION_MODEL'] = "glm-4.5-air"
+                config['EMOTION_MODEL'] = "glm-4.5-flash"
+                config['AUDIO_API_KEY'] = config['OPENROUTER_API_KEY'] = config['ASSIST_API_KEY_GLM']
+            elif core_cfg['assistApi'] == 'step':
+                config['OPENROUTER_URL'] = "https://api.stepfun.com/v1"
+                config['SUMMARY_MODEL'] = "step-2-mini"
+                config['CORRECTION_MODEL'] = "step-2-mini"
+                config['EMOTION_MODEL'] = "step-2-mini"
+                config['AUDIO_API_KEY'] = config['OPENROUTER_API_KEY'] = config['ASSIST_API_KEY_STEP']
+            elif core_cfg['assistApi'] == 'silicon':
+                config['OPENROUTER_URL'] = "https://api.siliconflow.cn/v1"
+                config['SUMMARY_MODEL'] = "Qwen/Qwen3-Next-80B-A3B-Instruct"
+                config['CORRECTION_MODEL'] = "deepseek-ai/DeepSeek-V3.2-Exp"
+                config['EMOTION_MODEL'] = "THUDM/GLM-4-9B-0414"
+                config['AUDIO_API_KEY'] = config['OPENROUTER_API_KEY'] = config['ASSIST_API_KEY_SILICON']
         else:
-            logger.error("💥 Unknown coreApi: " + core_cfg['coreApi'])
-    else:
-        CORE_URL = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
-        CORE_MODEL = "qwen3-omni-flash-realtime-2025-09-15"
-    ASSIST_API_KEY_QWEN = core_cfg['assistApiKeyQwen'] if 'assistApiKeyQwen' in core_cfg and core_cfg['assistApiKeyQwen'] != '' else CORE_API_KEY
-    ASSIST_API_KEY_OPENAI = core_cfg['assistApiKeyOpenai'] if 'assistApiKeyOpenai' in core_cfg and core_cfg['assistApiKeyOpenai'] != '' else CORE_API_KEY
-    ASSIST_API_KEY_GLM = core_cfg['assistApiKeyGlm'] if 'assistApiKeyGlm' in core_cfg and core_cfg['assistApiKeyGlm'] != '' else CORE_API_KEY
-    ASSIST_API_KEY_STEP = core_cfg['assistApiKeyStep'] if 'assistApiKeyStep' in core_cfg and core_cfg['assistApiKeyStep'] != '' else CORE_API_KEY
-    ASSIST_API_KEY_SILICON = core_cfg['assistApiKeySilicon'] if 'assistApiKeySilicon' in core_cfg and core_cfg['assistApiKeySilicon'] != '' else CORE_API_KEY
-    # 读取MCP Token
-    if 'mcpToken' in core_cfg and core_cfg['mcpToken'] != '':
-        MCP_ROUTER_API_KEY = core_cfg['mcpToken']
-        logger.info("MCP_ROUTER_API_KEY loaded from core_config.json")
-    COMPUTER_USE_MODEL = 'glm-4.5v'
-    COMPUTER_USE_GROUND_MODEL = 'glm-4.5v'
-    COMPUTER_USE_MODEL_URL = COMPUTER_USE_GROUND_URL = 'https://open.bigmodel.cn/api/paas/v4'  # reuse
-    COMPUTER_USE_MODEL_API_KEY = COMPUTER_USE_GROUND_API_KEY = ASSIST_API_KEY_GLM
-    if 'assistApi' in core_cfg and core_cfg['assistApi']:
-        logger.warning("assistApi: " + core_cfg['assistApi'])
-        if core_cfg['assistApi'] == 'qwen':
-            logger.warning("assistApi: " + core_cfg['assistApi'])
-            OPENROUTER_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-            SUMMARY_MODEL = "qwen3-next-80b-a3b-instruct"
-            CORRECTION_MODEL = "qwen3-235b-a22b-instruct-2507"
-            EMOTION_MODEL = "qwen-flash-2025-07-28"
-            AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_QWEN
-        elif core_cfg['assistApi'] == 'openai':
-            logger.warning("assistApi: " + core_cfg['assistApi'])
-            OPENROUTER_URL = "https://api.openai.com/v1"
-            SUMMARY_MODEL= "gpt-4.1-mini"
-            CORRECTION_MODEL = "gpt-5-chat-latest"
-            EMOTION_MODEL = "gpt-4.1-nano"
-            AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_OPENAI
-        elif core_cfg['assistApi'] == 'glm':
-            OPENROUTER_URL = "https://open.bigmodel.cn/api/paas/v4"
-            SUMMARY_MODEL = "glm-4.5-flash" # <-永久免费模型
-            CORRECTION_MODEL = "glm-4.5-air"
-            EMOTION_MODEL = "glm-4.5-flash" # <-永久免费模型
-            AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_GLM
-        elif core_cfg['assistApi'] == 'step':
-            OPENROUTER_URL = "https://api.stepfun.com/v1"
-            SUMMARY_MODEL = "step-2-mini"
-            CORRECTION_MODEL = "step-2-mini"
-            EMOTION_MODEL = "step-2-mini"
-            AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_STEP
-        elif core_cfg['assistApi'] == 'silicon':
-            OPENROUTER_URL = "https://api.siliconflow.cn/v1"
-            SUMMARY_MODEL = "Qwen/Qwen3-Next-80B-A3B-Instruct"
-            CORRECTION_MODEL = "deepseek-ai/DeepSeek-V3.2-Exp"
-            EMOTION_MODEL = "THUDM/GLM-4-9B-0414"
-            AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_SILICON
-        else:
-            logger.error("💥 Unknown assistApi: " + core_cfg['assistApi']) 
-    else:
-        OPENROUTER_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-        SUMMARY_MODEL = "qwen-plus-2025-07-14"
-        CORRECTION_MODEL = "qwen3-235b-a22b-instruct-2507"
-        EMOTION_MODEL = "qwen-turbo-2025-07-15"
-        AUDIO_API_KEY = OPENROUTER_API_KEY = ASSIST_API_KEY_QWEN
+            # 默认使用qwen
+            config['OPENROUTER_URL'] = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+            config['SUMMARY_MODEL'] = "qwen-plus-2025-07-14"
+            config['CORRECTION_MODEL'] = "qwen3-235b-a22b-instruct-2507"
+            config['EMOTION_MODEL'] = "qwen-turbo-2025-07-15"
+            config['AUDIO_API_KEY'] = config['OPENROUTER_API_KEY'] = config['ASSIST_API_KEY_QWEN']
+    
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        logger.error(f"💥 Error parsing Core API Key: {e}")
+    
+    # 确保有默认值
+    if not config['AUDIO_API_KEY']:
+        config['AUDIO_API_KEY'] = config['CORE_API_KEY']
+    if not config['OPENROUTER_API_KEY']:
+        config['OPENROUTER_API_KEY'] = config['CORE_API_KEY']
+    
+    return config
 
-except FileNotFoundError:
-    CORE_API_TYPE = 'qwen'  # 默认使用 qwen
-    pass
-except Exception as e:
-    logger.error(f"Error parsing Core API Key: {e}")
-    CORE_API_TYPE = 'qwen'  # 默认使用 qwen
+# 但是保留不易变的常量（端口、表名等）
+from config.api import (
+    MAIN_SERVER_PORT,
+    MEMORY_SERVER_PORT,
+    MONITOR_SERVER_PORT,
+    COMMENTER_SERVER_PORT,
+    TOOL_SERVER_PORT,
+    MCP_ROUTER_URL,
+    ROUTER_MODEL,
+    SETTING_PROPOSER_MODEL,
+    SETTING_VERIFIER_MODEL,
+    SEMANTIC_MODEL,
+    RERANKER_MODEL
+)
 
-if  AUDIO_API_KEY == '':
-    AUDIO_API_KEY = CORE_API_KEY
-if  OPENROUTER_API_KEY == '':
-    OPENROUTER_API_KEY = CORE_API_KEY
-
-if not CORE_API_KEY.startswith('sk'):
-    logger.warning("⚠️ 请检查Core API Key是否正确，通常以'sk-'开头（智谱例外）。请在设置页面中重新设置。")
+# 这些也是不易变的
+__all__ = [
+    # 函数
+    'get_character_data',
+    'get_core_config',
+    'load_characters',
+    'save_characters',
+    # 路径
+    'CHARACTER_JSON_PATH',
+    'CORE_CONFIG_PATH',
+    'USER_PREFERENCES_PATH',
+    # 不易变的常量
+    'TIME_ORIGINAL_TABLE_NAME',
+    'TIME_COMPRESSED_TABLE_NAME',
+    'MODELS_WITH_EXTRA_BODY',
+    'MAIN_SERVER_PORT',
+    'MEMORY_SERVER_PORT',
+    'MONITOR_SERVER_PORT',
+    'COMMENTER_SERVER_PORT',
+    'TOOL_SERVER_PORT',
+    'MCP_ROUTER_URL',
+    'ROUTER_MODEL',
+    'SETTING_PROPOSER_MODEL',
+    'SETTING_VERIFIER_MODEL',
+    'SEMANTIC_MODEL',
+    'RERANKER_MODEL',
+]

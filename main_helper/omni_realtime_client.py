@@ -81,7 +81,7 @@ class OmniRealtimeClient:
         self.on_input_transcript = on_input_transcript
         self.on_output_transcript = on_output_transcript
         self.turn_detection_mode = turn_detection_mode
-        self.handle_connection_error = on_connection_error
+        self.on_connection_error = on_connection_error
         self.on_response_done = on_response_done
         self.extra_event_handlers = extra_event_handlers or {}
 
@@ -294,8 +294,8 @@ class OmniRealtimeClient:
                 if event_type == "error":
                     logger.error(f"API Error: {event['error']}")
                     if '欠费' in event['error'] or 'standing' in event['error']:
-                        if self.handle_connection_error:
-                            await self.handle_connection_error(event['error'])
+                        if self.on_connection_error:
+                            await self.on_connection_error(event['error'])
                         await self.close()
                     continue
                 elif event_type == "response.done":
@@ -367,14 +367,16 @@ class OmniRealtimeClient:
 
         except websockets.exceptions.ConnectionClosedOK:
             logger.info("Connection closed as expected")
-        except websockets.exceptions.ConnectionClosedError:
-            if self.handle_connection_error:
-                await self.handle_connection_error()
+        except websockets.exceptions.ConnectionClosedError as e:
+            error_msg = str(e)
+            logger.error(f"Connection closed with error: {error_msg}")
+            if self.on_connection_error:
+                await self.on_connection_error(error_msg)
         except asyncio.TimeoutError:
             if self.ws:
                 await self.ws.close()
-            if self.handle_connection_error:
-                await self.handle_connection_error()
+            if self.on_connection_error:
+                await self.on_connection_error("💥 连接超时，请检查网络连接。")
         except Exception as e:
             logger.error(f"Error in message handling: {str(e)}")
             raise e

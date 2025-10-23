@@ -170,7 +170,7 @@ import inflect
 import base64
 from io import BytesIO
 from PIL import Image
-from config import get_character_data, CORE_URL, CORE_MODEL, EMOTION_MODEL, CORE_API_KEY, MEMORY_SERVER_PORT, AUDIO_API_KEY
+from config import get_character_data, get_core_config, MEMORY_SERVER_PORT
 from multiprocessing import Process, Queue as MPQueue
 from uuid import uuid4
 import numpy as np

@@ -1,13 +1,14 @@
 import json
 from langchain_openai import ChatOpenAI
-from config import OPENROUTER_API_KEY, SETTING_PROPOSER_MODEL, SETTING_VERIFIER_MODEL, OPENROUTER_URL, get_character_data
+from config import get_core_config, SETTING_PROPOSER_MODEL, SETTING_VERIFIER_MODEL, get_character_data
 from config.prompts_sys import settings_extractor_prompt, settings_verifier_prompt
 
 
 class ImportantSettingsManager:
     def __init__(self):
-        self.proposer = ChatOpenAI(model=SETTING_PROPOSER_MODEL, base_url=OPENROUTER_URL, api_key=OPENROUTER_API_KEY, temperature=0.5)
-        self.verifier = ChatOpenAI(model=SETTING_VERIFIER_MODEL, base_url=OPENROUTER_URL, api_key=OPENROUTER_API_KEY, temperature=0.5)
+        core_config = get_core_config()
+        self.proposer = ChatOpenAI(model=SETTING_PROPOSER_MODEL, base_url=core_config['OPENROUTER_URL'], api_key=core_config['OPENROUTER_API_KEY'], temperature=0.5)
+        self.verifier = ChatOpenAI(model=SETTING_VERIFIER_MODEL, base_url=core_config['OPENROUTER_URL'], api_key=core_config['OPENROUTER_API_KEY'], temperature=0.5)
         self.settings = {}
         self.settings_file = None
         self.master_basic_config = None

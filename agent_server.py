@@ -24,13 +24,8 @@ from brain.deduper import TaskDeduper
 app = FastAPI(title="Lanlan Tool Server", version="0.1.0")
 
 # Configure logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+from utils.logger_config import setup_logging
+logger, log_config = setup_logging(app_name="Xiao8_Agent", log_level=logging.INFO)
 
 
 class Modules:

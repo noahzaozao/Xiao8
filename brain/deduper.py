@@ -1,6 +1,6 @@
 from typing import List, Dict, Any, Optional, Tuple
 from langchain_openai import ChatOpenAI
-from config import OPENROUTER_API_KEY, OPENROUTER_URL, SUMMARY_MODEL
+from config import get_core_config, MODELS_WITH_EXTRA_BODY
 
 
 class TaskDeduper:
@@ -11,11 +11,13 @@ class TaskDeduper:
     """
 
     def __init__(self):
+        core_config = get_core_config()
         self.llm = ChatOpenAI(
-            model=SUMMARY_MODEL,
-            base_url=OPENROUTER_URL,
-            api_key=OPENROUTER_API_KEY,
+            model=core_config['SUMMARY_MODEL'],
+            base_url=core_config['OPENROUTER_URL'],
+            api_key=core_config['OPENROUTER_API_KEY'],
             temperature=0,
+            extra_body={"enable_thinking": False} if core_config['SUMMARY_MODEL'] in MODELS_WITH_EXTRA_BODY else None
         )
 
     def _build_prompt(self, new_task: str, candidates: List[Tuple[str, str]]) -> str:

@@ -3,7 +3,7 @@ import logging
 from typing import Dict, Any, List, Optional
 import httpx
 from cachetools import TTLCache
-from config import MCP_ROUTER_URL, MCP_ROUTER_API_KEY
+from config import get_core_config, MCP_ROUTER_URL
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,13 @@ class McpRouterClient:
     - Provides simple tool invocation shim (POST /tools/{server_id}/{tool_name}) if router exposes such API later
       For now only discovery is used; tool execution will be done by LLM selection inside processor.
     """
-    def __init__(self, base_url: str = MCP_ROUTER_URL, api_key: str = MCP_ROUTER_API_KEY, timeout: float = 10.0):
+    def __init__(self, base_url: str = None, api_key: str = None, timeout: float = 10.0):
+        # 动态获取配置
+        if base_url is None:
+            base_url = MCP_ROUTER_URL
+        if api_key is None:
+            core_config = get_core_config()
+            api_key = core_config.get('MCP_ROUTER_API_KEY', '')
         self.base_url = base_url.rstrip('/')
         self.api_key = api_key
         headers = {}

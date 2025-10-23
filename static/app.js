@@ -30,8 +30,14 @@ function init_app(){
     // 新增：当前选择的麦克风设备ID
     let selectedMicrophoneId = null;
     
+    // 麦克风静音检测相关变量
+    let silenceDetectionTimer = null;
+    let hasSoundDetected = false;
+    let inputAnalyser = null;
+    
     // 模式管理
     let isTextSessionActive = false;
+    let isSwitchingMode = false; // 新增：模式切换标志
     
     // WebSocket心跳保活
     let heartbeatInterval = null;
@@ -102,6 +108,11 @@ function init_app(){
                         handleBase64Audio(response.audioData, isNewMessage);
                     }
                 } else if (response.type === 'status') {
+                    // 如果正在切换模式且收到"已离开"消息，则忽略
+                    if (isSwitchingMode && response.message.includes('已离开')) {
+                        console.log('模式切换中，忽略"已离开"状态消息');
+                        return;
+                    }
                     statusElement.textContent = response.message;
                     if (response.message === `${lanlan_config.lanlan_name}失联了，即将重启！`){
                         if (isRecording === false && !isTextSessionActive){
@@ -503,6 +514,8 @@ function init_app(){
     }
 
     async function stopMicCapture(){ // 闭麦，按钮on click
+        isSwitchingMode = true; // 开始模式切换（从语音切换到待机/文本模式）
+        
         // 停止录音时移除两个按钮的录音状态类
         micButton.classList.remove('recording');
         const toggleButton = document.getElementById('toggle-mic-selector');
@@ -523,6 +536,11 @@ function init_app(){
         
         // 如果是从语音模式切换回来，显示待机状态
         statusElement.textContent = `${lanlan_config.lanlan_name}待机中...`;
+        
+        // 延迟重置模式切换标志，确保"已离开"消息已经被忽略
+        setTimeout(() => {
+            isSwitchingMode = false;
+        }, 500);
     }
 
     async function getMobileCameraStream() {
@@ -660,6 +678,7 @@ function init_app(){
     micButton.addEventListener('click', async () => {
         // 如果有活跃的文本会话，先结束它
         if (isTextSessionActive) {
+            isSwitchingMode = true; // 开始模式切换
             if (socket.readyState === WebSocket.OPEN) {
                 socket.send(JSON.stringify({
                     action: 'end_session'
@@ -698,6 +717,7 @@ function init_app(){
                 // 显示Live2D
                 showLive2d();
                 await startMicCapture();
+                isSwitchingMode = false; // 模式切换完成
             } catch (error) {
                 console.error('启动麦克风失败:', error);
                 // 如果失败，恢复按钮状态和文本输入区
@@ -708,6 +728,7 @@ function init_app(){
                 resetSessionButton.disabled = false;
                 textInputArea.classList.remove('hidden');
                 statusElement.textContent = '麦克风启动失败';
+                isSwitchingMode = false; // 切换失败，重置标志
             }
         }, 2500);
     });
@@ -722,6 +743,7 @@ function init_app(){
     muteButton.addEventListener('click', stopMicCapture);
 
     resetSessionButton.addEventListener('click', () => {
+        isSwitchingMode = true; // 开始重置会话（也是一种模式切换）
         hideLive2d()
         if (socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({
@@ -754,6 +776,11 @@ function init_app(){
         modeHint.classList.remove('voice-active');
         
         statusElement.textContent = '会话已结束';
+        
+        // 延迟重置模式切换标志，确保"已离开"消息已经被忽略
+        setTimeout(() => {
+            isSwitchingMode = false;
+        }, 500);
     });
     
     // 文本发送按钮事件
@@ -868,6 +895,65 @@ function init_app(){
         }
     }
 
+    // 启动麦克风静音检测
+    function startSilenceDetection() {
+        // 重置检测状态
+        hasSoundDetected = false;
+        
+        // 清除之前的定时器(如果有)
+        if (silenceDetectionTimer) {
+            clearTimeout(silenceDetectionTimer);
+        }
+        
+        // 启动5秒定时器
+        silenceDetectionTimer = setTimeout(() => {
+            if (!hasSoundDetected && isRecording) {
+                statusElement.textContent = '⚠️ 麦克风无声音，请检查麦克风设置';
+                console.warn('麦克风静音检测：5秒内未检测到声音');
+            }
+        }, 5000);
+    }
+    
+    // 停止麦克风静音检测
+    function stopSilenceDetection() {
+        if (silenceDetectionTimer) {
+            clearTimeout(silenceDetectionTimer);
+            silenceDetectionTimer = null;
+        }
+        hasSoundDetected = false;
+    }
+    
+    // 监测音频输入音量
+    function monitorInputVolume() {
+        if (!inputAnalyser || !isRecording) {
+            return;
+        }
+        
+        const dataArray = new Uint8Array(inputAnalyser.fftSize);
+        inputAnalyser.getByteTimeDomainData(dataArray);
+        
+        // 计算音量(RMS)
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+            const val = (dataArray[i] - 128) / 128.0;
+            sum += val * val;
+        }
+        const rms = Math.sqrt(sum / dataArray.length);
+        
+        // 如果音量超过阈值(0.01),认为检测到声音
+        if (rms > 0.01) {
+            if (!hasSoundDetected) {
+                hasSoundDetected = true;
+                console.log('麦克风静音检测：检测到声音，RMS =', rms);
+            }
+        }
+        
+        // 持续监测
+        if (isRecording) {
+            requestAnimationFrame(monitorInputVolume);
+        }
+    }
+
     // 使用AudioWorklet开始音频处理
     async function startAudioWorklet(stream) {
         isRecording = true;
@@ -878,6 +964,14 @@ function init_app(){
 
         // 创建媒体流源
         const source = audioContext.createMediaStreamSource(stream);
+        
+        // 创建analyser节点用于监测输入音量
+        inputAnalyser = audioContext.createAnalyser();
+        inputAnalyser.fftSize = 2048;
+        inputAnalyser.smoothingTimeConstant = 0.8;
+        
+        // 连接source到analyser(用于音量检测)
+        source.connect(inputAnalyser);
 
         try {
             // 加载AudioWorklet处理器
@@ -914,11 +1008,16 @@ function init_app(){
             source.connect(workletNode);
             // 不需要连接到destination，因为我们不需要听到声音
             // workletNode.connect(audioContext.destination);
+            
+            // 启动静音检测
+            startSilenceDetection();
+            monitorInputVolume();
 
         } catch (err) {
             console.error('加载AudioWorklet失败:', err);
             console.dir(err); // <--- 使用 console.dir()
             statusElement.textContent = 'AudioWorklet加载失败';
+            stopSilenceDetection();
         }
     }
 
@@ -936,6 +1035,12 @@ function init_app(){
 
         isRecording = false;
         currentGeminiMessage = null;
+        
+        // 停止静音检测
+        stopSilenceDetection();
+        
+        // 清理输入analyser
+        inputAnalyser = null;
 
         // 停止所有轨道
         if (stream) {

@@ -24,7 +24,7 @@ import inflect
 import base64
 from io import BytesIO
 from PIL import Image
-from config import get_character_data, CORE_URL, CORE_MODEL, CORRECTION_MODEL, EMOTION_MODEL, CORE_API_KEY, MEMORY_SERVER_PORT, AUDIO_API_KEY, OPENROUTER_URL, OPENROUTER_API_KEY, CORE_API_TYPE
+from config import get_character_data, get_core_config, MEMORY_SERVER_PORT
 from multiprocessing import Process, Queue as MPQueue
 from uuid import uuid4
 import numpy as np
@@ -76,15 +76,17 @@ class LLMSessionManager:
             self.setting_store,
             self.recent_log
         ) = get_character_data()
-        # 获取API相关配置
-        self.model = CORE_MODEL  # For realtime voice
-        self.text_model = CORRECTION_MODEL  # For text-only mode
-        self.core_url = CORE_URL
-        self.core_api_key = CORE_API_KEY
-        self.openrouter_url = OPENROUTER_URL
-        self.openrouter_api_key = OPENROUTER_API_KEY
+        # 获取API相关配置（动态读取以支持热重载）
+        core_config = get_core_config()
+        self.model = core_config['CORE_MODEL']  # For realtime voice
+        self.text_model = core_config['CORRECTION_MODEL']  # For text-only mode
+        self.core_url = core_config['CORE_URL']
+        self.core_api_key = core_config['CORE_API_KEY']
+        self.core_api_type = core_config['CORE_API_TYPE']
+        self.openrouter_url = core_config['OPENROUTER_URL']
+        self.openrouter_api_key = core_config['OPENROUTER_API_KEY']
         self.memory_server_port = MEMORY_SERVER_PORT
-        self.audio_api_key = AUDIO_API_KEY
+        self.audio_api_key = core_config['AUDIO_API_KEY']
         self.voice_id = self.lanlan_basic_config[self.lanlan_name].get('voice_id', '')
         # 注意：use_tts 会在 start_session 中根据 input_mode 重新设置
         self.use_tts = False
@@ -497,7 +499,7 @@ class LLMSessionManager:
                 # 使用工厂函数获取合适的 TTS worker
                 has_custom_voice = bool(self.voice_id)
                 tts_worker = get_tts_worker(
-                    core_api_type=CORE_API_TYPE,
+                    core_api_type=self.core_api_type,
                     has_custom_voice=has_custom_voice
                 )
                 
@@ -514,7 +516,7 @@ class LLMSessionManager:
                 await asyncio.sleep(0.1)
                 
                 # 记录使用的 TTS 类型
-                tts_type = "自定义音色(CosyVoice)" if has_custom_voice else f"{CORE_API_TYPE}默认TTS"
+                tts_type = "自定义音色(CosyVoice)" if has_custom_voice else f"{self.core_api_type}默认TTS"
                 logger.info(f"TTS进程已启动，使用: {tts_type}")
             
             # 确保旧的 TTS handler task 已经停止
@@ -612,12 +614,20 @@ class LLMSessionManager:
             else:
                 await self.send_status(f"{error_message} (失败{self.session_start_failure_count}次)")
             
-            if 'actively refused it' in str(e):
-                await self.send_status("💥 记忆服务器已崩溃。请检查API Key是否正确。")
-            elif '401' in str(e):
+            # 检查是否是memory_server连接错误（端口48912）
+            error_str = str(e)
+            if 'WinError 10061' in error_str or 'WinError 10054' in error_str:
+                # 检查端口号是否为48912
+                if str(self.memory_server_port) in error_str or '48912' in error_str:
+                    await self.send_status(f"💥 记忆服务器(端口{self.memory_server_port})已崩溃。请检查API设置是否正确。")
+                else:
+                    await self.send_status("💥 服务器连接被拒绝。请检查API Key和网络连接。")
+            elif '401' in error_str:
                 await self.send_status("💥 API Key被服务器拒绝。请检查API Key是否与所选模型匹配。")
-            elif '429' in str(e):
+            elif '429' in error_str:
                 await self.send_status("💥 API请求频率过高，请稍后再试。")
+            else:
+                await self.send_status(f"💥 连接异常关闭: {error_str}")
             
             await self.cleanup()
         
