@@ -541,6 +541,9 @@ async function loadCurrentApiKey() {
     } catch (error) {
         showCurrentApiKey('📋 获取当前API Key时出错');
     }
+    
+    // 返回Promise，以便调用者可以在获取完成后执行其他操作
+    return Promise.resolve();
 }
 
 // 全局变量存储待保存的API Key
@@ -820,7 +823,40 @@ if (window.parent === window) {
 
 // 页面加载时尝试获取当前API Key
 window.addEventListener('load', function() {
-    loadCurrentApiKey();
+    loadCurrentApiKey().then(() => {
+        // 添加额外的配置检测，确保API输入框状态正确
+        setTimeout(() => {
+            const coreApiSelect = document.getElementById('coreApiSelect');
+            const apiKeyInput = document.getElementById('apiKeyInput');
+            const freeVersionHint = document.getElementById('freeVersionHint');
+            
+            if (coreApiSelect && apiKeyInput && freeVersionHint) {
+                const selectedCoreApi = coreApiSelect.value;
+                
+                // 重新确认API输入框状态是否与当前配置一致
+                if (selectedCoreApi === 'free') {
+                    // 如果是免费版，确保输入框被禁用
+                    apiKeyInput.disabled = true;
+                    apiKeyInput.placeholder = '免费版无需API Key';
+                    apiKeyInput.required = false;
+                    apiKeyInput.value = 'free-access';
+                    freeVersionHint.style.display = 'inline';
+                } else {
+                    // 如果不是免费版，确保输入框可用
+                    apiKeyInput.disabled = false;
+                    apiKeyInput.placeholder = '请输入您的API Key';
+                    apiKeyInput.required = true;
+                    if (apiKeyInput.value === 'free-access') {
+                        apiKeyInput.value = '';
+                    }
+                    freeVersionHint.style.display = 'none';
+                }
+                
+                // 强制更新辅助API推荐和锁定状态
+                updateAssistApiRecommendation();
+            }
+        }, 300); // 短暂延迟确保所有DOM元素和初始配置都已加载完成
+    });
     
     // 添加核心API和辅助API选择变化的事件监听器
     const coreApiSelect = document.getElementById('coreApiSelect');
