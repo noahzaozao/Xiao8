@@ -16,11 +16,11 @@ import threading
 import io
 import wave
 import aiohttp
-
+from functools import partial
 logger = logging.getLogger(__name__)
 
 
-def step_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice_id):
+def step_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice_id, free_mode=False):
     """
     StepFun实时TTS worker（用于默认音色）
     使用阶跃星辰的实时TTS API（step-tts-mini）
@@ -39,7 +39,10 @@ def step_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice
     
     async def async_worker():
         """异步TTS worker主循环"""
-        tts_url = "wss://api.stepfun.com/v1/realtime/audio?model=step-tts-mini"
+        if free_mode:
+            tts_url = "ws://47.100.209.206:9806" # 还在备案，之后会换成wss+域名
+        else:
+            tts_url = "wss://api.stepfun.com/v1/realtime/audio?model=step-tts-mini"
         ws = None
         current_speech_id = None
         receive_task = None
@@ -850,6 +853,8 @@ def get_tts_worker(core_api_type='qwen', has_custom_voice=False):
     # 没有自定义音色时，使用与 core_api 匹配的默认 TTS
     if core_api_type == 'qwen':
         return qwen_realtime_tts_worker
+    if core_api_type == 'free':
+        return partial(step_realtime_tts_worker, free_mode=True)
     elif core_api_type == 'step':
         return step_realtime_tts_worker
     elif core_api_type == 'glm':

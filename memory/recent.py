@@ -34,7 +34,7 @@ class CompressedRecentHistoryManager:
         api_key = core_config['OPENROUTER_API_KEY'] if core_config['OPENROUTER_API_KEY'] else None
         return ChatOpenAI(model=core_config['CORRECTION_MODEL'], base_url=core_config['OPENROUTER_URL'], api_key=api_key, temperature=0.1, extra_body={"enable_thinking": False} if core_config['CORRECTION_MODEL'] in MODELS_WITH_EXTRA_BODY else None)
 
-    def update_history(self, new_messages, lanlan_name, detailed=False):
+    async def update_history(self, new_messages, lanlan_name, detailed=False):
         if os.path.exists(self.log_file_path[lanlan_name]):
             with open(self.log_file_path[lanlan_name], encoding='utf-8') as f:
                 self.user_histories[lanlan_name] = messages_from_dict(json.load(f))
@@ -45,7 +45,7 @@ class CompressedRecentHistoryManager:
             if len(self.user_histories[lanlan_name]) > self.max_history_length:
                 # 压缩旧消息
                 to_compress = self.user_histories[lanlan_name][:-self.max_history_length+1]
-                compressed = [self.compress_history(to_compress, lanlan_name, detailed)[0]]
+                compressed = [(await self.compress_history(to_compress, lanlan_name, detailed))[0]]
 
                 # 只保留最近的max_history_length条消息
                 self.user_histories[lanlan_name] = compressed + self.user_histories[lanlan_name][-self.max_history_length+1:]
@@ -59,7 +59,7 @@ class CompressedRecentHistoryManager:
 
 
     # detailed: 保留尽可能多的细节
-    def compress_history(self, messages, lanlan_name, detailed=False):
+    async def compress_history(self, messages, lanlan_name, detailed=False):
         name_mapping = self.name_mapping.copy()
         name_mapping['ai'] = lanlan_name
         lines = []
@@ -92,7 +92,7 @@ class CompressedRecentHistoryManager:
             try:
                 # 尝试将响应内容解析为JSON
                 llm = self._get_llm()
-                response_content = llm.invoke(prompt).content
+                response_content = (await llm.ainvoke(prompt)).content
                 # 修复类型问题：确保response_content是字符串
                 if isinstance(response_content, list):
                     response_content = str(response_content)
@@ -104,7 +104,7 @@ class CompressedRecentHistoryManager:
                     print(f"💗摘要结果：{summary_json['对话摘要']}")
                     summary = summary_json['对话摘要']
                     if len(summary) > 500:
-                        summary = self.further_compress(summary)
+                        summary = await self.further_compress(summary)
                         if summary is None:
                             continue
                     # Listen. Here, summary_json['对话摘要'] is not supposed to be anything else than str, but Qwen is shit.
@@ -119,13 +119,13 @@ class CompressedRecentHistoryManager:
         # 如果所有重试都失败，返回None
         return SystemMessage(content=f"先前对话的备忘录: 无。"), ""
 
-    def further_compress(self, initial_summary):
+    async def further_compress(self, initial_summary):
         retries = 0
         while retries < 3:
             try:
                 # 尝试将响应内容解析为JSON
                 llm = self._get_llm()
-                response_content = llm.invoke(further_summarize_prompt % initial_summary).content
+                response_content = (await llm.ainvoke(further_summarize_prompt % initial_summary)).content
                 # 修复类型问题：确保response_content是字符串
                 if isinstance(response_content, list):
                     response_content = str(response_content)
@@ -150,7 +150,7 @@ class CompressedRecentHistoryManager:
                 self.user_histories[lanlan_name] = messages_from_dict(json.load(f))
         return self.user_histories[lanlan_name]
 
-    def review_history(self, lanlan_name, cancel_event=None):
+    async def review_history(self, lanlan_name, cancel_event=None):
         """
         审阅历史记录，寻找并修正矛盾、冗余、逻辑混乱或复读的部分
         :param lanlan_name: 角色名称
@@ -219,7 +219,7 @@ class CompressedRecentHistoryManager:
             # 使用LLM审阅历史记录
             prompt = history_review_prompt % (self.name_mapping['human'], name_mapping['ai'], history_text, self.name_mapping['human'], name_mapping['ai'])
             review_llm = self._get_review_llm()
-            response_content = review_llm.invoke(prompt).content
+            response_content = (await review_llm.ainvoke(prompt)).content
             
             # 检查是否被取消（LLM调用后）
             if cancel_event and cancel_event.is_set():

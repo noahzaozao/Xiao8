@@ -41,7 +41,7 @@ class ImportantSettingsManager:
         with open(self.settings_file[lanlan_name], 'w', encoding='utf-8') as f:
             json.dump(self.settings[lanlan_name], f, indent=2, ensure_ascii=False)
 
-    def detect_and_resolve_contradictions(self, old_settings, new_settings, lanlan_name):
+    async def detect_and_resolve_contradictions(self, old_settings, new_settings, lanlan_name):
         # 使用LLM检测矛盾并解决它们
         prompt = settings_verifier_prompt % (json.dumps(old_settings, ensure_ascii=False), json.dumps(new_settings, ensure_ascii=False))
         prompt = prompt.replace("{LANLAN_NAME}", lanlan_name)
@@ -50,7 +50,7 @@ class ImportantSettingsManager:
         while retries < 3:
             try:
                 verifier = self._get_verifier()
-                response = verifier.invoke(prompt)
+                response = await verifier.ainvoke(prompt)
                 result = response.content
                 if result.startswith("```"):
                     result = result .replace("```json", "").replace("```", "").strip()
@@ -67,7 +67,7 @@ class ImportantSettingsManager:
                 print("Setting resolver返回值解析失败。返回值：", response.content)
         return old_settings
 
-    def extract_and_update_settings(self, messages, lanlan_name):
+    async def extract_and_update_settings(self, messages, lanlan_name):
         name_mapping = self.name_mapping.copy()
         name_mapping['ai'] = lanlan_name
         lines = []
@@ -90,7 +90,7 @@ class ImportantSettingsManager:
         while retries < 3:
             try:
                 proposer = self._get_proposer()
-                response = proposer.invoke(prompt)
+                response = await proposer.ainvoke(prompt)
             except Exception as e:
                 print("Setting LLM query出错", e)
                 retries += 1
@@ -108,7 +108,7 @@ class ImportantSettingsManager:
         # 检测并解决矛盾
         if len(new_settings)>0:
             self.load_settings()
-            self.settings[lanlan_name] = self.detect_and_resolve_contradictions(self.settings[lanlan_name], new_settings, lanlan_name)
+            self.settings[lanlan_name] = await self.detect_and_resolve_contradictions(self.settings[lanlan_name], new_settings, lanlan_name)
             self.save_settings(lanlan_name)
 
     def get_settings(self, lanlan_name):

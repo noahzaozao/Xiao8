@@ -100,7 +100,7 @@ class OmniRealtimeClient:
 
     async def connect(self, instructions: str, native_audio=True) -> None:
         """Establish WebSocket connection with the Realtime API."""
-        url = f"{self.base_url}?model={self.model}"
+        url = f"{self.base_url}?model={self.model}" if self.model != "free-model" else self.base_url
         headers = {
             "Authorization": f"Bearer {self.api_key}"
         } 
@@ -170,6 +170,17 @@ class OmniRealtimeClient:
                     }
                 })
             elif "step" in self.model:
+                await self.update_session({
+                    "instructions": instructions + '\n请使用默认女声与用户交流。\n',
+                    "modalities": ['text', 'audio'], # Step API只支持这一个模式
+                    "voice": self.voice if self.voice else "qingchunshaonv",
+                    "input_audio_format": "pcm16",
+                    "output_audio_format": "pcm16",
+                    "turn_detection": {
+                        "type": "server_vad"
+                    }
+                })
+            elif "free" in self.model:
                 await self.update_session({
                     "instructions": instructions + '\n请使用默认女声与用户交流。\n',
                     "modalities": ['text', 'audio'], # Step API只支持这一个模式

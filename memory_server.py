@@ -72,9 +72,8 @@ async def _run_review_in_background(lanlan_name: str):
         correction_cancel_flags[lanlan_name] = cancel_event
     
     try:
-        # 在线程池中运行同步的review_history方法
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, recent_history_manager.review_history, lanlan_name, cancel_event)
+        # 直接异步调用review_history方法
+        await recent_history_manager.review_history(lanlan_name, cancel_event)
         logger.info(f"✅ {lanlan_name} 的记忆审阅任务完成")
     except asyncio.CancelledError:
         logger.info(f"⚠️ {lanlan_name} 的记忆审阅任务被取消")
@@ -94,13 +93,13 @@ async def process_conversation(request: HistoryRequest, lanlan_name: str):
     try:
         uid = str(uuid4())
         input_history = convert_to_messages(json.loads(request.input_history))
-        recent_history_manager.update_history(input_history, lanlan_name)
+        await recent_history_manager.update_history(input_history, lanlan_name)
         """
         下面屏蔽了两个模块，因为这两个模块需要消耗token，但当前版本实用性近乎于0。尤其是，Qwen与GPT等旗舰模型相比性能差距过大。
         """
-        # settings_manager.extract_and_update_settings(input_history, lanlan_name)
-        # semantic_manager.store_conversation(uid, input_history, lanlan_name)
-        time_manager.store_conversation(uid, input_history, lanlan_name)
+        # await settings_manager.extract_and_update_settings(input_history, lanlan_name)
+        # await semantic_manager.store_conversation(uid, input_history, lanlan_name)
+        await time_manager.store_conversation(uid, input_history, lanlan_name)
         
         # 在后台启动review_history任务
         if lanlan_name in correction_tasks and not correction_tasks[lanlan_name].done():
@@ -127,10 +126,10 @@ async def process_conversation_for_renew(request: HistoryRequest, lanlan_name: s
     try:
         uid = str(uuid4())
         input_history = convert_to_messages(json.loads(request.input_history))
-        recent_history_manager.update_history(input_history, lanlan_name, detailed=True)
-        # settings_manager.extract_and_update_settings(input_history, lanlan_name)
-        # semantic_manager.store_conversation(uid, input_history, lanlan_name)
-        time_manager.store_conversation(uid, input_history, lanlan_name)
+        await recent_history_manager.update_history(input_history, lanlan_name, detailed=True)
+        # await settings_manager.extract_and_update_settings(input_history, lanlan_name)
+        # await semantic_manager.store_conversation(uid, input_history, lanlan_name)
+        await time_manager.store_conversation(uid, input_history, lanlan_name)
         
         # 在后台启动review_history任务
         if lanlan_name in correction_tasks and not correction_tasks[lanlan_name].done():
@@ -165,8 +164,8 @@ def get_recent_history(lanlan_name: str):
     return result
 
 @app.get("/search_for_memory/{lanlan_name}/{query}")
-def get_memory(query: str, lanlan_name:str):
-    return semantic_manager.query(query, lanlan_name)
+async def get_memory(query: str, lanlan_name:str):
+    return await semantic_manager.query(query, lanlan_name)
 
 @app.get("/get_settings/{lanlan_name}")
 def get_settings(lanlan_name: str):

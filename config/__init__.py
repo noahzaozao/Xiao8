@@ -134,6 +134,7 @@ def get_core_config():
         'COMPUTER_USE_GROUND_URL': 'https://open.bigmodel.cn/api/paas/v4',
         'COMPUTER_USE_MODEL_API_KEY': '',
         'COMPUTER_USE_GROUND_API_KEY': '',
+        'IS_FREE_VERSION': False,  # 标识是否为免费版
     }
     
     try:
@@ -149,7 +150,13 @@ def get_core_config():
         
         # 根据 coreApi 类型设置 CORE_URL 和 CORE_MODEL
         if 'coreApi' in core_cfg and core_cfg['coreApi']:
-            if core_cfg['coreApi'] == 'qwen':
+            if core_cfg['coreApi'] == 'free':
+                # 免费版配置
+                config['CORE_URL'] = "ws://47.100.209.206:9805" #还在备案，之后会换成wss+域名
+                config['CORE_MODEL'] = "free-model"  # 免费版无需指定模型
+                config['CORE_API_KEY'] = "free-access"  # 免费版无需真实API key
+                config['IS_FREE_VERSION'] = True
+            elif core_cfg['coreApi'] == 'qwen':
                 config['CORE_URL'] = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
                 config['CORE_MODEL'] = "qwen3-omni-flash-realtime-2025-09-15"
             elif core_cfg['coreApi'] == 'glm':
@@ -178,7 +185,15 @@ def get_core_config():
         
         # 根据 assistApi 类型设置辅助模型
         if 'assistApi' in core_cfg and core_cfg['assistApi']:
-            if core_cfg['assistApi'] == 'qwen':
+            if core_cfg['assistApi'] == 'free':
+                # 免费版辅助API配置
+                config['OPENROUTER_URL'] = "http://47.100.209.206:9807/v1" #还在备案，之后会换成https+域名
+                config['SUMMARY_MODEL'] = "free-model"
+                config['CORRECTION_MODEL'] = "free-model"
+                config['EMOTION_MODEL'] = "free-model"
+                config['AUDIO_API_KEY'] = config['OPENROUTER_API_KEY'] = "free-access"
+                config['IS_FREE_VERSION'] = True
+            elif core_cfg['assistApi'] == 'qwen':
                 config['OPENROUTER_URL'] = "https://dashscope.aliyuncs.com/compatible-mode/v1"
                 config['SUMMARY_MODEL'] = "qwen3-next-80b-a3b-instruct"
                 config['CORRECTION_MODEL'] = "qwen3-235b-a22b-instruct-2507"

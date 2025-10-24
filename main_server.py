@@ -261,6 +261,9 @@ async def update_core_config(request: Request):
         if not data:
             return {"success": False, "error": "无效的数据"}
         
+        # 检查是否为免费版配置
+        is_free_version = data.get('coreApi') == 'free' or data.get('assistApi') == 'free'
+        
         if 'coreApiKey' not in data:
             return {"success": False, "error": "缺少coreApiKey字段"}
         
@@ -272,7 +275,9 @@ async def update_core_config(request: Request):
             return {"success": False, "error": "API Key必须是字符串类型"}
         
         api_key = api_key.strip()
-        if not api_key:
+        
+        # 免费版允许使用 'free-access' 作为API key，不进行空值检查
+        if not is_free_version and not api_key:
             return {"success": False, "error": "API Key不能为空"}
         
         # 保存到core_config.json

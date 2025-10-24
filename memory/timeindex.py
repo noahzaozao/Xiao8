@@ -40,7 +40,7 @@ class TimeIndexedMemory:
                     return
             self.add_timestamp_column(lanlan_name)
 
-    def store_conversation(self, event_id, messages, lanlan_name, timestamp=None):
+    async def store_conversation(self, event_id, messages, lanlan_name, timestamp=None):
         if timestamp is None:
             timestamp = datetime.now()
 
@@ -57,7 +57,7 @@ class TimeIndexedMemory:
         )
 
         origin_history.add_messages(messages)
-        compressed_history.add_message(SystemMessage(self.recent_history_manager.compress_history(messages, lanlan_name)[1]))
+        compressed_history.add_message(SystemMessage((await self.recent_history_manager.compress_history(messages, lanlan_name))[1]))
 
         with self.engine[lanlan_name].connect() as conn:
             conn.execute(

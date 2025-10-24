@@ -26,29 +26,29 @@ class SemanticMemory:
         core_config = get_core_config()
         return ChatOpenAI(model=RERANKER_MODEL, base_url=core_config['OPENROUTER_URL'], api_key=core_config['OPENROUTER_API_KEY'], temperature=0.1, extra_body={"enable_thinking": False} if RERANKER_MODEL in MODELS_WITH_EXTRA_BODY else None)
 
-    def store_conversation(self, event_id, messages, lanlan_name):
+    async def store_conversation(self, event_id, messages, lanlan_name):
         self.original_memory[lanlan_name].store_conversation(event_id, messages)
-        self.compressed_memory[lanlan_name].store_compressed_summary(event_id, messages)
+        await self.compressed_memory[lanlan_name].store_compressed_summary(event_id, messages)
 
-    def hybrid_search(self, query, lanlan_name, with_rerank=True, k=10):
+    async def hybrid_search(self, query, lanlan_name, with_rerank=True, k=10):
         # 从原始和压缩记忆中获取结果
         original_results = self.original_memory[lanlan_name].retrieve_by_query(query, k)
         compressed_results = self.compressed_memory[lanlan_name].retrieve_by_query(query, k)
         combined = original_results + compressed_results
 
         if with_rerank:
-            return self.rerank_results(query, combined)
+            return await self.rerank_results(query, combined)
         else:
             return combined
 
-    def query(self, query, lanlan_name):
+    async def query(self, query, lanlan_name):
         results_text = "\n".join([
             f"记忆片段{i} | \n{doc.page_content}\n"
-            for i, doc in enumerate(self.hybrid_search(query, lanlan_name))
+            for i, doc in enumerate(await self.hybrid_search(query, lanlan_name))
         ])
         return f"""======{lanlan_name}尝试回忆=====\n{query}\n\n====={lanlan_name}的相关记忆=====\n{results_text}"""
 
-    def rerank_results(self, query, results: list, k=5) -> list:
+    async def rerank_results(self, query, results: list, k=5) -> list:
         # 使用LLM重新排序结果
         results_text = "\n\n".join([
             f"记忆片段 {i + 1}:\n{doc.page_content}"
@@ -60,7 +60,7 @@ class SemanticMemory:
         while retries < 3:
             try:
                 reranker = self._get_reranker()
-                response = reranker.invoke(prompt)
+                response = await reranker.ainvoke(prompt)
             except Exception as e:
                 retries += 1
                 print('Rerank query失败', e)
@@ -144,9 +144,9 @@ class SemanticMemoryCompressed:
         # )
         self.recent_history_manager = recent_history_manager
 
-    def store_compressed_summary(self, event_id, messages):
+    async def store_compressed_summary(self, event_id, messages):
         # 存储压缩摘要的嵌入
-        _, summary = self.recent_history_manager.compress_history(messages, self.lanlan_name)
+        _, summary = await self.recent_history_manager.compress_history(messages, self.lanlan_name)
         if not summary:
             return
         self.vectorstore.add_texts(
