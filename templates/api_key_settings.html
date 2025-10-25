@@ -229,10 +229,7 @@
         }
         
         .tooltip-content {
-            position: absolute;
-            bottom: 125%;
-            left: 50%;
-            transform: translateX(-50%);
+            position: fixed;
             background: #333;
             color: white;
             padding: 12px;
@@ -243,24 +240,26 @@
             opacity: 0;
             visibility: hidden;
             transition: opacity 0.3s, visibility 0.3s;
-            width: 500px;
+            max-width: min(500px, calc(100vw - 40px));
             white-space: normal;
+            pointer-events: none;
         }
         
         .tooltip-content::after {
             content: '';
             position: absolute;
             top: 100%;
-            left: 50%;
+            left: var(--arrow-left, 50%);
             margin-left: -5px;
             border-width: 5px;
             border-style: solid;
             border-color: #333 transparent transparent transparent;
         }
         
-        .tooltip-container:hover .tooltip-content {
-            opacity: 1;
-            visibility: visible;
+        .tooltip-content[data-position="bottom"]::after {
+            top: auto;
+            bottom: 100%;
+            border-color: transparent transparent #333 transparent;
         }
 
         @media (max-width: 800px) {
@@ -269,7 +268,7 @@
                 margin: 20px 16px;
             }
             .tooltip-content {
-                width: 350px;
+                max-width: calc(100vw - 40px);
                 font-size: 0.8em;
             }
         }
@@ -286,7 +285,7 @@
             <li><strong>完整版（获取API Key）：</strong></li>
             <li style="margin-left: 20px;">1. 在阿里云注册账号并 <a href="https://myaccount.console.aliyun.com/overview" target="_blank">完成实名认证</a></li>
             <li style="margin-left: 20px;">2. 访问阿里云百炼平台 <a href="https://bailian.console.aliyun.com/api-key?tab=model#/api-key" target="_blank">API Key管理页面</a></li>
-            <li style="margin-left: 20px;">3. 创建新的API Key并复制</li>
+            <li style="margin-left: 20px;">3. 创建新的API Key并点击复制按钮</li>
             <li style="margin-left: 20px;">4. 将API Key粘贴到下方输入框中</li>
         </ul>
     </div>
@@ -298,7 +297,7 @@
             <strong>🎉 新手推荐：</strong>如果您还没有API Key，可以直接在下方<strong>高级选项</strong>中选择<strong>"免费版"</strong>开始使用，无需注册任何账号！
         </div>
         <div class="tips">
-            💡 请确保API Key格式正确，通常以"sk-"开头（智谱和阶跃例外）。保存后需要重启服务才能生效。<br>
+            💡 请确保API Key格式正确。保存后需要重启服务才能生效。<br>
             📝 个人使用环境，API Key将完整显示以便复制使用。
         </div>
         
@@ -332,14 +331,15 @@
                     • <strong>阿里</strong>：有免费额度，支持自定义语音<br>
                     • <strong>智谱</strong>：免费额度多，内置联网搜索功能<br>
                     • <strong>阶跃星辰</strong>：有免费额度，不支持视频<br>
-                    • <strong>OpenAI</strong>：需要翻墙，价格贵，智能水平高
+                    • <strong>OpenAI</strong>：需要翻墙，价格贵，智能水平高<br>
+                    • <strong>硅基流动</strong>：性价比高，功能少，只作为辅助API使用
                 </div>
             </div>
         </div>
         <div id="advanced-options" style="display: none; padding: 12px 0 0 0; border-top: 1px solid #eee;">
             <div style="background: #e7f3ff; border: 1px solid #b3d9ff; border-radius: 6px; padding: 16px; margin-bottom: 16px; font-size: 0.9em; color: #0d6efd; line-height: 1.5;">
                 <strong>💡 配置建议：</strong><br>
-                • <strong>免费版</strong>：完全免费，无需API key，适合新手体验（不支持自定义语音、agent模式和视频对话）<br>
+                • <strong>免费版</strong>：完全免费，无需API Key，适合新手体验（不支持自定义语音、Agent模式和视频对话）<br>
                 • <strong>核心API</strong>：负责对话功能，建议根据预算和需求选择<br>
                 • <strong>辅助API</strong>：负责记忆管理和自定义语音，<strong>只有阿里支持自定义语音</strong><br>
             </div>
@@ -350,7 +350,7 @@
                         <span class="tooltip-icon">?</span>
                         <div class="tooltip-content">
                             <strong>核心API负责对话功能：</strong><br>
-                            • <strong>免费版</strong>：完全免费，无需API key，但不支持自定义语音、agent模式和视频对话<br>
+                            • <strong>免费版</strong>：完全免费，无需API Key，但不支持自定义语音、Agent模式和视频对话<br>
                             • <strong>阿里</strong>：有免费额度，功能全面<br>
                             • <strong>智谱</strong>：有免费额度，但需充值1元，内置联网搜索功能<br>
                             • <strong>阶跃星辰</strong>：完全免费，但不支持视频<br>
@@ -359,7 +359,7 @@
                     </div>
                 </label>
                 <select id="coreApiSelect" style="width: 100%; padding: 10px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 1rem;">
-                    <option value="free">免费版（lanlan.app）</option>
+                    <option value="free">免费版（猫娘专属福利）</option>
                     <option value="qwen">Qwen-Omni（阿里）</option>
                     <option value="openai">GPT-Realtime（OpenAI）</option>
                     <option value="glm">GLM-realtime（智谱）</option>
@@ -373,7 +373,7 @@
                         <span class="tooltip-icon">?</span>
                         <div class="tooltip-content">
                             <strong>辅助API负责记忆管理和自定义语音：</strong><br>
-                            • <strong>免费版</strong>：完全免费，无需API key，但不支持自定义语音<br>
+                            • <strong>免费版</strong>：完全免费，无需API Key，但不支持自定义语音<br>
                             • <strong>阿里</strong>：推荐选择，支持自定义语音<br>
                             • <strong>智谱</strong>：支持Agent模式<br>
                             • <strong>阶跃星辰</strong>：价格相对便宜<br>
@@ -384,7 +384,7 @@
                     </div>
                 </label>
                 <select id="assistApiSelect" style="width: 100%; padding: 10px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 1rem;">
-                    <option value="free">免费版（lanlan.app）</option>
+                    <option value="free">免费版（猫娘专属福利）</option>
                     <option value="qwen">阿里（推荐）</option>
                     <option value="openai">OpenAI</option>
                     <option value="glm">智谱</option>
@@ -716,7 +716,7 @@ function updateAssistApiRecommendation() {
         // 禁用辅助API选择框，强制为免费版
         assistApiSelect.disabled = true;
         assistApiSelect.value = 'free';
-        recommendation = '免费版配置：支持语音对话、文本对话和记忆管理，不支持自定义语音、agent模式和视频对话';
+        recommendation = '免费版配置：支持语音对话、文本对话和记忆管理，不支持自定义语音、Agent模式和视频对话';
     } else {
         // 核心API不是免费版
         if (apiKeyInput) {
@@ -770,8 +770,8 @@ function updateAssistApiRecommendation() {
             • <strong>阶跃星辰</strong>：相对便宜<br>
             • <strong>硅基流动</strong>：性价比高<br>
             • <strong>OpenAI</strong>：记忆管理能力强<br>
-            <strong>注意：</strong>只有阿里支持自定义语音功能<br>
-            <strong>当前建议：</strong>${recommendation}
+            <strong>⚠️注意：</strong>只有阿里支持自定义语音功能<br>
+            <strong>💡当前建议：</strong>${recommendation}
         `;
     }
 }
@@ -821,8 +821,104 @@ if (window.parent === window) {
     window.addEventListener('unload', sendBeacon);
 }
 
+// Tooltip 动态定位功能
+function positionTooltip(iconElement, tooltipElement) {
+    const iconRect = iconElement.getBoundingClientRect();
+    const tooltipRect = tooltipElement.getBoundingClientRect();
+    
+    // 计算tooltip的初始位置（在图标上方居中）
+    let left = iconRect.left + iconRect.width / 2 - tooltipRect.width / 2;
+    let top = iconRect.top - tooltipRect.height - 10; // 10px间距
+    
+    // 计算图标中心相对于tooltip左边的位置
+    let iconCenter = iconRect.left + iconRect.width / 2;
+    
+    // 检查左边界
+    if (left < 20) {
+        left = 20;
+    }
+    
+    // 检查右边界
+    if (left + tooltipRect.width > window.innerWidth - 20) {
+        left = window.innerWidth - tooltipRect.width - 20;
+    }
+    
+    // 计算箭头位置（相对于tooltip）
+    let arrowLeft = iconCenter - left;
+    // 限制箭头位置在tooltip范围内
+    arrowLeft = Math.max(15, Math.min(arrowLeft, tooltipRect.width - 15));
+    
+    // 检查上边界（如果上方空间不足，显示在下方）
+    if (top < 20) {
+        top = iconRect.bottom + 10;
+        tooltipElement.setAttribute('data-position', 'bottom');
+    } else {
+        tooltipElement.setAttribute('data-position', 'top');
+    }
+    
+    tooltipElement.style.left = left + 'px';
+    tooltipElement.style.top = top + 'px';
+    tooltipElement.style.setProperty('--arrow-left', arrowLeft + 'px');
+}
+
+// 初始化所有tooltip
+function initTooltips() {
+    const tooltipContainers = document.querySelectorAll('.tooltip-container');
+    
+    tooltipContainers.forEach(container => {
+        const icon = container.querySelector('.tooltip-icon');
+        const tooltip = container.querySelector('.tooltip-content');
+        
+        if (!icon || !tooltip) return;
+        
+        icon.addEventListener('mouseenter', function() {
+            // 先让tooltip可见但保持透明，以便计算尺寸
+            tooltip.style.visibility = 'visible';
+            tooltip.style.opacity = '0';
+            
+            // 使用requestAnimationFrame确保DOM已更新
+            requestAnimationFrame(() => {
+                positionTooltip(icon, tooltip);
+                // 再设置透明度，产生淡入效果
+                tooltip.style.opacity = '1';
+            });
+        });
+        
+        icon.addEventListener('mouseleave', function() {
+            tooltip.style.opacity = '0';
+            // 等待transition完成后再隐藏
+            setTimeout(() => {
+                if (tooltip.style.opacity === '0') {
+                    tooltip.style.visibility = 'hidden';
+                }
+            }, 300);
+        });
+    });
+    
+    // 窗口大小改变时重新定位
+    let resizeTimeout;
+    window.addEventListener('resize', function() {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            const visibleTooltips = document.querySelectorAll('.tooltip-content[style*="visibility: visible"]');
+            visibleTooltips.forEach(tooltip => {
+                const container = tooltip.closest('.tooltip-container');
+                if (container) {
+                    const icon = container.querySelector('.tooltip-icon');
+                    if (icon) {
+                        positionTooltip(icon, tooltip);
+                    }
+                }
+            });
+        }, 100);
+    });
+}
+
 // 页面加载时尝试获取当前API Key
 window.addEventListener('load', function() {
+    // 初始化tooltips
+    initTooltips();
+    
     loadCurrentApiKey().then(() => {
         // 添加额外的配置检测，确保API输入框状态正确
         setTimeout(() => {

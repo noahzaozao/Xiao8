@@ -151,6 +151,7 @@ class Live2DManager {
     clearExpression() {
         if (this.currentModel && this.currentModel.internalModel && this.currentModel.internalModel.motionManager && this.currentModel.internalModel.motionManager.expressionManager) {
             try {
+                this.currentModel.internalModel.motionManager.expressionManager.stopAllExpressions();
                 this.currentModel.internalModel.motionManager.expressionManager.resetExpression();
                 console.log('expression已使用官方API清除到默认状态');
             } catch (resetError) {
@@ -202,17 +203,31 @@ class Live2DManager {
             // 方法1: 尝试使用原生expression API
             if (this.currentModel.expression) {
                 try {
-                    // 使用文件名作为候选名称（如果 FileReferences 中存在同名 Name 会成功）
-                    const base = String(choiceFile).split('/').pop() || '';
-                    const expressionName = base.replace('.exp3.json', '');
-                    console.log(`尝试使用原生API播放expression: ${expressionName}`);
+                    // 在 FileReferences 中查找匹配的表情名称
+                    let expressionName = null;
+                    if (this.fileReferences && this.fileReferences.Expressions) {
+                        for (const expr of this.fileReferences.Expressions) {
+                            if (expr.File === choiceFile) {
+                                expressionName = expr.Name;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // 如果找不到，回退到使用文件名
+                    if (!expressionName) {
+                        const base = String(choiceFile).split('/').pop() || '';
+                        expressionName = base.replace('.exp3.json', '');
+                    }
+                    
+                    console.log(`尝试使用原生API播放expression: ${expressionName} (file: ${choiceFile})`);
                     
                     const expression = await this.currentModel.expression(expressionName);
                     if (expression) {
                         console.log(`成功使用原生API播放expression: ${expressionName}`);
                         return; // 成功播放，直接返回
                     } else {
-                        console.warn('原生expression API失败，回退到手动参数设置');
+                        console.warn(`原生expression API未返回有效结果 (name: ${expressionName})，回退到手动参数设置`);
                     }
                 } catch (error) {
                     console.warn('原生expression API出错:', error);

@@ -184,16 +184,17 @@ def get_core_config():
         config['COMPUTER_USE_MODEL_API_KEY'] = config['COMPUTER_USE_GROUND_API_KEY'] = config['ASSIST_API_KEY_GLM']
         
         # 根据 assistApi 类型设置辅助模型
-        if 'assistApi' in core_cfg and core_cfg['assistApi']:
-            if core_cfg['assistApi'] == 'free':
-                # 免费版辅助API配置
-                config['OPENROUTER_URL'] = "http://47.100.209.206:9807/v1" #还在备案，之后会换成https+域名
-                config['SUMMARY_MODEL'] = "free-model"
-                config['CORRECTION_MODEL'] = "free-model"
-                config['EMOTION_MODEL'] = "free-model"
-                config['AUDIO_API_KEY'] = config['OPENROUTER_API_KEY'] = "free-access"
-                config['IS_FREE_VERSION'] = True
-            elif core_cfg['assistApi'] == 'qwen':
+        if 'coreApi' in core_cfg and core_cfg['coreApi'] == 'free':
+            # 免费版辅助API配置
+            config['assistApi'] = 'free'
+            config['OPENROUTER_URL'] = "http://47.100.209.206:9807/v1" #还在备案，之后会换成https+域名
+            config['SUMMARY_MODEL'] = "free-model"
+            config['CORRECTION_MODEL'] = "free-model"
+            config['EMOTION_MODEL'] = "free-model"
+            config['AUDIO_API_KEY'] = config['OPENROUTER_API_KEY'] = "free-access"
+            config['IS_FREE_VERSION'] = True
+        elif 'assistApi' in core_cfg and core_cfg['assistApi']:
+            if core_cfg['assistApi'] == 'qwen':
                 config['OPENROUTER_URL'] = "https://dashscope.aliyuncs.com/compatible-mode/v1"
                 config['SUMMARY_MODEL'] = "qwen3-next-80b-a3b-instruct"
                 config['CORRECTION_MODEL'] = "qwen3-235b-a22b-instruct-2507"
