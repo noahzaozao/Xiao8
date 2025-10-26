@@ -7,6 +7,7 @@ import logging
 from typing import Optional, Callable, Dict, Any, Awaitable
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from config import MODELS_WITH_EXTRA_BODY
 
 # Setup logger for this module
 logger = logging.getLogger(__name__)
@@ -44,6 +45,7 @@ class OmniOfflineClient:
         base_url: str,
         api_key: str,
         model: str = "",
+        vision_model: str = "",
         voice: str = "",  # Unused for text mode but kept for compatibility
         turn_detection_mode = None,  # Unused for text mode
         on_text_delta: Optional[Callable[[str, bool], Awaitable[None]]] = None,
@@ -59,6 +61,7 @@ class OmniOfflineClient:
         self.base_url = base_url
         self.api_key = api_key if api_key and api_key != '' else None
         self.model = model
+        self.vision_model = vision_model  # Store vision model for temporary switching
         self.on_text_delta = on_text_delta
         self.on_input_transcript = on_input_transcript
         self.on_output_transcript = on_output_transcript
@@ -79,6 +82,7 @@ class OmniOfflineClient:
         self._conversation_history = []
         self._instructions = ""
         self._stream_task = None
+        self._pending_images = []  # Store pending images to send with next text
         
     async def connect(self, instructions: str, native_audio=False) -> None:
         """Initialize the client with system instructions."""
@@ -101,17 +105,75 @@ class OmniOfflineClient:
             if self._conversation_history and isinstance(self._conversation_history[0], SystemMessage):
                 self._conversation_history[0] = SystemMessage(content=self._instructions)
     
+    def switch_model(self, new_model: str) -> None:
+        """
+        Temporarily switch to a different model (e.g., vision model).
+        This allows dynamic model switching for vision tasks.
+        """
+        if new_model and new_model != self.model:
+            logger.info(f"Switching model from {self.model} to {new_model}")
+            self.model = new_model
+            # Recreate LLM instance with new model
+            self.llm = ChatOpenAI(
+                model=self.model,
+                base_url=self.base_url,
+                api_key=self.api_key,
+                temperature=0.8,
+                streaming=True,
+                extra_body={"enable_thinking": False} if self.model in MODELS_WITH_EXTRA_BODY else None
+            )
+    
     async def stream_text(self, text: str) -> None:
         """
         Send a text message to the API and stream the response.
-        This is the main method for text-based interaction.
+        If there are pending images, temporarily switch to vision model for this turn.
         Uses langchain ChatOpenAI for streaming.
         """
         if not text or not text.strip():
-            return
+            # If only images without text, use a default prompt
+            if self._pending_images:
+                text = "请分析这些图片。"
+            else:
+                return
         
-        # Add user message to history
-        user_message = HumanMessage(content=text.strip())
+        # Check if we need to temporarily switch to vision model
+        has_images = len(self._pending_images) > 0
+        original_model = self.model
+        
+        # Prepare user message content
+        if has_images:
+            # Temporarily switch to vision model for this turn
+            if self.vision_model and self.vision_model != self.model:
+                logger.info(f"🖼️ Temporarily switching to vision model: {self.vision_model} (from {self.model})")
+                self.switch_model(self.vision_model)
+            
+            # Multi-modal message: images + text
+            content = []
+            
+            # Add images first
+            for img_b64 in self._pending_images:
+                content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{img_b64}"
+                    }
+                })
+            
+            # Add text
+            content.append({
+                "type": "text",
+                "text": text.strip()
+            })
+            
+            user_message = HumanMessage(content=content)
+            logger.info(f"Sending multi-modal message with {len(self._pending_images)} images")
+            
+            # Clear pending images after using them
+            self._pending_images.clear()
+        else:
+            # Text-only message
+            user_message = HumanMessage(content=text.strip())
+        
         self._conversation_history.append(user_message)
         
         # Callback for user input
@@ -160,6 +222,11 @@ class OmniOfflineClient:
         finally:
             self._is_responding = False
             
+            # Switch back to original model if we switched to vision model
+            if has_images and self.vision_model and self.model != original_model:
+                logger.info(f"🔄 Switching back to text model: {original_model}")
+                self.switch_model(original_model)
+            
             # Call response done callback
             if self.on_response_done:
                 await self.on_response_done()
@@ -169,8 +236,20 @@ class OmniOfflineClient:
         pass
     
     async def stream_image(self, image_b64: str) -> None:
-        """Compatibility method - not used in text mode"""
-        pass
+        """
+        Add an image to pending images queue.
+        Images will be sent together with the next text message.
+        """
+        if not image_b64:
+            return
+        
+        # Store base64 image
+        self._pending_images.append(image_b64)
+        logger.info(f"Added image to pending queue (total: {len(self._pending_images)})")
+    
+    def has_pending_images(self) -> bool:
+        """Check if there are pending images waiting to be sent."""
+        return len(self._pending_images) > 0
     
     async def create_response(self, instructions: str, skipped: bool = False) -> None:
         """
@@ -214,5 +293,6 @@ class OmniOfflineClient:
         """Close the client and cleanup resources."""
         self._is_responding = False
         self._conversation_history = []
+        self._pending_images.clear()
         logger.info("OmniOfflineClient closed")
 

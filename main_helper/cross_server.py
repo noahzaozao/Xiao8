@@ -172,6 +172,9 @@ def sync_connector_process(message_queue, shutdown_event, lanlan_name, sync_serv
                             if user_input_cache == '' and config['monitor'] and sync_ws:
                                 await sync_ws.send_json({'type': 'user_activity'}) #用于打断前端声音播放
                             user_input_cache += data
+                            # 发送用户转录到 monitor 供副终端显示
+                            if config['monitor'] and sync_ws and data:
+                                await sync_ws.send_json({'type': 'user_transcript', 'text': data})
                         elif input_type == "screen":
                             last_screen = data
 

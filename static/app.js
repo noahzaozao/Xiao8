@@ -8,6 +8,11 @@ function init_app(){
     const chatContainer = document.getElementById('chatContainer');
     const textInputBox = document.getElementById('textInputBox');
     const textSendButton = document.getElementById('textSendButton');
+    const screenshotButton = document.getElementById('screenshotButton');
+    const screenshotThumbnailContainer = document.getElementById('screenshot-thumbnail-container');
+    const screenshotsList = document.getElementById('screenshots-list');
+    const screenshotCount = document.getElementById('screenshot-count');
+    const clearAllScreenshots = document.getElementById('clear-all-screenshots');
 
     let audioContext;
     let workletNode;
@@ -18,6 +23,7 @@ function init_app(){
     let audioPlayerContext = null;
     let videoTrack, videoSenderInterval;
     let audioBufferQueue = [];
+    let screenshotCounter = 0; // 截图计数器
     let isPlaying = false;
     let audioStartTime = 0;
     let scheduledSources = [];
@@ -66,7 +72,6 @@ function init_app(){
                     socket.send(JSON.stringify({
                         action: 'ping'
                     }));
-                    console.log('发送心跳ping');
                 }
             }, HEARTBEAT_INTERVAL);
             console.log('心跳保活机制已启动');
@@ -82,7 +87,7 @@ function init_app(){
 
             try {
                 const response = JSON.parse(event.data);
-                console.log('WebSocket收到消息:', response);
+
 
                 if (response.type === 'gemini_response') {
                     // 检查是否是新消息的开始
@@ -106,6 +111,31 @@ function init_app(){
                     // 根据数据格式选择处理方法
                     if (response.format === 'base64') {
                         handleBase64Audio(response.audioData, isNewMessage);
+                    }
+                } else if (response.type === 'screen_share_error') {
+                    // 屏幕分享/截图错误，复位按钮状态
+                    statusElement.textContent = response.message;
+                    
+                    // 停止屏幕分享
+                    stopScreening();
+                    
+                    // 清理屏幕捕获流
+                    if (screenCaptureStream) {
+                        screenCaptureStream.getTracks().forEach(track => track.stop());
+                        screenCaptureStream = null;
+                    }
+                    
+                    // 复位按钮状态
+                    if (isRecording) {
+                        // 在语音模式下（屏幕分享）
+                        micButton.disabled = true;
+                        muteButton.disabled = false;
+                        screenButton.disabled = false;
+                        stopButton.disabled = true;
+                        resetSessionButton.disabled = false;
+                    } else if (isTextSessionActive) {
+                        // 在文本模式下（截图）
+                        screenshotButton.disabled = false;
                     }
                 } else if (response.type === 'status') {
                     // 如果正在切换模式且收到"已离开"消息，则忽略
@@ -174,7 +204,6 @@ function init_app(){
                     window.LanLan1.registered_expressions[response.message]();
                 } else if (response.type === 'system' && response.data === 'turn end') {
                     console.log('收到turn end事件，开始情感分析');
-                    console.log('当前currentGeminiMessage:', currentGeminiMessage);
                     // 消息完成时进行情感分析
                     if (currentGeminiMessage) {
                         const fullText = currentGeminiMessage.textContent.replace(/^\[\d{2}:\d{2}:\d{2}\] 🎀 /, '');
@@ -793,6 +822,12 @@ function init_app(){
         // 重置所有状态
         isTextSessionActive = false;
         
+        // 清除所有截图
+        screenshotsList.innerHTML = '';
+        screenshotThumbnailContainer.classList.remove('show');
+        updateScreenshotCount();
+        screenshotCounter = 0;
+        
         // 显示文本输入区
         const textInputArea = document.getElementById('text-input-area');
         textInputArea.classList.remove('hidden');
@@ -801,6 +836,7 @@ function init_app(){
         micButton.disabled = false;
         textSendButton.disabled = false;
         textInputBox.disabled = false;
+        screenshotButton.disabled = false;
         
         // 禁用语音控制按钮
         muteButton.disabled = true;
@@ -820,8 +856,11 @@ function init_app(){
     // 文本发送按钮事件
     textSendButton.addEventListener('click', async () => {
         const text = textInputBox.value.trim();
-        if (!text) {
-            return; // 静默返回，不显示错误
+        const hasScreenshots = screenshotsList.children.length > 0;
+        
+        // 如果既没有文本也没有截图，静默返回
+        if (!text && !hasScreenshots) {
+            return;
         }
         
         // 如果还没有启动session，先启动
@@ -829,6 +868,7 @@ function init_app(){
             // 临时禁用文本输入
             textSendButton.disabled = true;
             textInputBox.disabled = true;
+            screenshotButton.disabled = true;
             resetSessionButton.disabled = false;
             
             statusElement.textContent = '正在初始化文本对话...';
@@ -867,6 +907,7 @@ function init_app(){
                 // 重新启用文本输入
                 textSendButton.disabled = false;
                 textInputBox.disabled = false;
+                screenshotButton.disabled = false;
                 
                 statusElement.textContent = '正在文本聊天中';
             } catch (error) {
@@ -876,24 +917,52 @@ function init_app(){
                 // 重新启用按钮，允许用户重试
                 textSendButton.disabled = false;
                 textInputBox.disabled = false;
+                screenshotButton.disabled = false;
                 
                 return; // 启动失败，不继续发送消息
             }
         }
         
-        // 发送文本消息
+        // 发送消息
         if (socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({
-                action: 'stream_data',
-                data: text,
-                input_type: 'text'
-            }));
+            // 先发送所有截图
+            if (hasScreenshots) {
+                const screenshotItems = Array.from(screenshotsList.children);
+                for (const item of screenshotItems) {
+                    const img = item.querySelector('.screenshot-thumbnail');
+                    if (img && img.src) {
+                        socket.send(JSON.stringify({
+                            action: 'stream_data',
+                            data: img.src,
+                            input_type: isMobile() ? 'camera' : 'screen'
+                        }));
+                    }
+                }
+                
+                // 在聊天界面显示截图提示
+                const screenshotCount = screenshotItems.length;
+                appendMessage(`📸 [已发送${screenshotCount}张截图]`, 'user', true);
+                
+                // 清空截图列表
+                screenshotsList.innerHTML = '';
+                screenshotThumbnailContainer.classList.remove('show');
+                updateScreenshotCount();
+            }
             
-            // 清空输入框
-            textInputBox.value = '';
-            
-            // 在聊天界面显示用户消息
-            appendMessage(text, 'user', true);
+            // 再发送文本（如果有）
+            if (text) {
+                socket.send(JSON.stringify({
+                    action: 'stream_data',
+                    data: text,
+                    input_type: 'text'
+                }));
+                
+                // 清空输入框
+                textInputBox.value = '';
+                
+                // 在聊天界面显示用户消息
+                appendMessage(text, 'user', true);
+            }
             
             statusElement.textContent = '正在文本聊天中';
         } else {
@@ -908,6 +977,166 @@ function init_app(){
             textSendButton.click();
         }
     });
+    
+    // 截图按钮事件
+    screenshotButton.addEventListener('click', async () => {
+        try {
+            // 临时禁用截图按钮，防止重复点击
+            screenshotButton.disabled = true;
+            statusElement.textContent = '正在截图...';
+            
+            let captureStream;
+            
+            // 获取屏幕或摄像头流
+            if (isMobile()) {
+                // 移动端使用摄像头
+                captureStream = await getMobileCameraStream();
+            } else {
+                // 桌面端使用屏幕共享
+                captureStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: {
+                        cursor: 'always',
+                    },
+                    audio: false,
+                });
+            }
+            
+            // 创建video元素来加载流
+            const video = document.createElement('video');
+            video.srcObject = captureStream;
+            video.autoplay = true;
+            video.muted = true;
+            
+            // 等待视频加载完成
+            await video.play();
+            
+            // 创建canvas来捕获帧
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            
+            // 捕获当前帧
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.8); // base64 jpeg
+            
+            // 停止捕获流
+            captureStream.getTracks().forEach(track => track.stop());
+            
+            // 添加截图到待发送列表（不立即发送）
+            addScreenshotToList(dataUrl);
+            
+            statusElement.textContent = '截图已添加，点击发送一起发送';
+            
+            // 重新启用截图按钮
+            screenshotButton.disabled = false;
+            
+        } catch (err) {
+            console.error('截图失败:', err);
+            
+            // 根据错误类型显示不同提示
+            let errorMsg = '截图失败';
+            if (err.name === 'NotAllowedError') {
+                errorMsg = '用户取消了截图';
+            } else if (err.name === 'NotFoundError') {
+                errorMsg = '未找到可用的媒体设备';
+            } else if (err.name === 'NotReadableError') {
+                errorMsg = '无法访问媒体设备';
+            } else if (err.message) {
+                errorMsg = `截图失败: ${err.message}`;
+            }
+            
+            statusElement.textContent = errorMsg;
+            
+            // 重新启用截图按钮
+            screenshotButton.disabled = false;
+        }
+    });
+    
+    // 添加截图到列表
+    function addScreenshotToList(dataUrl) {
+        screenshotCounter++;
+        
+        // 创建截图项容器
+        const item = document.createElement('div');
+        item.className = 'screenshot-item';
+        item.dataset.index = screenshotCounter;
+        
+        // 创建缩略图
+        const img = document.createElement('img');
+        img.className = 'screenshot-thumbnail';
+        img.src = dataUrl;
+        img.alt = `截图 ${screenshotCounter}`;
+        img.title = `点击查看截图 ${screenshotCounter}`;
+        
+        // 点击缩略图可以在新标签页查看大图
+        img.addEventListener('click', () => {
+            window.open(dataUrl, '_blank');
+        });
+        
+        // 创建删除按钮
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'screenshot-remove';
+        removeBtn.innerHTML = '×';
+        removeBtn.title = '移除此截图';
+        removeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            removeScreenshotFromList(item);
+        });
+        
+        // 创建索引标签
+        const indexLabel = document.createElement('span');
+        indexLabel.className = 'screenshot-index';
+        indexLabel.textContent = `#${screenshotCounter}`;
+        
+        // 组装元素
+        item.appendChild(img);
+        item.appendChild(removeBtn);
+        item.appendChild(indexLabel);
+        
+        // 添加到列表
+        screenshotsList.appendChild(item);
+        
+        // 更新计数和显示容器
+        updateScreenshotCount();
+        screenshotThumbnailContainer.classList.add('show');
+        
+        // 自动滚动到最新的截图
+        setTimeout(() => {
+            screenshotsList.scrollLeft = screenshotsList.scrollWidth;
+        }, 100);
+    }
+    
+    // 从列表中移除截图
+    function removeScreenshotFromList(item) {
+        item.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => {
+            item.remove();
+            updateScreenshotCount();
+            
+            // 如果没有截图了，隐藏容器
+            if (screenshotsList.children.length === 0) {
+                screenshotThumbnailContainer.classList.remove('show');
+            }
+        }, 300);
+    }
+    
+    // 更新截图计数
+    function updateScreenshotCount() {
+        const count = screenshotsList.children.length;
+        screenshotCount.textContent = count;
+    }
+    
+    // 清空所有截图
+    clearAllScreenshots.addEventListener('click', () => {
+        if (screenshotsList.children.length === 0) return;
+        
+        if (confirm('确定要清空所有待发送的截图吗？')) {
+            screenshotsList.innerHTML = '';
+            screenshotThumbnailContainer.classList.remove('show');
+            updateScreenshotCount();
+        }
+    });
 
     // 情感分析功能
     async function analyzeEmotion(text) {
@@ -919,7 +1148,8 @@ function init_app(){
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    text: text
+                    text: text,
+                    lanlan_name: lanlan_config.lanlan_name
                 })
             });
 

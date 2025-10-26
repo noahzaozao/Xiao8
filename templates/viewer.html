@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <link rel="apple-touch-icon" href="/static/xiaoba_192.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8">
+    <title>{{lanlan_name}} - Viewer</title>
+    <style>
+        *:focus {
+            outline: none !important;
+            box-shadow: none !important; 
+        }
+
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            color: #222;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 0.85;
+                transform: translateY(0);
+            }
+        }
+
+        #live2d-container {
+            position: fixed;
+            right: 0px;
+            bottom: 0px;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            background: none;
+            opacity: 1;
+            overflow: hidden;
+            visibility: visible;
+            transition: all 1s ease-in-out, height 0ms 1s, width 0ms 1s, visibility 0ms 1s;
+        }
+
+        #live2d-container.minimized {
+            right: -800px;
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        #live2d-canvas {
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            display: block;
+            opacity: 1;
+            visibility: visible;
+            background: transparent;
+        }
+
+        #live2d-canvas.minimized {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        #chat-container {
+            margin-bottom: 50px;
+            pointer-events: auto;
+            position: fixed;
+            left: 20px;
+            bottom: 20px;
+            width: 400px;
+            max-height: 500px;
+            height: 500px;
+            background: #f7f8fa;
+            opacity: 0.9;
+            border-radius: 12px;
+            padding: 0;
+            box-sizing: border-box;
+            overflow: hidden;
+            z-index: 20;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+            scroll-behavior: smooth;
+            display: flex;
+            flex-direction: column;
+            transition: width 0.3s ease, height 0.3s ease, max-height 0.3s ease, padding 0.3s ease;
+        }
+
+        #chat-content-wrapper {
+            pointer-events: auto;
+            flex-grow: 1;
+            padding: 16px;
+            padding-top: 48px;
+            overflow-y: auto;
+            scroll-behavior: smooth;
+            transition: opacity 0.2s ease, visibility 0.2s ease;
+            opacity: 1;
+            visibility: visible;
+            background: #fff;
+        }
+
+        #toggle-chat-btn {
+            pointer-events: auto;
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 24px;
+            height: 24px;
+            background: #e0e1e2;
+            opacity: 0.8;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            line-height: 18px;
+            text-align: center;
+            z-index: 21;
+            padding: 0;
+        }
+
+        #toggle-chat-btn:hover {
+            background: #cacbcd;
+        }
+        
+        #chat-header {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 48px;
+            background: #f7f8fa;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            box-sizing: border-box;
+            z-index: 21;
+        }
+        
+        #chat-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        #chatContainer {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .message {
+            padding: 10px 14px;
+            border-radius: 12px;
+            max-width: 80%;
+            word-wrap: break-word;
+            line-height: 1.5;
+            font-size: 0.95rem;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        .message.user {
+            align-self: flex-end;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            margin-left: auto;
+            border-bottom-right-radius: 4px;
+        }
+        
+        .message.gemini {
+            align-self: flex-start;
+            background: #f0f0f0;
+            color: #333;
+            margin-right: auto;
+            border-bottom-left-radius: 4px;
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* 最小化状态 */
+        #chat-container.minimized {
+            background: transparent;
+            opacity: 1;
+            width: 60px;
+            height: 40px;
+            max-height: 40px;
+            padding: 0;
+            cursor: pointer;
+        }
+
+        #chat-container.minimized #chat-header {
+            display: none;
+        }
+
+        #chat-container.minimized #chat-content-wrapper {
+            opacity: 0;
+            visibility: hidden;
+            height: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        #chat-container.minimized #toggle-chat-btn {
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        @media only screen and (max-width: 768px) {
+            #live2d-container {
+                position: fixed;
+                right: 0;
+                bottom: 0;
+                width: 100%;
+                height: 100%;
+                z-index: 5;
+            }
+
+            #chat-container {
+                width: 90vw;
+                left: 5vw;
+                bottom: 5px;
+                max-height: 60vh;
+                height: 60vh;
+                padding: 0;
+                margin-bottom: 5px;
+            }
+            
+            #chat-header {
+                height: 40px;
+                font-size: 0.9rem;
+            }
+            
+            #chat-content-wrapper {
+                padding: 12px;
+                padding-top: 44px;
+            }
+            
+            .message {
+                font-size: 0.9rem;
+                max-width: 85%;
+            }
+        }
+    </style>
+</head>
+<body>
+<div id="chat-container">
+    <div id="chat-header">
+        <span id="chat-title">💬 对话 (观看模式)</span>
+    </div>
+    <button id="toggle-chat-btn" title="最小化">—</button>
+    <div id="chat-content-wrapper">
+        <div id="chatContainer"></div>
+    </div>
+</div>
+<div id="live2d-container">
+    <canvas id="live2d-canvas"></canvas>
+</div>
+
+<script>
+    const lanlan_config = {
+        lanlan_name: "{{lanlan_name}}"
+    };
+    const cubism4Model = "{{model_path}}";
+</script>
+<script src="/static/libs/live2dcubismcore.min.js"></script>
+<script src="/static/libs/live2d.min.js"></script>
+<script src="/static/libs/pixi.min.js"></script>
+<script src="/static/libs/index.min.js"></script>
+<script src="/static/live2d.js"></script>
+
+<script>
+    // ===== Chat Container Toggle =====
+    const chatContainer = document.getElementById('chat-container');
+    const toggleChatBtn = document.getElementById('toggle-chat-btn');
+    const chatContentWrapper = document.getElementById('chat-content-wrapper');
+
+    let chatMinimized = false;
+
+    toggleChatBtn.addEventListener('click', () => {
+        chatMinimized = !chatMinimized;
+        if (chatMinimized) {
+            chatContainer.classList.add('minimized');
+            toggleChatBtn.textContent = '+';
+            toggleChatBtn.title = '展开';
+        } else {
+            chatContainer.classList.remove('minimized');
+            toggleChatBtn.textContent = '—';
+            toggleChatBtn.title = '最小化';
+            scrollToBottom();
+        }
+    });
+
+    // ===== WebSocket Connection to Monitor Server =====
+    let ws = null;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 10;
+    const reconnectDelay = 2000;
+
+    // Audio context for playing audio
+    let audioContext = null;
+    let audioQueue = [];
+    let isPlaying = false;
+    let lipSyncActive = false;
+    let animationFrameId = null;
+    let globalAnalyser = null;
+
+    function initAudioContext() {
+        if (!audioContext) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        // 创建全局 analyser 用于口型同步
+        if (!globalAnalyser && audioContext) {
+            globalAnalyser = audioContext.createAnalyser();
+            globalAnalyser.fftSize = 2048;
+            globalAnalyser.connect(audioContext.destination);
+        }
+    }
+
+    // 将 PCM16 数据转换为 WAV 格式
+    // 音频格式: 16-bit PCM, 48kHz, Mono (经过重采样后的音频)
+    function pcm16ToWav(pcm16Data, sampleRate = 48000, numChannels = 1) {
+        const dataLength = pcm16Data.byteLength;
+        const buffer = new ArrayBuffer(44 + dataLength);
+        const view = new DataView(buffer);
+        
+        // WAV 文件头
+        const writeString = (offset, string) => {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        };
+        
+        writeString(0, 'RIFF');
+        view.setUint32(4, 36 + dataLength, true);
+        writeString(8, 'WAVE');
+        writeString(12, 'fmt ');
+        view.setUint32(16, 16, true); // fmt chunk size
+        view.setUint16(20, 1, true); // PCM format
+        view.setUint16(22, numChannels, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * numChannels * 2, true); // byte rate
+        view.setUint16(32, numChannels * 2, true); // block align
+        view.setUint16(34, 16, true); // bits per sample
+        writeString(36, 'data');
+        view.setUint32(40, dataLength, true);
+        
+        // 复制 PCM 数据
+        const pcmView = new Int16Array(pcm16Data);
+        const wavView = new Int16Array(buffer, 44);
+        wavView.set(pcmView);
+        
+        return buffer;
+    }
+
+    async function playAudioChunk(audioData) {
+        initAudioContext();
+        
+        try {
+            // 将原始 PCM16 数据转换为 WAV 格式
+            const wavData = pcm16ToWav(audioData);
+            const audioBuffer = await audioContext.decodeAudioData(wavData);
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            
+            // 连接到全局 analyser（所有音频源共享同一个 analyser）
+            source.connect(globalAnalyser);
+            
+            // 启动口型同步（只在第一次启动）
+            if (!lipSyncActive && window.LanLan1 && window.LanLan1.live2dModel) {
+                startLipSync(window.LanLan1.live2dModel, globalAnalyser);
+                lipSyncActive = true;
+            }
+            
+            return new Promise((resolve) => {
+                source.onended = () => {
+                    // 检查是否还有音频在播放
+                    if (audioQueue.length === 0) {
+                        stopLipSync();
+                        lipSyncActive = false;
+                    }
+                    resolve();
+                };
+                source.start(0);
+            });
+        } catch (error) {
+            console.error('音频播放错误:', error);
+        }
+    }
+
+    function startLipSync(model, analyser) {
+        const dataArray = new Uint8Array(analyser.fftSize);
+        
+        function animate() {
+            analyser.getByteTimeDomainData(dataArray);
+            // 简单求音量（RMS）
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                const val = (dataArray[i] - 128) / 128; // 归一化到 -1~1
+                sum += val * val;
+            }
+            const rms = Math.sqrt(sum / dataArray.length);
+            // 映射到嘴巴开合度 0~1
+            const mouthOpen = Math.min(1, rms * 8);
+            
+            if (window.LanLan1 && window.LanLan1.live2dModel) {
+                window.LanLan1.setMouth(mouthOpen);
+            }
+            
+            animationFrameId = requestAnimationFrame(animate);
+        }
+        
+        animate();
+    }
+
+    function stopLipSync() {
+        if (animationFrameId) {
+            cancelAnimationFrame(animationFrameId);
+            animationFrameId = null;
+        }
+        if (window.LanLan1 && window.LanLan1.live2dModel) {
+            window.LanLan1.setMouth(0);
+        }
+    }
+
+    async function processAudioQueue() {
+        if (isPlaying || audioQueue.length === 0) return;
+        
+        isPlaying = true;
+        while (audioQueue.length > 0) {
+            const chunk = audioQueue.shift();
+            await playAudioChunk(chunk);
+        }
+        isPlaying = false;
+    }
+
+    function clearAudioQueue() {
+        audioQueue = [];
+        if (audioContext) {
+            audioContext.close();
+            audioContext = null;
+            globalAnalyser = null; // 重置全局 analyser
+        }
+        isPlaying = false;
+        stopLipSync();
+        lipSyncActive = false;
+    }
+
+    function connectWebSocket() {
+        if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+            return;
+        }
+
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws/${lanlan_config.lanlan_name}`;
+        
+        console.log('连接到 Monitor Server:', wsUrl);
+        
+        ws = new WebSocket(wsUrl);
+        ws.binaryType = 'arraybuffer'; // 支持接收二进制数据
+
+        ws.onopen = () => {
+            console.log('WebSocket 已连接');
+            reconnectAttempts = 0;
+        };
+
+        ws.onmessage = async (event) => {
+            // 处理二进制音频数据
+            if (event.data instanceof ArrayBuffer) {
+                if (event.data.byteLength > 4) { // 过滤心跳包
+                    audioQueue.push(event.data);
+                    processAudioQueue();
+                }
+                return;
+            }
+            
+            // 处理 JSON 消息
+            try {
+                const response = JSON.parse(event.data);
+                
+                if (response.type === 'gemini_response') {
+                    const isNewMessage = response.isNewMessage || false;
+                    appendMessage(response.text, 'gemini', isNewMessage);
+                } else if (response.type === 'user_transcript') {
+                    appendMessage(response.text, 'user', true);
+                } else if (response.type === 'user_activity') {
+                    clearAudioQueue();
+                } else if (response.type === 'emotion') {
+                    // 应用情感到 Live2D 模型
+                    if (window.LanLan1 && window.LanLan1.setEmotion) {
+                        window.LanLan1.setEmotion(response.emotion);
+                    }
+                } else if (response.type === 'expression') {
+                    // 应用表情到 Live2D 模型
+                    if (window.LanLan1 && window.LanLan1.registered_expressions) {
+                        window.LanLan1.registered_expressions[response.message]();
+                    }
+                } else if (response.type === 'turn end') {
+                    // Turn ended, could add separator if needed
+                } else if (response.type === 'heartbeat') {
+                    // Heartbeat, do nothing
+                }
+            } catch (error) {
+                console.error('消息处理错误:', error);
+            }
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket 错误:', error);
+        };
+
+        ws.onclose = () => {
+            console.log('WebSocket 已断开');
+            ws = null;
+            
+            if (reconnectAttempts < maxReconnectAttempts) {
+                reconnectAttempts++;
+                console.log(`尝试重新连接 (${reconnectAttempts}/${maxReconnectAttempts})...`);
+                setTimeout(connectWebSocket, reconnectDelay);
+            } else {
+                console.error('达到最大重连次数，停止重连');
+            }
+        };
+    }
+
+    // ===== Chat Message Display =====
+    let currentMessageElement = null;
+
+    function appendMessage(text, sender, isNewMessage) {
+        const chatContainer = document.getElementById('chatContainer');
+        
+        if (isNewMessage || !currentMessageElement || currentMessageElement.classList.contains(sender === 'user' ? 'gemini' : 'user')) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            messageDiv.textContent = text;
+            chatContainer.appendChild(messageDiv);
+            currentMessageElement = messageDiv;
+        } else {
+            currentMessageElement.textContent += text;
+        }
+        
+        scrollToBottom();
+    }
+
+    function scrollToBottom() {
+        if (!chatMinimized) {
+            chatContentWrapper.scrollTop = chatContentWrapper.scrollHeight;
+        }
+    }
+
+    // ===== Initialize =====
+    connectWebSocket();
+</script>
+</body>
+</html>
+

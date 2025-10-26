@@ -3,13 +3,14 @@
 '''
 import asyncio
 import json
-from config import MONITOR_SERVER_PORT
+import os
+from config import MONITOR_SERVER_PORT, get_character_data
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 import uvicorn
 from fastapi.templating import Jinja2Templates
-from google.cloud import translate_v2
+from utils.frontend_utils import find_models, find_model_config_file
 templates = Jinja2Templates(directory="./")
 
 app = FastAPI()
@@ -25,12 +26,86 @@ async def get_stream():
 async def get_subtitle():
     return FileResponse('templates/subtitle.html')
 
+@app.get('/api/live2d/emotion_mapping/{model_name}')
+async def get_emotion_mapping(model_name: str):
+    """获取情绪映射配置"""
+    try:
+        # 在模型目录中查找.model3.json文件
+        model_dir = os.path.join('static', model_name)
+        if not os.path.exists(model_dir):
+            return JSONResponse(status_code=404, content={"success": False, "error": "模型目录不存在"})
+        
+        # 查找.model3.json文件
+        model_json_path = None
+        for file in os.listdir(model_dir):
+            if file.endswith('.model3.json'):
+                model_json_path = os.path.join(model_dir, file)
+                break
+        
+        if not model_json_path or not os.path.exists(model_json_path):
+            return JSONResponse(status_code=404, content={"success": False, "error": "模型配置文件不存在"})
+        
+        with open(model_json_path, 'r', encoding='utf-8') as f:
+            config_data = json.load(f)
+
+        # 优先使用 EmotionMapping；若不存在则从 FileReferences 推导
+        emotion_mapping = config_data.get('EmotionMapping')
+        if not emotion_mapping:
+            derived_mapping = {"motions": {}, "expressions": {}}
+            file_refs = config_data.get('FileReferences', {}) or {}
+
+            # 从标准 Motions 结构推导
+            motions = file_refs.get('Motions', {}) or {}
+            for group_name, items in motions.items():
+                files = []
+                for item in items or []:
+                    try:
+                        file_path = item.get('File') if isinstance(item, dict) else None
+                        if file_path:
+                            files.append(file_path.replace('\\', '/'))
+                    except Exception:
+                        continue
+                derived_mapping["motions"][group_name] = files
+
+            # 从标准 Expressions 结构推导（按 Name 的前缀进行分组，如 happy_xxx）
+            expressions = file_refs.get('Expressions', []) or []
+            for item in expressions:
+                if not isinstance(item, dict):
+                    continue
+                name = item.get('Name') or ''
+                file_path = item.get('File') or ''
+                if not file_path:
+                    continue
+                file_path = file_path.replace('\\', '/')
+                # 根据第一个下划线拆分分组
+                if '_' in name:
+                    group = name.split('_', 1)[0]
+                else:
+                    # 无前缀的归入 neutral 组，避免丢失
+                    group = 'neutral'
+                derived_mapping["expressions"].setdefault(group, []).append(file_path)
+
+            emotion_mapping = derived_mapping
+        
+        return {"success": True, "config": emotion_mapping}
+    except Exception as e:
+        print(f"获取情绪映射配置失败: {e}")
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
 @app.get("/{lanlan_name}", response_class=HTMLResponse)
 async def get_index(request: Request, lanlan_name: str):
-    # Point FileResponse to the correct path relative to where server.py is run
+    # 获取角色配置
+    _, _, _, lanlan_basic_config, _, _, _, _, _, _ = get_character_data()
+    # 获取live2d字段
+    live2d = lanlan_basic_config.get(lanlan_name, {}).get('live2d', 'mao_pro')
+    # 查找所有模型
+    models = find_models()
+    # 根据live2d字段查找对应的model path
+    model_path = next((m["path"] for m in models if m["name"] == live2d), find_model_config_file(live2d))
     return templates.TemplateResponse("templates/viewer.html", {
         "request": request,
-        "lanlan_name": lanlan_name
+        "lanlan_name": lanlan_name,
+        "model_path": model_path
     })
 
 
@@ -47,18 +122,10 @@ def is_japanese(text):
     return bool(japanese_pattern.search(text))
 
 # 简单的日文到中文翻译（这里需要你集成实际的翻译API）
-translate_client = translate_v2.Client()
 async def translate_japanese_to_chinese(text):
-    # 这里应该调用实际的翻译服务，比如Google Translate API或百度翻译API
     # 为了演示，这里返回一个占位符
     # 你需要根据实际情况实现翻译功能
-    results = translate_client.translate(
-        values=[text],
-        target_language="zh-CN",
-        source_language="ja"
-    )
-    return results[0]['translatedText']
-
+    pass
 
 @app.websocket("/subtitle_ws")
 async def subtitle_websocket_endpoint(websocket: WebSocket):
@@ -125,7 +192,7 @@ async def clear_subtitle():
 @app.websocket("/sync/{lanlan_name}")
 async def sync_endpoint(websocket: WebSocket, lanlan_name:str):
     await websocket.accept()
-    print(f"主服务器已连接: {websocket.client}")
+    print(f"✅ [SYNC] 主服务器已连接: {websocket.client}")
 
     try:
         while True:
@@ -135,16 +202,17 @@ async def sync_endpoint(websocket: WebSocket, lanlan_name:str):
 
                 # 广播到所有连接的客户端
                 data = json.loads(data)
+                msg_type = data.get("type", "unknown")
 
-                if data.get("type") == "gemini_response":
+
+                if msg_type == "gemini_response":
                     # 发送到字幕显示
                     subtitle_text = data.get("text", "")
                     current_subtitle += subtitle_text
                     if subtitle_text:
                         await broadcast_subtitle()
 
-                elif data.get("type") == "turn end":
-                    print('turn end')
+                elif msg_type == "turn end":
                     # 处理回合结束
                     if current_subtitle:
                         # 检查是否为日文，如果是则翻译
@@ -166,21 +234,23 @@ async def sync_endpoint(websocket: WebSocket, lanlan_name:str):
                     global should_clear_next
                     should_clear_next = True
 
-                if data.get("type") != "heartbeat":
+                if msg_type != "heartbeat":
                     await broadcast_message(data)
             except asyncio.exceptions.TimeoutError:
                 pass
     except WebSocketDisconnect:
-        print(f"主服务器已断开: {websocket.client}")
+        print(f"❌ [SYNC] 主服务器已断开: {websocket.client}")
     except Exception as e:
-        print(f"同步端点错误: {e}")
+        print(f"❌ [SYNC] 同步端点错误: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 # 二进制数据同步端点
 @app.websocket("/sync_binary/{lanlan_name}")
 async def sync_binary_endpoint(websocket: WebSocket, lanlan_name:str):
     await websocket.accept()
-    print(f"主服务器二进制连接已建立: {websocket.client}")
+    print(f"✅ [BINARY] 主服务器二进制连接已建立: {websocket.client}")
 
     try:
         while True:
@@ -191,9 +261,9 @@ async def sync_binary_endpoint(websocket: WebSocket, lanlan_name:str):
             except asyncio.exceptions.TimeoutError:
                 pass
     except WebSocketDisconnect:
-        print(f"主服务器二进制连接已断开: {websocket.client}")
+        print(f"❌ [BINARY] 主服务器二进制连接已断开: {websocket.client}")
     except Exception as e:
-        print(f"二进制同步端点错误: {e}")
+        print(f"❌ [BINARY] 二进制同步端点错误: {e}")
         import traceback
         traceback.print_exc()
 
@@ -202,7 +272,7 @@ async def sync_binary_endpoint(websocket: WebSocket, lanlan_name:str):
 @app.websocket("/ws/{lanlan_name}")
 async def websocket_endpoint(websocket: WebSocket, lanlan_name:str):
     await websocket.accept()
-    print(f"查看客户端已连接: {websocket.client}")
+    print(f"✅ [CLIENT] 查看客户端已连接: {websocket.client}, 当前总数: {len(connected_clients) + 1}")
 
     # 添加到连接集合
     connected_clients.add(websocket)
@@ -210,39 +280,74 @@ async def websocket_endpoint(websocket: WebSocket, lanlan_name:str):
     try:
         # 保持连接直到客户端断开
         while True:
-            await websocket.receive_text()
+            # 接收任何类型的消息（文本或二进制），主要用于保持连接
+            try:
+                await websocket.receive_text()
+            except:
+                # 如果收到的是二进制数据，receive_text() 会失败，尝试 receive_bytes()
+                try:
+                    await websocket.receive_bytes()
+                except:
+                    # 如果两者都失败，等待一下再继续
+                    await asyncio.sleep(0.1)
     except WebSocketDisconnect:
-        print(f"查看客户端已断开: {websocket.client}")
+        print(f"❌ [CLIENT] 查看客户端已断开: {websocket.client}")
+    except Exception as e:
+        print(f"❌ [CLIENT] 客户端连接异常: {e}")
     finally:
-        connected_clients.remove(websocket)
+        # 安全地移除客户端（即使已经被移除也不会报错）
+        connected_clients.discard(websocket)
+        print(f"🗑️ [CLIENT] 已移除客户端，当前剩余: {len(connected_clients)}")
 
 
 # 广播消息到所有客户端
 async def broadcast_message(message):
     clients = connected_clients.copy()
+    success_count = 0
+    fail_count = 0
+    disconnected_clients = []
+    
     for client in clients:
         try:
             await client.send_json(message)
+            success_count += 1
         except Exception as e:
-            print(f"广播错误: {e}")
-            try:
-                connected_clients.remove(client)
-            except:
-                pass
+            print(f"❌ [BROADCAST] 广播错误到 {client.client}: {e}")
+            fail_count += 1
+            disconnected_clients.append(client)
+    
+    # 移除所有断开的客户端
+    for client in disconnected_clients:
+        connected_clients.discard(client)
+        print(f"🗑️ [BROADCAST] 移除断开的客户端: {client.client}")
+    
+    if success_count > 0:
+        print(f"✅ [BROADCAST] 成功广播到 {success_count} 个客户端" + (f", 失败并移除 {fail_count} 个" if fail_count > 0 else ""))
 
 
 # 广播二进制数据到所有客户端
 async def broadcast_binary(data):
     clients = connected_clients.copy()
+    success_count = 0
+    fail_count = 0
+    disconnected_clients = []
+    
     for client in clients:
         try:
             await client.send_bytes(data)
+            success_count += 1
         except Exception as e:
-            print(f"二进制广播错误: {e}")
-            try:
-                connected_clients.remove(client)
-            except:
-                pass
+            print(f"❌ [BINARY BROADCAST] 二进制广播错误到 {client.client}: {e}")
+            fail_count += 1
+            disconnected_clients.append(client)
+    
+    # 移除所有断开的客户端
+    for client in disconnected_clients:
+        connected_clients.discard(client)
+        print(f"🗑️ [BINARY BROADCAST] 移除断开的客户端: {client.client}")
+    
+    if success_count > 0:
+        print(f"✅ [BINARY BROADCAST] 成功广播音频到 {success_count} 个客户端" + (f", 失败并移除 {fail_count} 个" if fail_count > 0 else ""))
 
 
 # 定期清理断开的连接

@@ -178,7 +178,15 @@ class OmniRealtimeClient:
                     "output_audio_format": "pcm16",
                     "turn_detection": {
                         "type": "server_vad"
-                    }
+                    },
+                    "tools": [
+                        {
+                            "type": "web_search",# 固定值
+                            "function": {
+                                "description": "这个web_search用来搜索互联网的信息"# 描述什么样的信息需要大模型进行搜索。
+                            }
+                        }
+                    ]
                 })
             elif "free" in self.model:
                 await self.update_session({
@@ -189,7 +197,15 @@ class OmniRealtimeClient:
                     "output_audio_format": "pcm16",
                     "turn_detection": {
                         "type": "server_vad"
-                    }
+                    },
+                    "tools": [
+                        {
+                            "type": "web_search",# 固定值
+                            "function": {
+                                "description": "这个web_search用来搜索互联网的信息"# 描述什么样的信息需要大模型进行搜索。
+                            }
+                        }
+                    ]
                 })
             else:
                 raise ValueError(f"Invalid model: {self.model}")
@@ -286,6 +302,9 @@ class OmniRealtimeClient:
         self._is_responding = False
         self._current_response_id = None
         self._current_item_id = None
+        # 清空转录buffer和重置标志，防止打断后的错位
+        self._output_transcript_buffer = ""
+        self._is_first_transcript_chunk = True
 
     async def handle_messages(self) -> None:
         try:
@@ -314,12 +333,16 @@ class OmniRealtimeClient:
                     self._current_response_id = None
                     self._current_item_id = None
                     self._skip_until_next_response = False
+                    # 响应完成，确保buffer被清空
+                    self._output_transcript_buffer = ""
                     if self.on_response_done:
                         await self.on_response_done()
                 elif event_type == "response.created":
                     self._current_response_id = event.get("response", {}).get("id")
                     self._is_responding = True
                     self._is_first_text_chunk = self._is_first_transcript_chunk = True
+                    # 清空转录buffer，防止累积旧内容
+                    self._output_transcript_buffer = ""
                 elif event_type == "response.output_item.added":
                     self._current_item_id = event.get("item", {}).get("id")
                 # Handle interruptions
@@ -338,6 +361,7 @@ class OmniRealtimeClient:
                     self._print_input_transcript = True
                 elif event_type in ["response.audio_transcript.done", "response.output_audio_transcript.done"]:
                     self._print_input_transcript = False
+                    self._output_transcript_buffer = ""
 
                 if not self._skip_until_next_response:
                     if event_type in ["response.text.delta", "response.output_text.delta"]:

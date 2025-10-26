@@ -89,7 +89,7 @@ def get_character_data():
 TIME_ORIGINAL_TABLE_NAME = "time_indexed_original"
 TIME_COMPRESSED_TABLE_NAME = "time_indexed_compressed"
 
-MODELS_WITH_EXTRA_BODY = ["qwen-flash-2025-07-28"]
+MODELS_WITH_EXTRA_BODY = ["qwen-flash-2025-07-28", "qwen3-vl-plus-2025-09-23"]
 
 def get_core_config():
     """
@@ -191,6 +191,7 @@ def get_core_config():
             config['SUMMARY_MODEL'] = "free-model"
             config['CORRECTION_MODEL'] = "free-model"
             config['EMOTION_MODEL'] = "free-model"
+            config['VISION_MODEL'] = "step-1o-turbo-vision"
             config['AUDIO_API_KEY'] = config['OPENROUTER_API_KEY'] = "free-access"
             config['IS_FREE_VERSION'] = True
         elif 'assistApi' in core_cfg and core_cfg['assistApi']:
@@ -199,30 +200,35 @@ def get_core_config():
                 config['SUMMARY_MODEL'] = "qwen3-next-80b-a3b-instruct"
                 config['CORRECTION_MODEL'] = "qwen3-235b-a22b-instruct-2507"
                 config['EMOTION_MODEL'] = "qwen-flash-2025-07-28"
+                config['VISION_MODEL'] = "qwen3-vl-plus-2025-09-23"
                 config['AUDIO_API_KEY'] = config['OPENROUTER_API_KEY'] = config['ASSIST_API_KEY_QWEN']
             elif core_cfg['assistApi'] == 'openai':
                 config['OPENROUTER_URL'] = "https://api.openai.com/v1"
                 config['SUMMARY_MODEL'] = "gpt-4.1-mini"
                 config['CORRECTION_MODEL'] = "gpt-5-chat-latest"
                 config['EMOTION_MODEL'] = "gpt-4.1-nano"
+                config['VISION_MODEL'] = "gpt-5-chat-latest"
                 config['AUDIO_API_KEY'] = config['OPENROUTER_API_KEY'] = config['ASSIST_API_KEY_OPENAI']
             elif core_cfg['assistApi'] == 'glm':
                 config['OPENROUTER_URL'] = "https://open.bigmodel.cn/api/paas/v4"
                 config['SUMMARY_MODEL'] = "glm-4.5-flash"
                 config['CORRECTION_MODEL'] = "glm-4.5-air"
                 config['EMOTION_MODEL'] = "glm-4.5-flash"
+                config['VISION_MODEL'] = "glm-4v-plus-0111"
                 config['AUDIO_API_KEY'] = config['OPENROUTER_API_KEY'] = config['ASSIST_API_KEY_GLM']
             elif core_cfg['assistApi'] == 'step':
                 config['OPENROUTER_URL'] = "https://api.stepfun.com/v1"
                 config['SUMMARY_MODEL'] = "step-2-mini"
                 config['CORRECTION_MODEL'] = "step-2-mini"
                 config['EMOTION_MODEL'] = "step-2-mini"
+                config['VISION_MODEL'] = "step-1o-turbo-vision"
                 config['AUDIO_API_KEY'] = config['OPENROUTER_API_KEY'] = config['ASSIST_API_KEY_STEP']
             elif core_cfg['assistApi'] == 'silicon':
                 config['OPENROUTER_URL'] = "https://api.siliconflow.cn/v1"
                 config['SUMMARY_MODEL'] = "Qwen/Qwen3-Next-80B-A3B-Instruct"
                 config['CORRECTION_MODEL'] = "deepseek-ai/DeepSeek-V3.2-Exp"
                 config['EMOTION_MODEL'] = "inclusionAI/Ling-mini-2.0"
+                config['VISION_MODEL'] = "Qwen/Qwen3-VL-235B-A22B-Instruct"
                 config['AUDIO_API_KEY'] = config['OPENROUTER_API_KEY'] = config['ASSIST_API_KEY_SILICON']
         else:
             # 默认使用qwen

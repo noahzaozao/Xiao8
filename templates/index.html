@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <link rel="manifest" href="/static/manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
@@ -297,10 +298,180 @@
             display: none;
         }
         
+        /* 截图缩略图容器 - 横向滚动布局 */
+        #screenshot-thumbnail-container {
+            display: none;
+            flex-direction: column;
+            gap: 6px;
+            padding: 8px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+            animation: slideDown 0.3s ease;
+        }
+        
+        #screenshot-thumbnail-container.show {
+            display: flex;
+        }
+        
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        /* 截图列表头部 */
+        #screenshots-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 4px;
+        }
+        
+        #screenshots-title {
+            font-size: 0.85rem;
+            color: #333;
+            font-weight: 600;
+        }
+        
+        #clear-all-screenshots {
+            padding: 2px 8px;
+            font-size: 0.75rem;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        #clear-all-screenshots:hover {
+            background: #c82333;
+        }
+        
+        /* 截图列表 - 横向滚动 */
+        #screenshots-list {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding: 4px 0;
+            scrollbar-width: thin;
+            scrollbar-color: #ccc transparent;
+        }
+        
+        #screenshots-list::-webkit-scrollbar {
+            height: 6px;
+        }
+        
+        #screenshots-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        #screenshots-list::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 3px;
+        }
+        
+        #screenshots-list::-webkit-scrollbar-thumb:hover {
+            background: #999;
+        }
+        
+        /* 单个截图卡片 */
+        .screenshot-item {
+            position: relative;
+            flex-shrink: 0;
+            width: 100px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: scale(0.8);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+        
+        @keyframes slideOut {
+            from {
+                opacity: 1;
+                transform: scale(1);
+            }
+            to {
+                opacity: 0;
+                transform: scale(0.8);
+            }
+        }
+        
+        .screenshot-thumbnail {
+            width: 100px;
+            height: 75px;
+            object-fit: cover;
+            border-radius: 6px;
+            border: 2px solid #ddd;
+            background: white;
+            transition: border-color 0.2s, transform 0.2s;
+            cursor: pointer;
+        }
+        
+        .screenshot-thumbnail:hover {
+            border-color: #4f8cff;
+            transform: scale(1.05);
+        }
+        
+        .screenshot-remove {
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: none;
+            background: #dc3545;
+            color: white;
+            font-size: 14px;
+            font-weight: bold;
+            line-height: 1;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s, transform 0.2s;
+            padding: 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .screenshot-remove:hover {
+            background: #c82333;
+            transform: scale(1.1);
+        }
+        
+        .screenshot-index {
+            font-size: 0.7rem;
+            color: #666;
+            background: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            border: 1px solid #ddd;
+        }
+        
         #text-input-row {
             display: flex;
             gap: 8px;
-            align-items: center;
+            align-items: flex-start;
             position: relative;
             z-index: 1;
         }
@@ -314,9 +485,8 @@
             font-size: 0.9rem;
             background: #fff;
             color: #222;
-            resize: vertical;
-            min-height: 40px;
-            max-height: 120px;
+            resize: none;
+            height: 78px;
             box-sizing: border-box;
             cursor: text;
             caret-color: #222;
@@ -339,28 +509,43 @@
             cursor: not-allowed;
         }
         
-        #textSendButton {
+        #button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        
+        #textSendButton, #screenshotButton {
             pointer-events: auto;
-            padding: 10px 20px;
+            padding: 8px 16px;
             border-radius: 8px;
             border: none;
             background: #4f8cff;
             color: #fff;
             cursor: pointer;
             transition: background 0.2s;
-            font-size: 0.95rem;
+            font-size: 0.85rem;
             font-weight: 500;
             white-space: nowrap;
+            min-width: 80px;
         }
         
-        #textSendButton:hover:not(:disabled) {
+        #textSendButton:hover:not(:disabled), #screenshotButton:hover:not(:disabled) {
             background: #2662c8;
         }
         
-        #textSendButton:disabled {
+        #textSendButton:disabled, #screenshotButton:disabled {
             background: #b0c4de;
             cursor: not-allowed;
             opacity: 0.6;
+        }
+        
+        #screenshotButton {
+            background: #6c757d;
+        }
+        
+        #screenshotButton:hover:not(:disabled) {
+            background: #5a6268;
         }
         
         .toggle-mic-selector {
@@ -971,6 +1156,11 @@
                 display: none !important;
             }
             
+            /* 手机端隐藏agent选单 */
+            #agent-panel {
+                display: none !important;
+            }
+            
             #live2d-container {
                 position: fixed;
                 right: 0;
@@ -1006,12 +1196,39 @@
             
             #textInputBox {
                 font-size: 0.9rem;
-                min-height: 36px;
+                height: 62px;
             }
             
-            #textSendButton {
-                padding: 8px 16px;
-                font-size: 0.9rem;
+            #button-group {
+                gap: 4px;
+            }
+            
+            #textSendButton, #screenshotButton {
+                padding: 6px 12px;
+                font-size: 0.8rem;
+                min-width: 70px;
+            }
+            
+            .screenshot-item {
+                width: 80px;
+            }
+            
+            .screenshot-thumbnail {
+                width: 80px;
+                height: 60px;
+            }
+            
+            #screenshots-title {
+                font-size: 0.8rem;
+            }
+            
+            #clear-all-screenshots {
+                font-size: 0.7rem;
+                padding: 2px 6px;
+            }
+            
+            .screenshot-index {
+                font-size: 0.65rem;
             }
             
             .message {
@@ -1194,9 +1411,21 @@
         <div id="chatContainer"></div>
     </div>
     <div id="text-input-area">
+        <div id="screenshot-thumbnail-container">
+            <div id="screenshots-header">
+                <span id="screenshots-title">📸 待发送截图 (<span id="screenshot-count">0</span>)</span>
+                <button id="clear-all-screenshots">清空全部</button>
+            </div>
+            <div id="screenshots-list">
+                <!-- 截图项将动态添加到这里 -->
+            </div>
+        </div>
         <div id="text-input-row">
             <textarea id="textInputBox" placeholder="文字聊天模式...回车发送，Shift+回车换行" tabindex="0"></textarea>
-            <button id="textSendButton">发送</button>
+            <div id="button-group">
+                <button id="textSendButton">📤 发送</button>
+                <button id="screenshotButton"><span class="desktop-text">📸 截图</span><span class="mobile-text">📷 拍照</span></button>
+            </div>
         </div>
     </div>
 </div>

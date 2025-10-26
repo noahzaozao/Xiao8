@@ -219,3 +219,21 @@ def upload_file_to_oss(policy_data, file_path):
         if response.status_code != 200:
             raise Exception(f"上传文件失败: {response.text}")
     return f'oss://{key}'
+
+
+def find_model_config_file(model_name: str) -> str:
+    """
+    在模型目录中查找.model3.json配置文件
+    返回相对于static目录的路径
+    """
+    model_dir = os.path.join('static', model_name)
+    if not os.path.exists(model_dir):
+        return f"/static/{model_name}/{model_name}.model3.json"  # 默认路径
+    
+    # 查找.model3.json文件
+    for file in os.listdir(model_dir):
+        if file.endswith('.model3.json'):
+            return f"/static/{model_name}/{file}"
+    
+    # 如果没找到，返回默认路径
+    return f"/static/{model_name}/{model_name}.model3.json"

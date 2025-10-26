@@ -691,6 +691,11 @@ class Live2DManager {
             if (options.wheelEnabled !== false) {
                 this.setupWheelZoom(model);
             }
+            
+            // 设置触摸缩放（双指捏合）
+            if (options.touchZoomEnabled !== false) {
+                this.setupTouchZoom(model);
+            }
 
             // 启用鼠标跟踪
             if (options.mouseTracking !== false) {
@@ -904,6 +909,14 @@ class Live2DManager {
 
         model.on('pointerdown', (event) => {
             if (this.isLocked) return;
+            
+            // 检测是否为触摸事件，且是多点触摸（双指缩放）
+            const originalEvent = event.data.originalEvent;
+            if (originalEvent && originalEvent.touches && originalEvent.touches.length > 1) {
+                // 多点触摸时不启动拖拽
+                return;
+            }
+            
             isDragging = true;
             this.isFocusing = false; // 拖拽时禁用聚焦
             const globalPos = event.data.global;
@@ -924,6 +937,15 @@ class Live2DManager {
 
         this.pixi_app.stage.on('pointermove', (event) => {
             if (isDragging) {
+                // 再次检查是否变成多点触摸
+                const originalEvent = event.data.originalEvent;
+                if (originalEvent && originalEvent.touches && originalEvent.touches.length > 1) {
+                    // 如果变成多点触摸，停止拖拽
+                    isDragging = false;
+                    document.getElementById('live2d-canvas').style.cursor = 'grab';
+                    return;
+                }
+                
                 const newPosition = event.data.global;
                 model.x = newPosition.x - dragStartPos.x;
                 model.y = newPosition.y - dragStartPos.y;
@@ -948,6 +970,77 @@ class Live2DManager {
         }
         view.addEventListener('wheel', onWheelScroll, { passive: false });
         view.lastWheelListener = onWheelScroll;
+    }
+    
+    // 设置触摸缩放（双指捏合）
+    setupTouchZoom(model) {
+        const view = this.pixi_app.view;
+        let initialDistance = 0;
+        let initialScale = 1;
+        let isTouchZooming = false;
+        
+        const getTouchDistance = (touch1, touch2) => {
+            const dx = touch2.clientX - touch1.clientX;
+            const dy = touch2.clientY - touch1.clientY;
+            return Math.sqrt(dx * dx + dy * dy);
+        };
+        
+        const onTouchStart = (event) => {
+            if (this.isLocked || !this.currentModel) return;
+            
+            // 检测双指触摸
+            if (event.touches.length === 2) {
+                event.preventDefault();
+                isTouchZooming = true;
+                initialDistance = getTouchDistance(event.touches[0], event.touches[1]);
+                initialScale = this.currentModel.scale.x;
+            }
+        };
+        
+        const onTouchMove = (event) => {
+            if (this.isLocked || !this.currentModel || !isTouchZooming) return;
+            
+            // 双指缩放
+            if (event.touches.length === 2) {
+                event.preventDefault();
+                const currentDistance = getTouchDistance(event.touches[0], event.touches[1]);
+                const scaleChange = currentDistance / initialDistance;
+                let newScale = initialScale * scaleChange;
+                
+                // 限制缩放范围，避免过大或过小
+                newScale = Math.max(0.1, Math.min(2.0, newScale));
+                
+                this.currentModel.scale.set(newScale);
+            }
+        };
+        
+        const onTouchEnd = (event) => {
+            // 当手指数量小于2时，停止缩放
+            if (event.touches.length < 2) {
+                isTouchZooming = false;
+            }
+        };
+        
+        // 移除旧的监听器（如果存在）
+        if (view.lastTouchStartListener) {
+            view.removeEventListener('touchstart', view.lastTouchStartListener);
+        }
+        if (view.lastTouchMoveListener) {
+            view.removeEventListener('touchmove', view.lastTouchMoveListener);
+        }
+        if (view.lastTouchEndListener) {
+            view.removeEventListener('touchend', view.lastTouchEndListener);
+        }
+        
+        // 添加新的监听器
+        view.addEventListener('touchstart', onTouchStart, { passive: false });
+        view.addEventListener('touchmove', onTouchMove, { passive: false });
+        view.addEventListener('touchend', onTouchEnd, { passive: false });
+        
+        // 保存监听器引用，便于清理
+        view.lastTouchStartListener = onTouchStart;
+        view.lastTouchMoveListener = onTouchMove;
+        view.lastTouchEndListener = onTouchEnd;
     }
     
     // 设置 HTML 锁形图标

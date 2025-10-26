@@ -80,6 +80,7 @@ class LLMSessionManager:
         core_config = get_core_config()
         self.model = core_config['CORE_MODEL']  # For realtime voice
         self.text_model = core_config['CORRECTION_MODEL']  # For text-only mode
+        self.vision_model = core_config['VISION_MODEL']  # For vision tasks
         self.core_url = core_config['CORE_URL']
         self.core_api_key = core_config['CORE_API_KEY']
         self.core_api_type = core_config['CORE_API_TYPE']
@@ -476,13 +477,14 @@ class LLMSessionManager:
         core_config = get_core_config()
         self.model = core_config['CORE_MODEL']
         self.text_model = core_config['CORRECTION_MODEL']
+        self.vision_model = core_config['VISION_MODEL']
         self.core_url = core_config['CORE_URL']
         self.core_api_key = core_config['CORE_API_KEY']
         self.core_api_type = core_config['CORE_API_TYPE']
         self.openrouter_url = core_config['OPENROUTER_URL']
         self.openrouter_api_key = core_config['OPENROUTER_API_KEY']
         self.audio_api_key = core_config['AUDIO_API_KEY']
-        logger.info(f"📌 已重新加载配置: core_api={self.core_api_type}, model={self.model}, text_model={self.text_model}")
+        logger.info(f"📌 已重新加载配置: core_api={self.core_api_type}, model={self.model}, text_model={self.text_model}, vision_model={self.vision_model}")
         
         # 重置TTS缓存状态
         async with self.tts_cache_lock:
@@ -600,7 +602,8 @@ class LLMSessionManager:
                 self.session = OmniOfflineClient(
                     base_url=self.openrouter_url,
                     api_key=self.openrouter_api_key,
-                    model=self.text_model, 
+                    model=self.text_model,
+                    vision_model=self.vision_model,
                     on_text_delta=self.handle_text_data,
                     on_input_transcript=self.handle_input_transcript,
                     on_output_transcript=self.handle_output_transcript,
@@ -718,6 +721,7 @@ class LLMSessionManager:
             core_config = get_core_config()
             self.model = core_config['CORE_MODEL']
             self.text_model = core_config['CORRECTION_MODEL']
+            self.vision_model = core_config['VISION_MODEL']
             self.core_url = core_config['CORE_URL']
             self.core_api_key = core_config['CORE_API_KEY']
             self.core_api_type = core_config['CORE_API_TYPE']
@@ -1031,31 +1035,31 @@ class LLMSessionManager:
                     logger.error(f"💥 Stream: Invalid text data type: {type(data)}")
                 return
             
-            # 语音/图像模式：检查 session 类型
-            if not isinstance(self.session, OmniRealtimeClient):
-                # 检查是否允许重建session
-                if self.session_start_failure_count >= self.session_start_max_failures:
-                    logger.error("💥 Session类型不匹配，但失败次数过多，已停止自动重建")
-                    return
-                
-                logger.info(f"语音/图像模式需要 OmniRealtimeClient，但当前是 {type(self.session).__name__}. 自动重建 session。")
-                # 先关闭旧 session
-                if self.session:
-                    await self.end_session()
-                # 再创建新的语音模式 session
-                await self.start_session(self.websocket, new=False, input_mode='audio')
-                
-                # 检查重建是否成功
-                if not self.session or not self.is_active or not isinstance(self.session, OmniRealtimeClient):
-                    logger.error("💥 语音模式Session重建失败，放弃本次数据流")
-                    return
-            
-            # 检查WebSocket连接
-            if not hasattr(self.session, 'ws') or not self.session.ws:
-                logger.error("💥 Stream: Session websocket not available")
-                return
-            
+            # Audio输入：只有OmniRealtimeClient能处理
             if input_type == 'audio':
+                # 检查 session 类型
+                if not isinstance(self.session, OmniRealtimeClient):
+                    # 检查是否允许重建session
+                    if self.session_start_failure_count >= self.session_start_max_failures:
+                        logger.error("💥 Session类型不匹配，但失败次数过多，已停止自动重建")
+                        return
+                    
+                    logger.info(f"语音模式需要 OmniRealtimeClient，但当前是 {type(self.session).__name__}. 自动重建 session。")
+                    # 先关闭旧 session
+                    if self.session:
+                        await self.end_session()
+                    # 再创建新的语音模式 session
+                    await self.start_session(self.websocket, new=False, input_mode='audio')
+                    
+                    # 检查重建是否成功
+                    if not self.session or not self.is_active or not isinstance(self.session, OmniRealtimeClient):
+                        logger.error("💥 语音模式Session重建失败，放弃本次数据流")
+                        return
+                
+                # 检查WebSocket连接
+                if not hasattr(self.session, 'ws') or not self.session.ws:
+                    logger.error("💥 Stream: Session websocket not available")
+                    return
                 try:
                     if isinstance(data, list):
                         audio_bytes = struct.pack(f'<{len(data)}h', *data)
@@ -1090,7 +1094,34 @@ class LLMSessionManager:
                         buffer.seek(0)
                         resized_bytes = buffer.read()
                         resized_b64 = base64.b64encode(resized_bytes).decode('utf-8')
-                        await self.session.stream_image(resized_b64)
+                        
+                        # 如果是文本模式（OmniOfflineClient），只存储图片，不立即发送
+                        if isinstance(self.session, OmniOfflineClient):
+                            # 只添加到待发送队列，等待与文本一起发送
+                            await self.session.stream_image(resized_b64)
+                        
+                        # 如果是语音模式（OmniRealtimeClient），检查是否支持视觉并直接发送
+                        elif isinstance(self.session, OmniRealtimeClient):
+                            # 检查模型是否支持视觉
+                            if "step" in self.model.lower() or "free" in self.model.lower():
+                                error_msg = "当前模型不支持屏幕分享，请切换到支持视觉的API"
+                                logger.warning(f"⚠️ {error_msg}")
+                                await self.send_status(error_msg)
+                                # 发送特殊错误标记，让前端复位按钮
+                                if self.websocket and hasattr(self.websocket, 'client_state') and self.websocket.client_state == self.websocket.client_state.CONNECTED:
+                                    await self.websocket.send_text(json.dumps({
+                                        "type": "screen_share_error",
+                                        "message": error_msg
+                                    }))
+                                return
+                            
+                            # 检查WebSocket连接
+                            if not hasattr(self.session, 'ws') or not self.session.ws:
+                                logger.error("💥 Stream: Session websocket not available")
+                                return
+                            
+                            # 语音模式直接发送图片
+                            await self.session.stream_image(resized_b64)
                     else:
                         logger.error(f"💥 Stream: Invalid screen data format.")
                         return

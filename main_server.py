@@ -18,7 +18,7 @@ from main_helper import core as core, cross_server as cross_server
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse
 from utils.preferences import load_user_preferences, update_model_preferences, validate_model_preferences, move_model_to_top
-from utils.frontend_utils import find_models
+from utils.frontend_utils import find_models, find_model_config_file
 from multiprocessing import Process, Queue, Event
 import atexit
 import dashscope
@@ -27,7 +27,7 @@ import requests
 import httpx
 import pathlib, wave
 from openai import AsyncOpenAI
-from config import get_character_data, get_core_config, MAIN_SERVER_PORT, MODELS_WITH_EXTRA_BODY, load_characters, save_characters, TOOL_SERVER_PORT, CORE_CONFIG_PATH
+from config import get_character_data, get_core_config, MAIN_SERVER_PORT, MONITOR_SERVER_PORT, MODELS_WITH_EXTRA_BODY, load_characters, save_characters, TOOL_SERVER_PORT, CORE_CONFIG_PATH
 from config.prompts_sys import emotion_analysis_prompt
 import glob
 
@@ -92,23 +92,6 @@ def get_start_config():
 def set_start_config(config):
     """设置启动配置到 app.state"""
     app.state.start_config = config
-
-def find_model_config_file(model_name: str) -> str:
-    """
-    在模型目录中查找.model3.json配置文件
-    返回相对于static目录的路径
-    """
-    model_dir = os.path.join('static', model_name)
-    if not os.path.exists(model_dir):
-        return f"/static/{model_name}/{model_name}.model3.json"  # 默认路径
-    
-    # 查找.model3.json文件
-    for file in os.listdir(model_dir):
-        if file.endswith('.model3.json'):
-            return f"/static/{model_name}/{file}"
-    
-    # 如果没找到，返回默认路径
-    return f"/static/{model_name}/{model_name}.model3.json"
 
 @app.get("/", response_class=HTMLResponse)
 async def get_default_index(request: Request):
@@ -319,7 +302,7 @@ async def startup_event():
         if sync_process[k] is None:
             sync_process[k] = Process(
                 target=cross_server.sync_connector_process,
-                args=(sync_message_queue[k], sync_shutdown_event[k], k, "ws://localhost:8002", {'bullet': False, 'monitor': False})
+                args=(sync_message_queue[k], sync_shutdown_event[k], k, f"ws://localhost:{MONITOR_SERVER_PORT}", {'bullet': False, 'monitor': True})
             )
             sync_process[k].start()
             logger.info(f"同步连接器进程已启动 (PID: {sync_process[k].pid})")
@@ -1562,6 +1545,18 @@ async def emotion_analysis(request: Request):
             # 当confidence小于0.3时，自动将emotion设置为neutral
             if confidence < 0.3:
                 emotion = "neutral"
+            
+            # 获取 lanlan_name 并推送到 monitor
+            lanlan_name = data.get('lanlan_name')
+            if lanlan_name and lanlan_name in sync_message_queue:
+                sync_message_queue[lanlan_name].put({
+                    "type": "json",
+                    "data": {
+                        "type": "emotion",
+                        "emotion": emotion,
+                        "confidence": confidence
+                    }
+                })
             
             return {
                 "emotion": emotion,
