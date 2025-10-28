@@ -229,7 +229,7 @@ class LLMSessionManager:
         if hasattr(self, 'is_preparing_new_session') and not self.is_preparing_new_session:
             if self.session_start_time and \
                         (datetime.now() - self.session_start_time).total_seconds() >= 40:
-                logger.info("Main Listener: Uptime threshold met. Marking for new session preparation.")
+                logger.info(f"[{self.lanlan_name}] Main Listener: Uptime threshold met. Marking for new session preparation.")
                 self.is_preparing_new_session = True  # Mark that we are in prep mode
                 self.summary_triggered_time = datetime.now()
                 self.message_cache_for_new_session = []  # Reset cache for this new cycle
@@ -244,7 +244,7 @@ class LLMSessionManager:
                 (not self.background_preparation_task or self.background_preparation_task.done()) and \
                 not (
                         self.pending_session_warmed_up_event and self.pending_session_warmed_up_event.is_set()):  # Don't restart if already warmed up
-            logger.info("Main Listener: Conditions met to start BACKGROUND PREPARATION of pending session.")
+            logger.info(f"[{self.lanlan_name}] Main Listener: Conditions met to start BACKGROUND PREPARATION of pending session.")
             self.pending_session_warmed_up_event = asyncio.Event()  # Create event for this prep cycle
             self.background_preparation_task = asyncio.create_task(self._background_prepare_pending_session())
 

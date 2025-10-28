@@ -12,6 +12,7 @@ import asyncio
 import time
 import pickle
 import aiohttp
+import logging
 from config import MONITOR_SERVER_PORT, MEMORY_SERVER_PORT, COMMENTER_SERVER_PORT, TOOL_SERVER_PORT
 from datetime import datetime
 import json
@@ -19,6 +20,9 @@ import requests
 import re
 from utils.frontend_utils import contains_chinese, replace_blank, replace_corner_mark, remove_bracket, spell_out_number, \
     is_only_punctuation, split_paragraph
+
+# Setup logger for this module
+logger = logging.getLogger(__name__)
 emoji_pattern = re.compile(r'[^\w\u4e00-\u9fff\s>][^\w\u4e00-\u9fff\s]{2,}[^\w\u4e00-\u9fff\s<]', flags=re.UNICODE)
 emoji_pattern2 = re.compile("["
         u"\U0001F600-\U0001F64F"  # emoticons
@@ -41,13 +45,19 @@ def normalize_text(text):  # 对文本进行基本预处理
     return text
 
 async def keep_reader(ws: aiohttp.ClientWebSocketResponse):
-    while not ws.closed:
-        try:
-            await ws.receive(timeout=30)
-        except asyncio.TimeoutError:
-            pass
-        except asyncio.CancelledError:
-            break
+    """保持 WebSocket 连接活跃的读取循环"""
+    try:
+        while True:
+            try:
+                msg = await ws.receive(timeout=30)
+                if msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+                    break
+            except asyncio.TimeoutError:
+                pass
+            except asyncio.CancelledError:
+                break
+    except Exception:
+        pass
 
 
 def sync_connector_process(message_queue, shutdown_event, lanlan_name, sync_server_url=f"ws://localhost:{MONITOR_SERVER_PORT}", config=None):
@@ -80,41 +90,6 @@ def sync_connector_process(message_queue, shutdown_event, lanlan_name, sync_serv
 
         while not shutdown_event.is_set():
             try:
-                # 如果连接不存在或已关闭，重新连接
-                if config['monitor']:
-                    if sync_ws is None or sync_ws.closed:
-                        if sync_session:
-                            await sync_session.close()
-                        sync_session = aiohttp.ClientSession()
-                        sync_ws = await sync_session.ws_connect(
-                            f"{sync_server_url}/sync/{lanlan_name}",
-                            heartbeat=10,
-                        )
-                        # print("[Sync Process] 文本连接已建立")
-                        sync_reader = asyncio.create_task(keep_reader(sync_ws))
-
-                    if binary_ws is None or binary_ws.closed:
-                        if binary_session:
-                            await binary_session.close()
-                        binary_session = aiohttp.ClientSession()
-                        binary_ws = await binary_session.ws_connect(
-                            f"{sync_server_url}/sync_binary/{lanlan_name}",
-                            heartbeat=10,
-                        )
-                        # print("[Sync Process] 二进制连接已建立")
-                        binary_reader = asyncio.create_task(keep_reader(binary_ws))
-
-                if config['bullet']:
-                    if bullet_ws is None or bullet_ws.closed:
-                        if bullet_session:
-                            await bullet_session.close()
-                        bullet_session = aiohttp.ClientSession()
-                        bullet_ws = await bullet_session.ws_connect(
-                            f"wss://localhost:{COMMENTER_SERVER_PORT}/sync/{lanlan_name}",
-                            ssl=ssl._create_unverified_context()
-                        )
-                        bullet_reader = asyncio.create_task(keep_reader(bullet_ws))
-
                 # 检查消息队列
                 while not message_queue.empty():
                     message = message_queue.get()
@@ -153,7 +128,7 @@ def sync_connector_process(message_queue, shutdown_event, lanlan_name, sync_serv
                                         binary_message = pickle.dumps(message_data)
                                         await bullet_ws.send_bytes(binary_message)
                                     except Exception as e:
-                                        print("💥Error when sending to commenter: ", e)
+                                        logger.error(f"[{lanlan_name}] Error when sending to commenter: {e}")
 
                             # Append assistant streaming text
                             try:
@@ -193,12 +168,19 @@ def sync_connector_process(message_queue, shutdown_event, lanlan_name, sync_serv
                                     chat_history.append(
                                             {'role': 'assistant', 'content': [{'type': 'text', 'text': text_output_cache}]})
                                 text_output_cache = ''
-                                response = requests.post(
-                                    f"http://localhost:{MEMORY_SERVER_PORT}/renew/{lanlan_name}",
-                                    json={'input_history': json.dumps(chat_history, indent=2, ensure_ascii=False)},
-                                )
-                                if response.json()['status'] == 'error':
-                                    print("💥 Conversation processing error", response.json()['message'])
+                                logger.info(f"[{lanlan_name}] 热重置：聊天历史长度 {len(chat_history)} 条消息")
+                                try:
+                                    response = requests.post(
+                                        f"http://localhost:{MEMORY_SERVER_PORT}/renew/{lanlan_name}",
+                                        json={'input_history': json.dumps(chat_history, indent=2, ensure_ascii=False)},
+                                        timeout=5.0
+                                    )
+                                    if response.json()['status'] == 'error':
+                                        logger.error(f"[{lanlan_name}] 热重置记忆处理失败: {response.json()['message']}")
+                                    else:
+                                        logger.info(f"[{lanlan_name}] 热重置记忆已成功上传到 memory_server")
+                                except Exception as e:
+                                    logger.error(f"[{lanlan_name}] 调用 /renew API 失败: {e}")
                                 chat_history.clear()
 
                             if message["data"] == 'turn end': # lanlan的消息结束了
@@ -264,77 +246,137 @@ def sync_connector_process(message_queue, shutdown_event, lanlan_name, sync_serv
                                     pass
                                 
                                 # 处理聊天历史
-                                print("💗开始处理聊天历史")
-                                response = requests.post(
-                                    f"http://localhost:{MEMORY_SERVER_PORT}/process/{lanlan_name}",
-                                    json={'input_history': json.dumps(chat_history, indent=2, ensure_ascii=False)},
-                                )
-                                if response.json()['status'] == 'error':
-                                    print("💥 Conversation processing error", response.json()['message'])
+                                logger.info(f"[{lanlan_name}] 会话结束：开始处理聊天历史，共 {len(chat_history)} 条消息")
+                                try:
+                                    response = requests.post(
+                                        f"http://localhost:{MEMORY_SERVER_PORT}/process/{lanlan_name}",
+                                        json={'input_history': json.dumps(chat_history, indent=2, ensure_ascii=False)},
+                                        timeout=5.0
+                                    )
+                                    if response.json()['status'] == 'error':
+                                        logger.error(f"[{lanlan_name}] 会话记忆处理失败: {response.json()['message']}")
+                                    else:
+                                        logger.info(f"[{lanlan_name}] 会话记忆已成功上传到 memory_server")
+                                except Exception as e:
+                                    logger.error(f"[{lanlan_name}] 调用 /process API 失败: {e}")
                                 chat_history.clear()
                         except Exception as e:
-                            print('❗️❗️❗️System message error: ', e)
-                            import traceback
-                            traceback.print_exc()
-                    await asyncio.sleep(0.01)
-                # 发送心跳
-                if config['monitor'] and sync_ws:
-                    await sync_ws.send_json({"type": "heartbeat", "timestamp": time.time()})
-                if config['monitor'] and binary_ws:
-                    await binary_ws.send_bytes(b'\x00\x01\x02\x03')
+                            logger.error(f"[{lanlan_name}] System message error: {e}", exc_info=True)
+                    await asyncio.sleep(0.02)
+            except Exception as e:
+                logger.error(f"[{lanlan_name}] Message processing error: {e}", exc_info=True)
+                await asyncio.sleep(0.02)
+            
+            # WebSocket 连接管理（独立于消息处理）
+            try:
+                # 如果连接不存在，尝试建立连接
+                try:
+                    if config['monitor']:
+                        if sync_ws is None:
+                            if sync_session:
+                                await sync_session.close()
+                            sync_session = aiohttp.ClientSession()
+                            try:
+                                sync_ws = await sync_session.ws_connect(
+                                    f"{sync_server_url}/sync/{lanlan_name}",
+                                    heartbeat=10,
+                                )
+                                # print(f"[Sync Process] [{lanlan_name}] 文本连接已建立")
+                                sync_reader = asyncio.create_task(keep_reader(sync_ws))
+                            except Exception as e:
+                                # logger.warning(f"[{lanlan_name}] Monitor文本连接失败: {e}")
+                                sync_ws = None
 
+                        if binary_ws is None:
+                            if binary_session:
+                                await binary_session.close()
+                            binary_session = aiohttp.ClientSession()
+                            try:
+                                binary_ws = await binary_session.ws_connect(
+                                    f"{sync_server_url}/sync_binary/{lanlan_name}",
+                                    heartbeat=10,
+                                )
+                                # print(f"[Sync Process] [{lanlan_name}] 二进制连接已建立")
+                                binary_reader = asyncio.create_task(keep_reader(binary_ws))
+                            except Exception as e:
+                                # logger.warning(f"[{lanlan_name}] Monitor二进制连接失败: {e}")
+                                binary_ws = None
+
+                        # 发送心跳（捕获异常以检测连接断开）
+                        if config['monitor'] and sync_ws:
+                            try:
+                                await sync_ws.send_json({"type": "heartbeat", "timestamp": time.time()})
+                            except Exception:
+                                sync_ws = None
+                                
+                        if config['monitor'] and binary_ws:
+                            try:
+                                await binary_ws.send_bytes(b'\x00\x01\x02\x03')
+                            except Exception:
+                                binary_ws = None
+
+                except Exception as e:
+                    logger.error(f"[{lanlan_name}] Monitor连接异常: {e}", exc_info=True)
+                    sync_ws = None
+                    binary_ws = None
+
+                try:
+                    if config['bullet']:
+                        if bullet_ws is None:
+                            if bullet_session:
+                                await bullet_session.close()
+                            bullet_session = aiohttp.ClientSession()
+                            try:
+                                bullet_ws = await bullet_session.ws_connect(
+                                    f"wss://localhost:{COMMENTER_SERVER_PORT}/sync/{lanlan_name}",
+                                    ssl=ssl._create_unverified_context()
+                                )
+                                # print(f"[Sync Process] [{lanlan_name}] Bullet连接已建立")
+                                bullet_reader = asyncio.create_task(keep_reader(bullet_ws))
+                            except Exception:
+                                # Bullet 连接失败是正常的（该服务可能未启动）
+                                bullet_ws = None
+                except Exception as e:
+                    logger.error(f"[{lanlan_name}] Bullet连接异常: {e}", exc_info=True)
+                    bullet_ws = None
+                
                 # 短暂休眠避免CPU占用过高
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.02)
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                # print(f"[Sync Process] 连接错误: {e}")
-                # import traceback
-                # traceback.print_exc()
-                # 关闭任何可能存在的连接
-                if config['monitor']:
-                    if sync_ws and not sync_ws.closed:
-                        await sync_ws.close()
-                    if sync_session:
-                        await sync_session.close()
-                    if sync_reader:
-                        sync_reader.cancel()
-                    if binary_ws and not binary_ws.closed:
-                        await binary_ws.close()
-                    if binary_session:
-                        await binary_session.close()
-                    if binary_reader:
-                        binary_reader.cancel()
-                if config['bullet']:
-                    if bullet_ws and not bullet_ws.closed:
-                        await bullet_ws.close()
-                    if bullet_session:
-                        await bullet_session.close()
-                    if bullet_reader:
-                        bullet_reader.cancel()
-
+                # WebSocket 连接异常，标记连接为失败状态
+                logger.error(f"[{lanlan_name}] WebSocket连接异常: {e}")
                 sync_ws = None
                 binary_ws = None
                 bullet_ws = None
-                await asyncio.sleep(0.2)  # 重连前等待
+                await asyncio.sleep(0.03)  # 重连前等待
 
         # 关闭资源
         for ws in [sync_ws, binary_ws, bullet_ws]:
-            if ws and not ws.closed:
-                await ws.close()
+            if ws:
+                try:
+                    await ws.close()
+                except Exception:
+                    pass
         for sess in [sync_session, binary_session, bullet_session]:
             if sess:
-                await sess.close()
+                try:
+                    await sess.close()
+                except Exception:
+                    pass
         for rdr in [sync_reader, binary_reader, bullet_reader]:
             if rdr:
-                rdr.cancel()
+                try:
+                    rdr.cancel()
+                except Exception:
+                    pass
 
     try:
         loop.run_until_complete(maintain_connection(chat_history, lanlan_name))
     except Exception as e:
-        print(f"[Sync Process] 进程错误: {e}")
+        logger.error(f"[{lanlan_name}] Sync进程错误: {e}", exc_info=True)
     finally:
         loop.close()
-
-        print("[Sync Process] 同步进程已终止")
+        logger.info(f"[{lanlan_name}] Sync进程已终止")
