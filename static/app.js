@@ -312,6 +312,10 @@ function init_app(){
         // 页面加载时预加载麦克风列表，减少首次点击的延迟
         await loadMicrophoneList(true); // true表示预加载模式
         
+        // 触发自定义事件，通知麦克风列表已初始化
+        console.log('麦克风列表已初始化，触发mic-list-ready事件');
+        window.dispatchEvent(new CustomEvent('mic-list-ready'));
+        
         // 点击切换按钮时显示/隐藏麦克风列表
         toggleButton.addEventListener('click', async (event) => {
             // 添加调试信息
@@ -810,6 +814,10 @@ function init_app(){
 
     resetSessionButton.addEventListener('click', () => {
         isSwitchingMode = true; // 开始重置会话（也是一种模式切换）
+        
+        // 检查是否是"请她离开"触发的
+        const isGoodbyeMode = window.live2d && window.live2d._goodbyeClicked;
+        
         hideLive2d()
         if (socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({
@@ -828,24 +836,42 @@ function init_app(){
         updateScreenshotCount();
         screenshotCounter = 0;
         
-        // 显示文本输入区
-        const textInputArea = document.getElementById('text-input-area');
-        textInputArea.classList.remove('hidden');
-        
-        // 启用所有输入
-        micButton.disabled = false;
-        textSendButton.disabled = false;
-        textInputBox.disabled = false;
-        screenshotButton.disabled = false;
-        
-        // 禁用语音控制按钮
-        muteButton.disabled = true;
-        screenButton.disabled = true;
-        stopButton.disabled = true;
-        resetSessionButton.disabled = true;
-        
-
-        statusElement.textContent = '会话已结束';
+        // 如果不是"请她离开"模式，才显示文本输入区并启用按钮
+        if (!isGoodbyeMode) {
+            // 显示文本输入区
+            const textInputArea = document.getElementById('text-input-area');
+            textInputArea.classList.remove('hidden');
+            
+            // 启用所有输入
+            micButton.disabled = false;
+            textSendButton.disabled = false;
+            textInputBox.disabled = false;
+            screenshotButton.disabled = false;
+            
+            // 禁用语音控制按钮
+            muteButton.disabled = true;
+            screenButton.disabled = true;
+            stopButton.disabled = true;
+            resetSessionButton.disabled = true;
+            
+            statusElement.textContent = '会话已结束';
+        } else {
+            // "请她离开"模式：隐藏所有内容
+            const textInputArea = document.getElementById('text-input-area');
+            textInputArea.classList.add('hidden');
+            
+            // 禁用所有按钮
+            micButton.disabled = true;
+            textSendButton.disabled = true;
+            textInputBox.disabled = true;
+            screenshotButton.disabled = true;
+            muteButton.disabled = true;
+            screenButton.disabled = true;
+            stopButton.disabled = true;
+            resetSessionButton.disabled = true;
+            
+            statusElement.textContent = '';
+        }
         
         // 延迟重置模式切换标志，确保"已离开"消息已经被忽略
         setTimeout(() => {
@@ -1579,6 +1605,48 @@ function init_app(){
             return;
         }
 
+        // 重置"请她离开"状态
+        if (window.live2d) {
+            window.live2d._goodbyeClicked = false;
+        }
+        
+        // 清除强制隐藏的样式
+        const floatingButtons = document.getElementById('live2d-floating-buttons');
+        if (floatingButtons) {
+            floatingButtons.style.removeProperty('display');
+            floatingButtons.style.removeProperty('visibility');
+            floatingButtons.style.removeProperty('opacity');
+        }
+        
+        const lockIcon = document.getElementById('live2d-lock-icon');
+        if (lockIcon) {
+            lockIcon.style.removeProperty('display');
+            lockIcon.style.removeProperty('visibility');
+            lockIcon.style.removeProperty('opacity');
+        }
+        
+        const sidebar = document.getElementById('sidebar');
+        const sidebarbox = document.getElementById('sidebarbox');
+        
+        if (sidebar) {
+            sidebar.style.removeProperty('display');
+            sidebar.style.removeProperty('visibility');
+            sidebar.style.removeProperty('opacity');
+        }
+        
+        if (sidebarbox) {
+            sidebarbox.style.removeProperty('display');
+            sidebarbox.style.removeProperty('visibility');
+            sidebarbox.style.removeProperty('opacity');
+        }
+        
+        const sideButtons = document.querySelectorAll('.side-btn');
+        sideButtons.forEach(btn => {
+            btn.style.removeProperty('display');
+            btn.style.removeProperty('visibility');
+            btn.style.removeProperty('opacity');
+        });
+
         // 先恢复容器尺寸和可见性，但保持透明度为0和位置在屏幕外
         // container.style.height = '1080px';
         // container.style.width = '720px';
@@ -1596,6 +1664,450 @@ function init_app(){
     
     // 初始化麦克风选择器
     initMicrophoneSelector();
+    
+    // ========== 连接浮动按钮到原有功能 ==========
+    
+    // 麦克风按钮（toggle模式）
+    window.addEventListener('live2d-mic-toggle', async (e) => {
+        if (e.detail.active) {
+            // 开始语音
+            micButton.click(); // 触发原有的麦克风按钮点击
+        } else {
+            // 停止语音
+            muteButton.click(); // 触发原有的停止按钮点击
+        }
+    });
+    
+    // 屏幕分享按钮（toggle模式）
+    window.addEventListener('live2d-screen-toggle', async (e) => {
+        if (e.detail.active) {
+            // 开启屏幕分享
+            screenButton.click();
+        } else {
+            // 关闭屏幕分享
+            stopButton.click();
+        }
+    });
+    
+    // Agent工具按钮（只展开弹出框，不执行操作）
+    window.addEventListener('live2d-agent-click', () => {
+        // 不执行任何操作，只是展开弹出框
+        console.log('Agent工具按钮被点击，显示弹出框');
+    });
+    
+    // 睡觉按钮（请她离开）
+    window.addEventListener('live2d-goodbye-click', () => {
+        console.log('[App] 请她离开按钮被点击，开始隐藏所有按钮');
+        
+        // 第一步：立即设置标志位，防止任何后续逻辑显示按钮
+        if (window.live2d) {
+            window.live2d._goodbyeClicked = true;
+        }
+        
+        // 第二步：立即隐藏所有浮动按钮和锁按钮（设置为 !important 防止其他代码覆盖）
+        const floatingButtons = document.getElementById('live2d-floating-buttons');
+        if (floatingButtons) {
+            floatingButtons.style.setProperty('display', 'none', 'important');
+            floatingButtons.style.setProperty('visibility', 'hidden', 'important');
+            floatingButtons.style.setProperty('opacity', '0', 'important');
+        }
+        
+        const lockIcon = document.getElementById('live2d-lock-icon');
+        if (lockIcon) {
+            lockIcon.style.setProperty('display', 'none', 'important');
+            lockIcon.style.setProperty('visibility', 'hidden', 'important');
+            lockIcon.style.setProperty('opacity', '0', 'important');
+        }
+        
+        // 第三步：立即隐藏所有 side-btn 按钮和侧边栏
+        const sidebar = document.getElementById('sidebar');
+        const sidebarbox = document.getElementById('sidebarbox');
+        
+        if (sidebar) {
+            sidebar.style.setProperty('display', 'none', 'important');
+            sidebar.style.setProperty('visibility', 'hidden', 'important');
+            sidebar.style.setProperty('opacity', '0', 'important');
+        }
+        
+        if (sidebarbox) {
+            sidebarbox.style.setProperty('display', 'none', 'important');
+            sidebarbox.style.setProperty('visibility', 'hidden', 'important');
+            sidebarbox.style.setProperty('opacity', '0', 'important');
+        }
+        
+        const sideButtons = document.querySelectorAll('.side-btn');
+        sideButtons.forEach(btn => {
+            btn.style.setProperty('display', 'none', 'important');
+            btn.style.setProperty('visibility', 'hidden', 'important');
+            btn.style.setProperty('opacity', '0', 'important');
+        });
+        
+        // 第四步：自动折叠对话区
+        const chatContainerEl = document.getElementById('chat-container');
+        const toggleChatBtn = document.getElementById('toggle-chat-btn');
+        if (chatContainerEl && !chatContainerEl.classList.contains('minimized')) {
+            // 如果对话区当前是展开的，模拟点击折叠按钮
+            if (toggleChatBtn) {
+                toggleChatBtn.click();
+            }
+        }
+        
+        // 第五步：触发原有的离开逻辑（关闭会话并让live2d消失）
+        if (resetSessionButton) {
+            // 延迟一点点执行，确保隐藏操作已经生效
+            setTimeout(() => {
+                resetSessionButton.click();
+            }, 10);
+        } else {
+            console.error('[App] ❌ resetSessionButton 未找到！');
+        }
+    });
+    
+    // ========== Agent控制逻辑 ==========
+    
+    // 浮动Agent status更新函数
+    function setFloatingAgentStatus(msg) {
+        const statusEl = document.getElementById('live2d-agent-status');
+        if (statusEl) {
+            statusEl.textContent = msg || '';
+        }
+    }
+    
+    // 检查Agent服务器健康状态
+    async function checkToolServerHealth() {
+        try {
+            const resp = await fetch(`/api/agent/health`);
+            if (!resp.ok) throw new Error('not ok');
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+    
+    // 检查Agent能力
+    async function checkCapability(kind, showError = true) {
+        try {
+            if (kind === 'computer_use') {
+                const r = await fetch(`/api/agent/computer_use/availability`);
+                if (!r.ok) return false;
+                const j = await r.json();
+                if (!j.ready) {
+                    if (showError) {
+                        setFloatingAgentStatus((j.reasons && j.reasons[0]) || '键鼠控制不可用');
+                    }
+                    return false;
+                }
+                return true;
+            } else if (kind === 'mcp') {
+                const r = await fetch(`/api/agent/mcp/availability`);
+                if (!r.ok) return false;
+                const j = await r.json();
+                if (!j.ready) {
+                    if (showError) {
+                        setFloatingAgentStatus((j.reasons && j.reasons[0]) || 'MCP不可用');
+                    }
+                    return false;
+                }
+                return true;
+            }
+            return false;
+        } catch (e) {
+            return false;
+        }
+    }
+    
+    // 连接Agent弹出框中的开关到Agent控制逻辑
+    setTimeout(() => {
+        const agentMasterCheckbox = document.getElementById('live2d-agent-master');
+        const agentKeyboardCheckbox = document.getElementById('live2d-agent-keyboard');
+        const agentMcpCheckbox = document.getElementById('live2d-agent-mcp');
+        
+        if (!agentMasterCheckbox) return;
+        
+        // Agent总开关逻辑
+        agentMasterCheckbox.addEventListener('change', async () => {
+            if (agentMasterCheckbox.checked) {
+                try {
+                    const ok = await checkToolServerHealth();
+                    if (!ok) throw new Error('tool server down');
+                } catch (e) {
+                    setFloatingAgentStatus('Agent服务器未启动');
+                    agentMasterCheckbox.checked = false;
+                    return;
+                }
+                setFloatingAgentStatus('Agent模式已开启');
+                if (agentKeyboardCheckbox) agentKeyboardCheckbox.disabled = false;
+                if (agentMcpCheckbox) agentMcpCheckbox.disabled = false;
+                
+                try {
+                    const r = await fetch('/api/agent/flags', {
+                        method:'POST', 
+                        headers:{'Content-Type':'application/json'}, 
+                        body: JSON.stringify({
+                            lanlan_name: lanlan_config.lanlan_name, 
+                            flags: {agent_enabled:true, computer_use_enabled:false, mcp_enabled:false}
+                        })
+                    });
+                    if (!r.ok) throw new Error('main_server rejected');
+                } catch(e) {
+                    agentMasterCheckbox.checked = false;
+                    if (agentKeyboardCheckbox) agentKeyboardCheckbox.disabled = true;
+                    if (agentMcpCheckbox) agentMcpCheckbox.disabled = true;
+                    setFloatingAgentStatus('开启失败');
+                }
+            } else {
+                setFloatingAgentStatus('Agent模式已关闭');
+                
+                // 重置子开关
+                if (agentKeyboardCheckbox) {
+                    agentKeyboardCheckbox.checked = false;
+                    agentKeyboardCheckbox.disabled = true;
+                }
+                if (agentMcpCheckbox) {
+                    agentMcpCheckbox.checked = false;
+                    agentMcpCheckbox.disabled = true;
+                }
+                
+                // 停止所有任务并重置状态
+                try {
+                    await fetch('/api/agent/admin/control', {
+                        method: 'POST', 
+                        headers: {'Content-Type': 'application/json'}, 
+                        body: JSON.stringify({action: 'end_all'})
+                    });
+                    
+                    await fetch('/api/agent/flags', {
+                        method: 'POST', 
+                        headers: {'Content-Type': 'application/json'}, 
+                        body: JSON.stringify({
+                            lanlan_name: lanlan_config.lanlan_name, 
+                            flags: {agent_enabled: false, computer_use_enabled: false, mcp_enabled: false}
+                        })
+                    });
+                } catch(e) {
+                    setFloatingAgentStatus('Agent模式已关闭（部分清理失败）');
+                }
+            }
+        });
+        
+        // 键鼠控制开关逻辑
+        if (agentKeyboardCheckbox) {
+            agentKeyboardCheckbox.addEventListener('change', async () => {
+                if (agentKeyboardCheckbox.checked) {
+                    try {
+                        const ok = await checkCapability('computer_use');
+                        if (!ok) throw new Error('not available');
+                    } catch (e) {
+                        setFloatingAgentStatus('键鼠控制不可用');
+                        agentKeyboardCheckbox.checked = false;
+                        return;
+                    }
+                    try {
+                        const r = await fetch('/api/agent/flags', {
+                            method:'POST', 
+                            headers:{'Content-Type':'application/json'}, 
+                            body: JSON.stringify({
+                                lanlan_name: lanlan_config.lanlan_name, 
+                                flags: {computer_use_enabled:true}
+                            })
+                        });
+                        if (!r.ok) throw new Error('main_server rejected');
+                        setFloatingAgentStatus('键鼠控制已开启');
+                    } catch(e) {
+                        agentKeyboardCheckbox.checked = false;
+                        setFloatingAgentStatus('键鼠控制开启失败');
+                    }
+                } else {
+                    setFloatingAgentStatus('键鼠控制已关闭');
+                    try { 
+                        await fetch('/api/agent/flags', {
+                            method:'POST', 
+                            headers:{'Content-Type':'application/json'}, 
+                            body: JSON.stringify({
+                                lanlan_name: lanlan_config.lanlan_name, 
+                                flags: {computer_use_enabled:false}
+                            })
+                        }); 
+                    } catch(e){}
+                }
+            });
+        }
+        
+        // MCP工具开关逻辑
+        if (agentMcpCheckbox) {
+            agentMcpCheckbox.addEventListener('change', async () => {
+                if (agentMcpCheckbox.checked) {
+                    try {
+                        const ok = await checkCapability('mcp');
+                        if (!ok) throw new Error('not available');
+                    } catch (e) {
+                        setFloatingAgentStatus('MCP插件不可用');
+                        agentMcpCheckbox.checked = false;
+                        return;
+                    }
+                    try {
+                        const r = await fetch('/api/agent/flags', {
+                            method:'POST', 
+                            headers:{'Content-Type':'application/json'}, 
+                            body: JSON.stringify({
+                                lanlan_name: lanlan_config.lanlan_name, 
+                                flags: {mcp_enabled:true}
+                            })
+                        });
+                        if (!r.ok) throw new Error('main_server rejected');
+                        setFloatingAgentStatus('MCP插件已开启');
+                    } catch(e) {
+                        agentMcpCheckbox.checked = false;
+                        setFloatingAgentStatus('MCP开启失败');
+                    }
+                } else {
+                    setFloatingAgentStatus('MCP插件已关闭');
+                    try { 
+                        await fetch('/api/agent/flags', {
+                            method:'POST', 
+                            headers:{'Content-Type':'application/json'}, 
+                            body: JSON.stringify({
+                                lanlan_name: lanlan_config.lanlan_name, 
+                                flags: {mcp_enabled:false}
+                            })
+                        }); 
+                    } catch(e){}
+                }
+            });
+        }
+    }, 1000); // 延迟执行，确保浮动按钮已创建
+    
+    // 为浮动弹出框渲染麦克风列表（直接使用麦克风数据，不依赖原列表）
+    window.renderFloatingMicList = async () => {
+        const micPopup = document.getElementById('live2d-mic-popup');
+        if (!micPopup) {
+            console.log('麦克风弹出框未找到');
+            return false;
+        }
+        
+        try {
+            // 直接获取麦克风设备
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const audioInputs = devices.filter(device => device.kind === 'audioinput');
+            
+            console.log(`✅ 浮动麦克风列表: 找到 ${audioInputs.length} 个麦克风设备`);
+            
+            micPopup.innerHTML = '';
+            
+            if (audioInputs.length === 0) {
+                const noMicItem = document.createElement('div');
+                noMicItem.textContent = '没有检测到麦克风设备';
+                noMicItem.style.padding = '8px 12px';
+                noMicItem.style.color = '#666';
+                noMicItem.style.fontSize = '13px';
+                micPopup.appendChild(noMicItem);
+                return false;
+            }
+            
+            // 添加默认麦克风选项
+            const defaultOption = document.createElement('button');
+            defaultOption.className = 'mic-option';
+            defaultOption.textContent = '系统默认麦克风';
+            if (selectedMicrophoneId === null) {
+                defaultOption.classList.add('selected');
+            }
+            Object.assign(defaultOption.style, {
+                padding: '8px 12px',
+                cursor: 'pointer',
+                border: 'none',
+                background: selectedMicrophoneId === null ? '#e6f0ff' : 'transparent',
+                borderRadius: '6px',
+                transition: 'background 0.2s ease',
+                fontSize: '13px',
+                width: '100%',
+                textAlign: 'left',
+                color: selectedMicrophoneId === null ? '#4f8cff' : '#333',
+                fontWeight: selectedMicrophoneId === null ? '500' : '400'
+            });
+            defaultOption.addEventListener('mouseenter', () => {
+                if (selectedMicrophoneId !== null) {
+                    defaultOption.style.background = 'rgba(79, 140, 255, 0.1)';
+                }
+            });
+            defaultOption.addEventListener('mouseleave', () => {
+                if (selectedMicrophoneId !== null) {
+                    defaultOption.style.background = 'transparent';
+                }
+            });
+            defaultOption.addEventListener('click', async () => {
+                await selectMicrophone(null);
+                window.renderFloatingMicList();
+            });
+            micPopup.appendChild(defaultOption);
+            
+            // 添加分隔线
+            const separator = document.createElement('div');
+            separator.style.height = '1px';
+            separator.style.backgroundColor = '#eee';
+            separator.style.margin = '5px 0';
+            micPopup.appendChild(separator);
+            
+            // 添加各个麦克风设备选项
+            audioInputs.forEach(device => {
+                const option = document.createElement('button');
+                option.className = 'mic-option';
+                option.textContent = device.label || `麦克风 ${audioInputs.indexOf(device) + 1}`;
+                if (selectedMicrophoneId === device.deviceId) {
+                    option.classList.add('selected');
+                }
+                
+                Object.assign(option.style, {
+                    padding: '8px 12px',
+                    cursor: 'pointer',
+                    border: 'none',
+                    background: selectedMicrophoneId === device.deviceId ? '#e6f0ff' : 'transparent',
+                    borderRadius: '6px',
+                    transition: 'background 0.2s ease',
+                    fontSize: '13px',
+                    width: '100%',
+                    textAlign: 'left',
+                    color: selectedMicrophoneId === device.deviceId ? '#4f8cff' : '#333',
+                    fontWeight: selectedMicrophoneId === device.deviceId ? '500' : '400'
+                });
+                
+                option.addEventListener('mouseenter', () => {
+                    if (selectedMicrophoneId !== device.deviceId) {
+                        option.style.background = 'rgba(79, 140, 255, 0.1)';
+                    }
+                });
+                option.addEventListener('mouseleave', () => {
+                    if (selectedMicrophoneId !== device.deviceId) {
+                        option.style.background = 'transparent';
+                    }
+                });
+                
+                option.addEventListener('click', async () => {
+                    await selectMicrophone(device.deviceId);
+                    window.renderFloatingMicList();
+                });
+                
+                micPopup.appendChild(option);
+            });
+            
+            return true;
+        } catch (error) {
+            console.error('获取麦克风列表失败:', error);
+            micPopup.innerHTML = '';
+            const errorItem = document.createElement('div');
+            errorItem.textContent = '获取麦克风列表失败';
+            errorItem.style.padding = '8px 12px';
+            errorItem.style.color = '#dc3545';
+            errorItem.style.fontSize = '13px';
+            micPopup.appendChild(errorItem);
+            return false;
+        }
+    };
+    
+    // 页面加载后初始化浮动麦克风列表（延迟确保弹出框已创建）
+    setTimeout(() => {
+        console.log('初始化浮动麦克风列表...');
+        window.renderFloatingMicList();
+    }, 1500);
 } // 兼容老按钮
 
 const ready = () => {

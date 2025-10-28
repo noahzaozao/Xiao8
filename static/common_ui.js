@@ -41,12 +41,171 @@ toggleBtn.addEventListener('click', (event) => {
     }
 });
 
-// 让最小化后的小方块本身也能点击还原
-chatContainer.addEventListener('click', (event) => {
-    if (chatContainer.classList.contains('minimized') && event.target === chatContainer) {
-        toggleBtn.click();
+// --- 对话区拖动功能 ---
+(function() {
+    let isDragging = false;
+    let hasMoved = false; // 用于判断是否发生了实际的移动
+    let startMouseX = 0; // 开始拖动时的鼠标X位置
+    let startMouseY = 0; // 开始拖动时的鼠标Y位置
+    let startContainerLeft = 0; // 开始拖动时容器的left值
+    let startContainerBottom = 0; // 开始拖动时容器的bottom值
+
+    // 获取相关元素
+    const chatHeader = document.getElementById('chat-header');
+    const textInputArea = document.getElementById('text-input-area');
+
+    // 开始拖动的函数
+    function startDrag(e, skipPreventDefault = false) {
+        isDragging = true;
+        hasMoved = false;
+        
+        // 获取初始鼠标/触摸位置
+        const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
+        const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+        
+        // 记录开始时的鼠标位置
+        startMouseX = clientX;
+        startMouseY = clientY;
+        
+        // 获取当前容器的实际位置（从计算样式中读取，确保准确）
+        const computedStyle = window.getComputedStyle(chatContainer);
+        startContainerLeft = parseFloat(computedStyle.left) || 0;
+        startContainerBottom = parseFloat(computedStyle.bottom) || 0;
+        
+        console.log('[Drag Start] Mouse:', clientX, clientY, 'Container:', startContainerLeft, startContainerBottom);
+        
+        // 添加拖动样式
+        chatContainer.style.cursor = 'grabbing';
+        if (chatHeader) chatHeader.style.cursor = 'grabbing';
+        
+        // 阻止默认行为（除非明确跳过）
+        if (!skipPreventDefault) {
+            e.preventDefault();
+        }
     }
-});
+
+    // 移动中
+    function onDragMove(e) {
+        if (!isDragging) return;
+        
+        const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
+        const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+        
+        // 计算鼠标的位移
+        const deltaX = clientX - startMouseX;
+        const deltaY = clientY - startMouseY;
+        
+        // 检查是否真的移动了（移动距离超过5px）
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        
+        if (distance > 5) {
+            hasMoved = true;
+        }
+        
+        // 立即更新位置：初始位置 + 鼠标位移
+        const newLeft = startContainerLeft + deltaX;
+        // 注意：Y轴向下为正，但bottom值向上为正，所以要减去deltaY
+        const newBottom = startContainerBottom - deltaY;
+        
+        // 限制在视口内
+        const maxLeft = window.innerWidth - chatContainer.offsetWidth;
+        const maxBottom = window.innerHeight - chatContainer.offsetHeight;
+        
+        chatContainer.style.left = Math.max(0, Math.min(maxLeft, newLeft)) + 'px';
+        chatContainer.style.bottom = Math.max(0, Math.min(maxBottom, newBottom)) + 'px';
+    }
+
+    // 结束拖动
+    function endDrag() {
+        if (isDragging) {
+            const wasDragging = isDragging;
+            const didMove = hasMoved;
+            
+            isDragging = false;
+            hasMoved = false;
+            chatContainer.style.cursor = '';
+            if (chatHeader) chatHeader.style.cursor = '';
+            
+            console.log('[Drag End] Moved:', didMove);
+            
+            // 如果在折叠状态下，没有发生移动，则触发展开
+            if (wasDragging && !didMove && chatContainer.classList.contains('minimized')) {
+                // 使用 setTimeout 确保 click 事件之前执行
+                setTimeout(() => {
+                    toggleBtn.click();
+                }, 0);
+            }
+        }
+    }
+
+    // 展开状态：通过header或输入区域空白处拖动
+    if (chatHeader) {
+        // 鼠标事件
+        chatHeader.addEventListener('mousedown', (e) => {
+            if (!chatContainer.classList.contains('minimized')) {
+                startDrag(e);
+            }
+        });
+        
+        // 触摸事件
+        chatHeader.addEventListener('touchstart', (e) => {
+            if (!chatContainer.classList.contains('minimized')) {
+                startDrag(e);
+            }
+        }, { passive: false });
+    }
+    
+    // 输入区域：点击空白处（不是输入框、按钮等）可以拖动
+    if (textInputArea) {
+        textInputArea.addEventListener('mousedown', (e) => {
+            if (!chatContainer.classList.contains('minimized')) {
+                // 只有点击空白区域才拖动，不包括输入框、按钮等交互元素
+                if (e.target === textInputArea) {
+                    startDrag(e);
+                }
+            }
+        });
+        
+        textInputArea.addEventListener('touchstart', (e) => {
+            if (!chatContainer.classList.contains('minimized')) {
+                if (e.target === textInputArea) {
+                    startDrag(e);
+                }
+            }
+        }, { passive: false });
+    }
+
+    // 折叠状态：点击容器（除了按钮）可以拖动或展开
+    chatContainer.addEventListener('mousedown', (e) => {
+        if (chatContainer.classList.contains('minimized')) {
+            // 如果点击的是切换按钮，不启动拖动
+            if (e.target === toggleBtn || toggleBtn.contains(e.target)) {
+                return;
+            }
+            
+            // 启动拖动（移动时拖动，不移动时会在 endDrag 中展开）
+            startDrag(e, true); // 跳过 preventDefault，允许后续的 click 事件
+        }
+    });
+
+    chatContainer.addEventListener('touchstart', (e) => {
+        if (chatContainer.classList.contains('minimized')) {
+            // 如果点击的是切换按钮，不启动拖动
+            if (e.target === toggleBtn || toggleBtn.contains(e.target)) {
+                return;
+            }
+            
+            // 启动拖动
+            startDrag(e);
+        }
+    }, { passive: false });
+
+    // 全局移动和释放事件
+    document.addEventListener('mousemove', onDragMove);
+    document.addEventListener('touchmove', onDragMove, { passive: false });
+    document.addEventListener('mouseup', endDrag);
+    document.addEventListener('touchend', endDrag);
+})();
 
 // --- Sidebar 折叠/展开功能 ---
 const sidebar = document.getElementById('sidebar');

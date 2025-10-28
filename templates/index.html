@@ -38,6 +38,13 @@
             }
         }
         
+        /* 全局按钮样式 - 防止文字被选中 */
+        button {
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+        }
 
         /* 响应式设计 */
         @media (max-width: 480px) {
@@ -142,6 +149,7 @@
             text-align: center;
             z-index: 21; /* 确保在内容之上 */
             padding: 0;
+            user-select: none;
         }
         
         /* 聊天框标题 */
@@ -158,6 +166,8 @@
             padding: 0 16px;
             box-sizing: border-box;
             z-index: 21;
+            cursor: grab; /* 拖动手柄样式 */
+            user-select: none; /* 防止拖动时选中文字 */
         }
         
         #chat-title {
@@ -616,6 +626,7 @@
             justify-content: center;
             z-index: 10;
             position: relative;
+            user-select: none;
         }
         
         .toggle-mic-selector:hover {
@@ -670,6 +681,7 @@
             font-size: 0.9rem;
             color: #333;
             transition: background-color 0.2s;
+            user-select: none;
         }
         
         .mic-option:hover {
@@ -777,6 +789,8 @@
             top: 20px;
             z-index: 20;
             transition: width 0.3s ease, min-width 0.3s ease, height 0.3s ease, padding 0.3s ease, opacity 0.3s;
+            /* 隐藏侧边栏 */
+            display: none;
         }
 
         #sidebarbox {
@@ -836,6 +850,7 @@
             cursor: pointer;
             opacity: 0.8;
             transition: background 0.2s, color 0.2s, box-shadow 0.2s, top 0.2s, right 0.2s;
+            user-select: none;
         }
 
         #sidebar.minimized #toggle-sidebar-btn {
@@ -865,6 +880,7 @@
             width: 100%; /* 确保所有按钮宽度一致 */
             text-align: center;
             box-sizing: border-box;
+            user-select: none;
         }
 
         .side-btn:active {
@@ -919,6 +935,8 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.08);
             backdrop-filter: blur(8px);
             min-width: 200px;
+            /* 隐藏Agent面板 */
+            display: none !important;
         }
         #agent-controls {
             display: flex;
@@ -1458,7 +1476,7 @@
         <button id="muteButton" class="side-btn" disabled>⏸️ 休息一下</button>
         <button id="screenButton" class="side-btn" disabled><span class="desktop-text">🖥️ 屏幕共享</span><span class="mobile-text">📷 摄像头分享</span></button>
         <button id="stopButton" class="side-btn" disabled>🛑 停止共享</button>
-        <button id="resetSessionButton" class="side-btn" disabled>👋 请她离开</button>
+        <button id="resetSessionButton" class="side-btn">👋 请她离开</button>
         <div id="status"></div>
     </div>
 </div>
@@ -1549,7 +1567,7 @@
 <script src="/static/live2d.js"></script>
 <script src="/static/app.js"></script>
 <script>
-  // 对话区提示框逻辑 - 每次页面加载时显示
+  // 对话区提示框逻辑 - 仅在第一次访问时显示
   (function() {
     // 等待 DOM 和所有脚本完全加载
     window.addEventListener('load', function() {
@@ -1561,21 +1579,17 @@
         const toggleBtn = document.getElementById('toggle-chat-btn');
         let autoCollapseTimer = null;
         
+        // 检查是否是第一次访问（只影响提示框显示）
+        const hasVisitedBefore = localStorage.getItem('chat_tooltip_shown');
+        
         if (chatTooltip && textInputBox && chatContainer && toggleBtn) {
-          // 确保提示框初始是可见的
-          chatTooltip.classList.remove('hidden');
-          
-          // 5秒后自动折叠整个对话区
-          autoCollapseTimer = setTimeout(() => {
-            // 先隐藏提示框（带动画）
+          // 提示框只在第一次访问时显示
+          if (!hasVisitedBefore) {
+            chatTooltip.classList.remove('hidden');
+            localStorage.setItem('chat_tooltip_shown', 'true');
+          } else {
             chatTooltip.classList.add('hidden');
-            // 等待提示框动画完成后再折叠对话区
-            setTimeout(() => {
-              // 直接模拟点击事件
-              toggleBtn.click();
-              console.log('自动折叠对话区');
-            }, 300);
-          }, 5000);
+          }
           
           // 监听文本框焦点事件
           const handleFocus = () => {
@@ -1590,8 +1604,36 @@
             textInputBox.removeEventListener('focus', handleFocus);
           };
           
+          // 监听手动折叠按钮点击事件
+          const handleToggleClick = () => {
+            // 用户手动点击了折叠按钮，取消自动折叠
+            if (autoCollapseTimer) {
+              clearTimeout(autoCollapseTimer);
+              autoCollapseTimer = null;
+              console.log('用户手动折叠对话区，取消自动折叠');
+            }
+            chatTooltip.classList.add('hidden');
+            // 移除监听器，因为已经完成任务
+            toggleBtn.removeEventListener('click', handleToggleClick);
+          };
+          
+          // 注册事件监听器
           textInputBox.addEventListener('focus', handleFocus);
-          console.log('提示框已显示，5秒后将自动折叠');
+          toggleBtn.addEventListener('click', handleToggleClick);
+          
+          // 每次页面加载都执行：5秒后自动折叠整个对话区
+          autoCollapseTimer = setTimeout(() => {
+            // 先隐藏提示框（带动画）
+            chatTooltip.classList.add('hidden');
+            // 等待提示框动画完成后再折叠对话区
+            setTimeout(() => {
+              // 直接模拟点击事件
+              toggleBtn.click();
+              console.log('自动折叠对话区');
+            }, 300);
+          }, 5000);
+          
+          console.log('页面加载完成，5秒后将自动折叠对话区');
         }
       }, 100); // 100ms 延迟确保所有初始化完成
     });
