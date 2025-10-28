@@ -737,7 +737,7 @@ class LLMSessionManager:
                 model=self.model,
                 on_text_delta=self.handle_text_data,
                 on_audio_delta=self.handle_audio_data,
-                on_new_message=self.on_new_message,
+                on_new_message=self.handle_new_message,
                 on_input_transcript=self.handle_input_transcript,
                 on_output_transcript=self.handle_output_transcript,
                 on_connection_error=self.handle_connection_error,
@@ -1102,19 +1102,6 @@ class LLMSessionManager:
                         
                         # 如果是语音模式（OmniRealtimeClient），检查是否支持视觉并直接发送
                         elif isinstance(self.session, OmniRealtimeClient):
-                            # 检查模型是否支持视觉
-                            if "step" in self.model.lower() or "free" in self.model.lower():
-                                error_msg = "当前模型不支持屏幕分享，请切换到支持视觉的API"
-                                logger.warning(f"⚠️ {error_msg}")
-                                await self.send_status(error_msg)
-                                # 发送特殊错误标记，让前端复位按钮
-                                if self.websocket and hasattr(self.websocket, 'client_state') and self.websocket.client_state == self.websocket.client_state.CONNECTED:
-                                    await self.websocket.send_text(json.dumps({
-                                        "type": "screen_share_error",
-                                        "message": error_msg
-                                    }))
-                                return
-                            
                             # 检查WebSocket连接
                             if not hasattr(self.session, 'ws') or not self.session.ws:
                                 logger.error("💥 Stream: Session websocket not available")

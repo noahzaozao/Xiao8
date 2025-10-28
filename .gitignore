@@ -23,6 +23,7 @@ config/api.py
 config/*.json
 env/*
 lanlan_frd.exe
+static/kara
 
 # 忽略临时文件
 *.tmp

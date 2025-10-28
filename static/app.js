@@ -1233,6 +1233,12 @@ function init_app(){
             if (!hasSoundDetected) {
                 hasSoundDetected = true;
                 console.log('麦克风静音检测：检测到声音，RMS =', rms);
+                
+                // 如果之前显示了无声音警告，现在检测到声音了，恢复正常状态显示
+                if (statusElement.textContent.includes('麦克风无声音')) {
+                    statusElement.textContent = '正在语音...';
+                    console.log('麦克风静音检测：检测到声音，已清除警告');
+                }
             }
         }
         

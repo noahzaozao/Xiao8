@@ -4,6 +4,8 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, messages_to_dict, messages_from_dict, HumanMessage, AIMessage
 import json
 import os
+import asyncio
+from openai import RateLimitError
 
 from config.prompts_sys import recent_history_manager_prompt, detailed_recent_history_manager_prompt, further_summarize_prompt, history_review_prompt
 
@@ -88,7 +90,8 @@ class CompressedRecentHistoryManager:
             prompt = detailed_recent_history_manager_prompt % messages_text
 
         retries = 0
-        while retries < 3:
+        max_retries = 3
+        while retries < max_retries:
             try:
                 # 尝试将响应内容解析为JSON
                 llm = self._get_llm()
@@ -112,8 +115,17 @@ class CompressedRecentHistoryManager:
                 else:
                     print('💥 摘要failed: ', response_content)
                     retries += 1
+            except RateLimitError as e:
+                retries += 1
+                if retries >= max_retries:
+                    print(f'❌ 摘要模型失败，已达到最大重试次数: {e}')
+                    break
+                # 指数退避: 1, 2, 4 秒
+                wait_time = 2 ** (retries - 1)
+                print(f'⚠️ 遇到429错误，等待 {wait_time} 秒后重试 (第 {retries}/{max_retries} 次)')
+                await asyncio.sleep(wait_time)
             except Exception as e:
-                print('摘要模型失败：', e)
+                print(f'❌ 摘要模型失败：{e}')
                 # 如果解析失败，重试
                 retries += 1
         # 如果所有重试都失败，返回None
@@ -121,7 +133,8 @@ class CompressedRecentHistoryManager:
 
     async def further_compress(self, initial_summary):
         retries = 0
-        while retries < 3:
+        max_retries = 3
+        while retries < max_retries:
             try:
                 # 尝试将响应内容解析为JSON
                 llm = self._get_llm()
@@ -139,8 +152,17 @@ class CompressedRecentHistoryManager:
                 else:
                     print('💥 第二轮摘要failed: ', response_content)
                     retries += 1
+            except RateLimitError as e:
+                retries += 1
+                if retries >= max_retries:
+                    print(f'❌ 第二轮摘要模型失败，已达到最大重试次数: {e}')
+                    return None
+                # 指数退避: 1, 2, 4 秒
+                wait_time = 2 ** (retries - 1)
+                print(f'⚠️ 遇到429错误，等待 {wait_time} 秒后重试 (第 {retries}/{max_retries} 次)')
+                await asyncio.sleep(wait_time)
             except Exception as e:
-                print('摘要模型失败：', e)
+                print(f'❌ 第二轮摘要模型失败：{e}')
                 retries += 1
         return None
 
@@ -215,65 +237,85 @@ class CompressedRecentHistoryManager:
             print(f"⚠️ {lanlan_name} 的记忆审阅被取消（准备调用LLM前）")
             return False
         
-        try:
-            # 使用LLM审阅历史记录
-            prompt = history_review_prompt % (self.name_mapping['human'], name_mapping['ai'], history_text, self.name_mapping['human'], name_mapping['ai'])
-            review_llm = self._get_review_llm()
-            response_content = (await review_llm.ainvoke(prompt)).content
-            
-            # 检查是否被取消（LLM调用后）
-            if cancel_event and cancel_event.is_set():
-                print(f"⚠️ {lanlan_name} 的记忆审阅被取消（LLM调用后，保存前）")
-                return False
-            
-            # 确保response_content是字符串
-            if isinstance(response_content, list):
-                response_content = str(response_content)
-            
-            # 清理响应内容
-            if response_content.startswith("```"):
-                response_content = response_content.replace('```json', '').replace('```', '')
-            
-            # 解析JSON响应
-            review_result = json.loads(response_content)
-            
-            if '修正说明' in review_result and '修正后的对话' in review_result:
-                print(f"💡 记忆审阅结果：{review_result['修正说明']}")
+        retries = 0
+        max_retries = 3
+        while retries < max_retries:
+            try:
+                # 使用LLM审阅历史记录
+                prompt = history_review_prompt % (self.name_mapping['human'], name_mapping['ai'], history_text, self.name_mapping['human'], name_mapping['ai'])
+                review_llm = self._get_review_llm()
+                response_content = (await review_llm.ainvoke(prompt)).content
                 
-                # 将修正后的对话转换回消息格式
-                corrected_messages = []
-                for msg_data in review_result['修正后的对话']:
-                    role = msg_data.get('role', 'user')
-                    content = msg_data.get('content', '')
+                # 检查是否被取消（LLM调用后）
+                if cancel_event and cancel_event.is_set():
+                    print(f"⚠️ {lanlan_name} 的记忆审阅被取消（LLM调用后，保存前）")
+                    return False
+                
+                # 确保response_content是字符串
+                if isinstance(response_content, list):
+                    response_content = str(response_content)
+                
+                # 清理响应内容
+                if response_content.startswith("```"):
+                    response_content = response_content.replace('```json', '').replace('```', '')
+                
+                # 解析JSON响应
+                review_result = json.loads(response_content)
+                
+                if '修正说明' in review_result and '修正后的对话' in review_result:
+                    print(f"💡 记忆审阅结果：{review_result['修正说明']}")
                     
-                    if role in ['user', 'human', name_mapping['human']]:
-                        corrected_messages.append(HumanMessage(content=content))
-                    elif role in ['ai', 'assistant', name_mapping['ai']]:
-                        corrected_messages.append(AIMessage(content=content))
-                    elif role in ['system', 'system_message', name_mapping['system']]:
-                        corrected_messages.append(SystemMessage(content=content))
-                    else:
-                        # 默认作为用户消息处理
-                        corrected_messages.append(HumanMessage(content=content))
-                
-                # 更新历史记录
-                self.user_histories[lanlan_name] = corrected_messages
-                
-                # 保存到文件
-                with open(self.log_file_path[lanlan_name], "w", encoding='utf-8') as f:
-                    json.dump(messages_to_dict(corrected_messages), f, indent=2, ensure_ascii=False)
-                
-                print(f"✅ {lanlan_name} 的记忆已修正并保存")
-                return True
-            else:
-                print(f"❌ 审阅响应格式错误：{response_content}")
+                    # 将修正后的对话转换回消息格式
+                    corrected_messages = []
+                    for msg_data in review_result['修正后的对话']:
+                        role = msg_data.get('role', 'user')
+                        content = msg_data.get('content', '')
+                        
+                        if role in ['user', 'human', name_mapping['human']]:
+                            corrected_messages.append(HumanMessage(content=content))
+                        elif role in ['ai', 'assistant', name_mapping['ai']]:
+                            corrected_messages.append(AIMessage(content=content))
+                        elif role in ['system', 'system_message', name_mapping['system']]:
+                            corrected_messages.append(SystemMessage(content=content))
+                        else:
+                            # 默认作为用户消息处理
+                            corrected_messages.append(HumanMessage(content=content))
+                    
+                    # 更新历史记录
+                    self.user_histories[lanlan_name] = corrected_messages
+                    
+                    # 保存到文件
+                    with open(self.log_file_path[lanlan_name], "w", encoding='utf-8') as f:
+                        json.dump(messages_to_dict(corrected_messages), f, indent=2, ensure_ascii=False)
+                    
+                    print(f"✅ {lanlan_name} 的记忆已修正并保存")
+                    return True
+                else:
+                    print(f"❌ 审阅响应格式错误：{response_content}")
+                    return False
+                    
+            except RateLimitError as e:
+                retries += 1
+                if retries >= max_retries:
+                    print(f'❌ 记忆审阅失败，已达到最大重试次数: {e}')
+                    return False
+                # 指数退避: 1, 2, 4 秒
+                wait_time = 2 ** (retries - 1)
+                print(f'⚠️ 遇到429错误，等待 {wait_time} 秒后重试 (第 {retries}/{max_retries} 次)')
+                await asyncio.sleep(wait_time)
+                # 检查是否被取消
+                if cancel_event and cancel_event.is_set():
+                    print(f"⚠️ {lanlan_name} 的记忆审阅在重试等待期间被取消")
+                    return False
+            except Exception as e:
+                print(f"❌ 历史记录审阅失败：{e}")
+                import traceback
+                traceback.print_exc()
                 return False
-                
-        except Exception as e:
-            print(f"❌ 历史记录审阅失败：{e}")
-            import traceback
-            traceback.print_exc()
-            return False
+        
+        # 如果所有重试都失败
+        print(f"❌ {lanlan_name} 的记忆审阅失败，已达到最大重试次数")
+        return False
 
     def clear_history(self, lanlan_name):
         """

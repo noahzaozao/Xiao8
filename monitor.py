@@ -1,6 +1,8 @@
-'''
-这个模块在直播用的codebase中是可以运行的。但是，还没有对开源版本进行适配。
-'''
+# -*- coding: utf-8 -*-
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import mimetypes
+mimetypes.add_type("application/javascript", ".js")
 import asyncio
 import json
 import os

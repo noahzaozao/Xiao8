@@ -10,6 +10,8 @@ import logging
 
 from typing import Optional, Callable, Dict, Any, Awaitable
 from enum import Enum
+from langchain_openai import ChatOpenAI
+from config import get_core_config
 
 # Setup logger for this module
 logger = logging.getLogger(__name__)
@@ -97,6 +99,10 @@ class OmniRealtimeClient:
         self._modalities = ["text", "audio"]
         self._audio_in_buffer = False
         self._skip_until_next_response = False
+        # Track image recognition per turn
+        self._image_recognized_this_turn = False
+        self._image_being_analyzed = False
+        self._image_description = "[用户的实时屏幕截图或相机画面正在分析中。你先不要瞎编内容，可以请用户稍等片刻。等收到分析结果后再描述画面。]"
 
     async def connect(self, instructions: str, native_audio=True) -> None:
         """Establish WebSocket connection with the Realtime API."""
@@ -236,36 +242,132 @@ class OmniRealtimeClient:
         }
         await self.send_event(append_event)
 
+    async def _analyze_image_with_vision_model(self, image_b64: str) -> str:
+        """Use VISION_MODEL to analyze image and return description."""
+        try:
+            self._image_being_analyzed = True
+            core_config = get_core_config()
+            vision_model = core_config.get('VISION_MODEL', '')
+            openrouter_url = core_config.get('OPENROUTER_URL', '')
+            openrouter_api_key = core_config.get('OPENROUTER_API_KEY', '')
+            
+            if not vision_model:
+                logger.warning("VISION_MODEL not configured, skipping image analysis")
+                return ""
+            
+            logger.info(f"🖼️ Using VISION_MODEL ({vision_model}) to analyze image")
+            
+            # Create vision LLM client
+            vision_llm = ChatOpenAI(
+                model=vision_model,
+                base_url=openrouter_url,
+                api_key=openrouter_api_key,
+                temperature=0.1,
+                max_tokens=500
+            )
+            
+            # Prepare multi-modal message
+            messages = [
+                {
+                    "role": "system",
+                    "content": "你是一个图像描述助手, 请简洁地描述图片中的主要内容、关键细节和你觉得有趣的地方。你的回答不能超过250字。"
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{image_b64}"
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": "请描述这张图片的内容。"
+                        }
+                    ]
+                }
+            ]
+            
+            # Call vision model
+            response = await vision_llm.ainvoke(messages)
+            description = response.content.strip()
+            self._image_description = f"[用户的实时屏幕截图或相机画面]: {description}"
+            
+            logger.info(f"✅ Image analysis complete.")
+            self._image_being_analyzed = False
+            return description
+            
+        except Exception as e:
+            logger.error(f"Error analyzing image with vision model: {e}")
+            self._image_being_analyzed = False
+            return ""
+    
     async def stream_image(self, image_b64: str) -> None:
         """Stream raw image data to the API."""
-        if self._audio_in_buffer:
-            if "qwen" in self.model:
-                append_event = {
-                    "type": "input_image_buffer.append" ,
-                    "image": image_b64
-                }
-            elif "glm" in self.model:
-                append_event = {
-                    "type": "input_audio_buffer.append_video_frame",
-                    "video_frame": image_b64
-                }
-            elif "gpt" in self.model:
-                append_event = {
-                    "type": "conversation.item.create",
-                    "item": {
-                        "type": "message",
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "input_image",
-                                "image_url": "data:image/jpeg;base64," + image_b64
-                            }
-                        ]
+
+        try:
+            if '用户的实时屏幕截图或相机画面正在分析中' in self._image_description and self.model in ['step', 'free']:
+                await self._analyze_image_with_vision_model(image_b64)
+                return
+
+            if self._audio_in_buffer:
+                if "qwen" in self.model:
+                    append_event = {
+                        "type": "input_image_buffer.append" ,
+                        "image": image_b64
                     }
-                }
-            else:
-                raise ValueError(f"Model does not support video streaming: {self.model}")
-            await self.send_event(append_event)
+                elif "glm" in self.model:
+                    append_event = {
+                        "type": "input_audio_buffer.append_video_frame",
+                        "video_frame": image_b64
+                    }
+                elif "gpt" in self.model:
+                    append_event = {
+                        "type": "conversation.item.create",
+                        "item": {
+                            "type": "message",
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "input_image",
+                                    "image_url": "data:image/jpeg;base64," + image_b64
+                                }
+                            ]
+                        }
+                    }
+                else:
+                    # Model does not support video streaming, use VISION_MODEL to analyze
+                    # Only recognize one image per conversation turn
+                    if not self._image_recognized_this_turn:
+                        text_event = {
+                            "type": "conversation.item.create",
+                            "item": {
+                                "type": "message",
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "input_text",
+                                        "text": self._image_description
+                                    }
+                                ]
+                            }
+                        }
+                        logger.info(f"✅ Image description injected into conversation context: {self._image_description[:100]}...")
+                        await self.send_event(text_event)
+                        self._image_recognized_this_turn = True
+                    
+                    if self._image_being_analyzed:
+                        return
+                    
+                    logger.info(f"⚠️ Model {self.model} does not support video streaming, using VISION_MODEL")
+                    await self._analyze_image_with_vision_model(image_b64)
+                    return
+                    
+                await self.send_event(append_event)
+        except Exception as e:
+            logger.error(f"Error streaming image: {e}")
+            raise e
 
     async def create_response(self, instructions: str, skipped: bool = False) -> None:
         """Request a response from the API. Needed when using manual mode."""
@@ -335,6 +437,7 @@ class OmniRealtimeClient:
                     self._skip_until_next_response = False
                     # 响应完成，确保buffer被清空
                     self._output_transcript_buffer = ""
+                    self._image_recognized_this_turn = False
                     if self.on_response_done:
                         await self.on_response_done()
                 elif event_type == "response.created":

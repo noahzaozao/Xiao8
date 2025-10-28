@@ -191,7 +191,7 @@ def get_core_config():
             config['SUMMARY_MODEL'] = "free-model"
             config['CORRECTION_MODEL'] = "free-model"
             config['EMOTION_MODEL'] = "free-model"
-            config['VISION_MODEL'] = "step-1o-turbo-vision"
+            config['VISION_MODEL'] = "free-vision-model"
             config['AUDIO_API_KEY'] = config['OPENROUTER_API_KEY'] = "free-access"
             config['IS_FREE_VERSION'] = True
         elif 'assistApi' in core_cfg and core_cfg['assistApi']:

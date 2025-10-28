@@ -1,5 +1,7 @@
 import json
+import asyncio
 from langchain_openai import ChatOpenAI
+from openai import RateLimitError
 from config import get_core_config, SETTING_PROPOSER_MODEL, SETTING_VERIFIER_MODEL, get_character_data
 from config.prompts_sys import settings_extractor_prompt, settings_verifier_prompt
 
@@ -47,15 +49,26 @@ class ImportantSettingsManager:
         prompt = prompt.replace("{LANLAN_NAME}", lanlan_name)
 
         retries = 0
-        while retries < 3:
+        max_retries = 3
+        while retries < max_retries:
             try:
                 verifier = self._get_verifier()
                 response = await verifier.ainvoke(prompt)
                 result = response.content
                 if result.startswith("```"):
                     result = result .replace("```json", "").replace("```", "").strip()
+            except RateLimitError as e:
+                retries += 1
+                if retries >= max_retries:
+                    print(f"❌ Setting resolver query失败，已达到最大重试次数: {e}")
+                    return old_settings
+                # 指数退避: 1, 2, 4 秒
+                wait_time = 2 ** (retries - 1)
+                print(f'⚠️ 遇到429错误，等待 {wait_time} 秒后重试 (第 {retries}/{max_retries} 次)')
+                await asyncio.sleep(wait_time)
+                continue
             except Exception as e:
-                print("Setting resolver query出错", e)
+                print(f"❌ Setting resolver query出错: {e}")
                 retries += 1
                 continue
             try:
@@ -64,7 +77,7 @@ class ImportantSettingsManager:
             except json.JSONDecodeError:
                 # 如果解析失败，返回新设定
                 retries += 1
-                print("Setting resolver返回值解析失败。返回值：", response.content)
+                print(f"❌ Setting resolver返回值解析失败。返回值：{response.content}")
         return old_settings
 
     async def extract_and_update_settings(self, messages, lanlan_name):
@@ -86,13 +99,24 @@ class ImportantSettingsManager:
         prompt = settings_extractor_prompt % ("\n".join(lines))
         prompt = prompt.replace('{LANLAN_NAME}', lanlan_name)
         retries = 0
+        max_retries = 3
         new_settings = ""
-        while retries < 3:
+        while retries < max_retries:
             try:
                 proposer = self._get_proposer()
                 response = await proposer.ainvoke(prompt)
+            except RateLimitError as e:
+                retries += 1
+                if retries >= max_retries:
+                    print(f"❌ Setting LLM query失败，已达到最大重试次数: {e}")
+                    return
+                # 指数退避: 1, 2, 4 秒
+                wait_time = 2 ** (retries - 1)
+                print(f'⚠️ 遇到429错误，等待 {wait_time} 秒后重试 (第 {retries}/{max_retries} 次)')
+                await asyncio.sleep(wait_time)
+                continue
             except Exception as e:
-                print("Setting LLM query出错", e)
+                print(f"❌ Setting LLM query出错: {e}")
                 retries += 1
                 continue
             try:
@@ -101,7 +125,7 @@ class ImportantSettingsManager:
                     result = result .replace("```json", "").replace("```", "").strip()
                 new_settings = json.loads(result)
             except json.JSONDecodeError:
-                print("Setting LLM返回的设定JSON解析失败。返回值：", response.content)
+                print(f"❌ Setting LLM返回的设定JSON解析失败。返回值：{response.content}")
                 retries += 1
             break
 

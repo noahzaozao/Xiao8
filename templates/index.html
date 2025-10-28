@@ -165,6 +165,57 @@
             font-weight: 600;
             color: #333;
         }
+
+        /* 对话区提示框 */
+        #chat-tooltip {
+            position: absolute;
+            top: 60px;
+            left: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            z-index: 22;
+            pointer-events: none;
+            animation: slideInBounce 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        #chat-tooltip.hidden {
+            opacity: 0;
+            transform: translateX(-20px);
+            pointer-events: none;
+        }
+
+        #chat-tooltip::after {
+            content: '';
+            position: absolute;
+            top: -6px;
+            left: 20px;
+            width: 0;
+            height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-bottom: 8px solid #667eea;
+        }
+
+        @keyframes slideInBounce {
+            0% {
+                opacity: 0;
+                transform: translateX(-30px) scale(0.8);
+            }
+            60% {
+                opacity: 1;
+                transform: translateX(5px) scale(1.05);
+            }
+            100% {
+                opacity: 1;
+                transform: translateX(0) scale(1);
+            }
+        }
         
         /* 聊天消息样式 */
         #chatContainer {
@@ -665,6 +716,10 @@
             display: none;
         }
 
+        #chat-container.minimized #chat-tooltip {
+            display: none;
+        }
+
         #chat-container.minimized #toggle-chat-btn {
             /* 将按钮居中显示 */
             top: 50%;
@@ -1151,6 +1206,11 @@
         }
 
         @media only screen and (max-width: 768px) {
+            /* 手机端背景设为黑色 */
+            html, body {
+                background: #000 !important;
+            }
+            
             /* 手机端隐藏麦克风选择器 */
             .mic-selector {
                 display: none !important;
@@ -1407,6 +1467,7 @@
         <span id="chat-title">💬 对话</span>
     </div>
     <button id="toggle-chat-btn" title="最小化">—</button>
+    <div id="chat-tooltip">✨ 对话区</div>
     <div id="chat-content-wrapper">
         <div id="chatContainer"></div>
     </div>
@@ -1487,6 +1548,55 @@
 <script src="/static/common_ui.js"></script>
 <script src="/static/live2d.js"></script>
 <script src="/static/app.js"></script>
+<script>
+  // 对话区提示框逻辑 - 每次页面加载时显示
+  (function() {
+    // 等待 DOM 和所有脚本完全加载
+    window.addEventListener('load', function() {
+      // 再等待一小段时间，确保 common_ui.js 的事件监听器已设置
+      setTimeout(function() {
+        const chatTooltip = document.getElementById('chat-tooltip');
+        const textInputBox = document.getElementById('textInputBox');
+        const chatContainer = document.getElementById('chat-container');
+        const toggleBtn = document.getElementById('toggle-chat-btn');
+        let autoCollapseTimer = null;
+        
+        if (chatTooltip && textInputBox && chatContainer && toggleBtn) {
+          // 确保提示框初始是可见的
+          chatTooltip.classList.remove('hidden');
+          
+          // 5秒后自动折叠整个对话区
+          autoCollapseTimer = setTimeout(() => {
+            // 先隐藏提示框（带动画）
+            chatTooltip.classList.add('hidden');
+            // 等待提示框动画完成后再折叠对话区
+            setTimeout(() => {
+              // 直接模拟点击事件
+              toggleBtn.click();
+              console.log('自动折叠对话区');
+            }, 300);
+          }, 5000);
+          
+          // 监听文本框焦点事件
+          const handleFocus = () => {
+            // 用户聚焦了文本框，立即隐藏提示并取消自动折叠
+            if (autoCollapseTimer) {
+              clearTimeout(autoCollapseTimer);
+              autoCollapseTimer = null;
+              console.log('用户聚焦文本框，取消自动折叠');
+            }
+            chatTooltip.classList.add('hidden');
+            // 移除监听器，因为已经完成任务
+            textInputBox.removeEventListener('focus', handleFocus);
+          };
+          
+          textInputBox.addEventListener('focus', handleFocus);
+          console.log('提示框已显示，5秒后将自动折叠');
+        }
+      }, 100); // 100ms 延迟确保所有初始化完成
+    });
+  })();
+</script>
 <script>
   const agentStatusEl = document.getElementById('agent-status');
   let agentStatusTimer = null;
