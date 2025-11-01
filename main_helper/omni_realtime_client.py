@@ -70,6 +70,7 @@ class OmniRealtimeClient:
         on_output_transcript: Optional[Callable[[str, bool], Awaitable[None]]] = None,
         on_connection_error: Optional[Callable[[str], Awaitable[None]]] = None,
         on_response_done: Optional[Callable[[], Awaitable[None]]] = None,
+        on_silence_timeout: Optional[Callable[[], Awaitable[None]]] = None,
         extra_event_handlers: Optional[Dict[str, Callable[[Dict[str, Any]], Awaitable[None]]]] = None
     ):
         self.base_url = base_url
@@ -85,6 +86,7 @@ class OmniRealtimeClient:
         self.turn_detection_mode = turn_detection_mode
         self.on_connection_error = on_connection_error
         self.on_response_done = on_response_done
+        self.on_silence_timeout = on_silence_timeout
         self.extra_event_handlers = extra_event_handlers or {}
 
         # Track current response state
@@ -102,7 +104,46 @@ class OmniRealtimeClient:
         # Track image recognition per turn
         self._image_recognized_this_turn = False
         self._image_being_analyzed = False
-        self._image_description = "[用户的实时屏幕截图或相机画面正在分析中。你先不要瞎编内容，可以请用户稍等片刻。等收到分析结果后再描述画面。]"
+        self._image_description = "[用户的实时屏幕截图或相机画面正在分析中。你先不要瞎编内容，可以请用户稍等片刻。在此期间不要用搜索功能应付。等收到画面分析结果后再描述画面。]"
+        
+        # Silence detection for auto-closing inactive sessions
+        self._last_speech_time = None
+        self._silence_timeout_seconds = 90  # 90秒无语音输入则自动关闭
+        self._silence_check_task = None
+        self._silence_timeout_triggered = False
+
+    async def _check_silence_timeout(self):
+        """定期检查是否超过静默超时时间，如果是则触发超时回调"""
+        try:
+            while self.ws:
+                # 检查websocket是否还有效（直接访问并捕获异常）
+                try:
+                    if not self.ws:
+                        break
+                except Exception:
+                    break
+                    
+                await asyncio.sleep(10)  # 每10秒检查一次
+                
+                if self._silence_timeout_triggered:
+                    continue
+                    
+                if self._last_speech_time is None:
+                    # 还没有检测到任何语音，从现在开始计时
+                    self._last_speech_time = time.time()
+                    continue
+                
+                elapsed = time.time() - self._last_speech_time
+                if elapsed >= self._silence_timeout_seconds:
+                    logger.warning(f"⏰ 检测到{self._silence_timeout_seconds}秒无语音输入，触发自动关闭")
+                    self._silence_timeout_triggered = True
+                    if self.on_silence_timeout:
+                        await self.on_silence_timeout()
+                    break
+        except asyncio.CancelledError:
+            logger.info("静默检测任务被取消")
+        except Exception as e:
+            logger.error(f"静默检测任务出错: {e}")
 
     async def connect(self, instructions: str, native_audio=True) -> None:
         """Establish WebSocket connection with the Realtime API."""
@@ -111,6 +152,13 @@ class OmniRealtimeClient:
             "Authorization": f"Bearer {self.api_key}"
         } 
         self.ws = await websockets.connect(url, additional_headers=headers)
+        
+        # 启动静默检测任务
+        self._last_speech_time = time.time()
+        self._silence_timeout_triggered = False
+        if self._silence_check_task:
+            self._silence_check_task.cancel()
+        self._silence_check_task = asyncio.create_task(self._check_silence_timeout())
 
         # Set up default session configuration
         if self.turn_detection_mode == TurnDetectionMode.MANUAL:
@@ -221,7 +269,11 @@ class OmniRealtimeClient:
     async def send_event(self, event) -> None:
         event['event_id'] = "event_" + str(int(time.time() * 1000))
         if self.ws:
-            await self.ws.send(json.dumps(event))
+            try:
+                await self.ws.send(json.dumps(event))
+            except Exception as e:
+                logger.warning(f"⚠️ 发送事件失败: {e}")
+                raise
 
     async def update_session(self, config: Dict[str, Any]) -> None:
         """Update session configuration."""
@@ -452,6 +504,8 @@ class OmniRealtimeClient:
                 elif event_type == "input_audio_buffer.speech_started":
                     logger.info("Speech detected")
                     self._audio_in_buffer = True
+                    # 重置静默计时器
+                    self._last_speech_time = time.time()
                     if self._is_responding:
                         logger.info("Handling interruption")
                         await self.handle_interruption()
@@ -521,6 +575,18 @@ class OmniRealtimeClient:
 
     async def close(self) -> None:
         """Close the WebSocket connection."""
+        # 取消静默检测任务
+        if self._silence_check_task:
+            self._silence_check_task.cancel()
+            try:
+                await self._silence_check_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.error(f"Error cancelling silence check task: {e}")
+            finally:
+                self._silence_check_task = None
+        
         if self.ws:
             try:
                 # 尝试关闭websocket连接

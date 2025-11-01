@@ -221,12 +221,6 @@ class OmniOfflineClient:
                 await self.handle_connection_error(error_msg)
         finally:
             self._is_responding = False
-            
-            # Switch back to original model if we switched to vision model
-            if has_images and self.vision_model and self.model != original_model:
-                logger.info(f"🔄 Switching back to text model: {original_model}")
-                self.switch_model(original_model)
-            
             # Call response done callback
             if self.on_response_done:
                 await self.on_response_done()

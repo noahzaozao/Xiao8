@@ -27,7 +27,7 @@ def step_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice
     
     Args:
         request_queue: 多进程请求队列，接收(speech_id, text)元组
-        response_queue: 多进程响应队列，发送音频数据
+        response_queue: 多进程响应队列，发送音频数据（也用于发送就绪信号）
         audio_api_key: API密钥
         voice_id: 音色ID，默认使用"qingchunshaonv"
     """
@@ -79,10 +79,14 @@ def step_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice
                 await asyncio.wait_for(wait_for_connection(), timeout=5.0)
             except asyncio.TimeoutError:
                 logger.error("等待连接超时")
+                # 发送失败信号
+                response_queue.put(("__ready__", False))
                 return
             
             if not session_ready.is_set() or not session_id:
                 logger.error("连接未能正确建立")
+                # 发送失败信号
+                response_queue.put(("__ready__", False))
                 return
             
             # 发送创建会话事件
@@ -113,9 +117,13 @@ def step_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice
                     logger.error(f"等待会话创建时出错: {e}")
             
             try:
-                await asyncio.wait_for(wait_for_session_ready(), timeout=3.0)
+                await asyncio.wait_for(wait_for_session_ready(), timeout=1.0)
             except asyncio.TimeoutError:
                 logger.warning("会话创建超时")
+            
+            # 发送就绪信号，通知主进程 TTS 已经可以使用
+            logger.info("StepFun TTS 已就绪，发送就绪信号")
+            response_queue.put(("__ready__", True))
             
             # 初始接收任务
             async def receive_messages_initial():
@@ -210,7 +218,7 @@ def step_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice
                                 pass
                         
                         try:
-                            await asyncio.wait_for(wait_conn(), timeout=3.0)
+                            await asyncio.wait_for(wait_conn(), timeout=1.0)
                         except asyncio.TimeoutError:
                             logger.warning("新连接超时")
                             continue
@@ -286,6 +294,12 @@ def step_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice
                     await ws.send(json.dumps(text_event))
                 except Exception as e:
                     logger.error(f"发送TTS文本失败: {e}")
+                    # 连接已关闭，标记为无效以便下次重连
+                    ws = None
+                    session_id = None
+                    current_speech_id = None  # 清空ID以强制下次重连
+                    if receive_task and not receive_task.done():
+                        receive_task.cancel()
         
         except Exception as e:
             logger.error(f"StepFun实时TTS Worker错误: {e}")
@@ -318,7 +332,7 @@ def qwen_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice
     
     Args:
         request_queue: 多进程请求队列，接收(speech_id, text)元组
-        response_queue: 多进程响应队列，发送音频数据
+        response_queue: 多进程响应队列，发送音频数据（也用于发送就绪信号）
         audio_api_key: API密钥
         voice_id: 音色ID，默认使用"Cherry"
     """
@@ -383,11 +397,17 @@ def qwen_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice
                 await asyncio.wait_for(wait_for_session_ready(), timeout=5.0)
             except asyncio.TimeoutError:
                 logger.error("❌ 等待会话就绪超时")
+                response_queue.put(("__ready__", False))
                 return
             
             if not session_ready.is_set():
                 logger.error("❌ 会话未能正确初始化")
+                response_queue.put(("__ready__", False))
                 return
+            
+            # 发送就绪信号
+            logger.info("Qwen TTS 已就绪，发送就绪信号")
+            response_queue.put(("__ready__", True))
             
             # 初始接收任务（会在每次新 speech_id 时重新创建）
             async def receive_messages_initial():
@@ -523,6 +543,13 @@ def qwen_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice
                     }))
                 except Exception as e:
                     logger.error(f"发送TTS文本失败: {e}")
+                    # 连接已关闭，标记为无效以便下次重连
+                    ws = None
+                    session_id = None
+                    current_speech_id = None  # 清空ID以强制下次重连
+                    session_ready.clear()
+                    if receive_task and not receive_task.done():
+                        receive_task.cancel()
         
         except Exception as e:
             logger.error(f"Qwen实时TTS Worker错误: {e}")
@@ -554,7 +581,7 @@ def cosyvoice_vc_tts_worker(request_queue, response_queue, audio_api_key, voice_
     
     Args:
         request_queue: 多进程请求队列，接收(speech_id, text)元组
-        response_queue: 多进程响应队列，发送音频数据
+        response_queue: 多进程响应队列，发送音频数据（也用于发送就绪信号）
         audio_api_key: API密钥
         voice_id: 音色ID
     """
@@ -562,6 +589,10 @@ def cosyvoice_vc_tts_worker(request_queue, response_queue, audio_api_key, voice_
     from dashscope.audio.tts_v2 import ResultCallback, SpeechSynthesizer, AudioFormat
     
     dashscope.api_key = audio_api_key
+    
+    # CosyVoice 不需要预连接，直接发送就绪信号
+    logger.info("CosyVoice TTS 已就绪，发送就绪信号")
+    response_queue.put(("__ready__", True))
     
     class Callback(ResultCallback):
         def __init__(self, response_queue):
@@ -660,7 +691,7 @@ def cogtts_tts_worker(request_queue, response_queue, audio_api_key, voice_id):
     
     Args:
         request_queue: 多进程请求队列，接收(speech_id, text)元组
-        response_queue: 多进程响应队列，发送音频数据
+        response_queue: 多进程响应队列，发送音频数据（也用于发送就绪信号）
         audio_api_key: API密钥
         voice_id: 音色ID，默认使用"tongtong"（支持：tongtong, chuichui, xiaochen, jam, kazi, douji, luodo）
     """
@@ -675,6 +706,10 @@ def cogtts_tts_worker(request_queue, response_queue, audio_api_key, voice_id):
         tts_url = "https://open.bigmodel.cn/api/paas/v4/audio/speech"
         current_speech_id = None
         text_buffer = []  # 累积文本缓冲区
+        
+        # CogTTS 是基于 HTTP 的，无需建立持久连接，直接发送就绪信号
+        logger.info("CogTTS TTS 已就绪，发送就绪信号")
+        response_queue.put(("__ready__", True))
         
         try:
             loop = asyncio.get_running_loop()
@@ -817,11 +852,14 @@ def dummy_tts_worker(request_queue, response_queue, audio_api_key, voice_id):
     
     Args:
         request_queue: 多进程请求队列，接收(speech_id, text)元组
-        response_queue: 多进程响应队列（不使用）
+        response_queue: 多进程响应队列（也用于发送就绪信号）
         audio_api_key: API密钥（不使用）
         voice_id: 音色ID（不使用）
     """
     logger.warning("TTS Worker 未启用，不会生成语音")
+    
+    # 立即发送就绪信号
+    response_queue.put(("__ready__", True))
     
     while True:
         try:

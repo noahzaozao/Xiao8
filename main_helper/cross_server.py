@@ -16,7 +16,6 @@ import logging
 from config import MONITOR_SERVER_PORT, MEMORY_SERVER_PORT, COMMENTER_SERVER_PORT, TOOL_SERVER_PORT
 from datetime import datetime
 import json
-import requests
 import re
 from utils.frontend_utils import contains_chinese, replace_blank, replace_corner_mark, remove_bracket, spell_out_number, \
     is_only_punctuation, split_paragraph
@@ -162,6 +161,12 @@ def sync_connector_process(message_queue, shutdown_event, lanlan_name, sync_serv
                                 text_output_cache = ''
 
                             if message["data"] == "renew session":
+                                # 先处理未完成的用户输入缓存（如果有）
+                                if user_input_cache:
+                                    chat_history.append({'role': 'user', 'content': [{"type": "text", "text": user_input_cache}]})
+                                    user_input_cache = ''
+                                
+                                # 再处理未完成的输出缓存（如果有）
                                 current_turn = 'user'
                                 text_output_cache = normalize_text(text_output_cache)
                                 if len(text_output_cache) > 0:
@@ -170,15 +175,17 @@ def sync_connector_process(message_queue, shutdown_event, lanlan_name, sync_serv
                                 text_output_cache = ''
                                 logger.info(f"[{lanlan_name}] 热重置：聊天历史长度 {len(chat_history)} 条消息")
                                 try:
-                                    response = requests.post(
-                                        f"http://localhost:{MEMORY_SERVER_PORT}/renew/{lanlan_name}",
-                                        json={'input_history': json.dumps(chat_history, indent=2, ensure_ascii=False)},
-                                        timeout=5.0
-                                    )
-                                    if response.json()['status'] == 'error':
-                                        logger.error(f"[{lanlan_name}] 热重置记忆处理失败: {response.json()['message']}")
-                                    else:
-                                        logger.info(f"[{lanlan_name}] 热重置记忆已成功上传到 memory_server")
+                                    async with aiohttp.ClientSession() as session:
+                                        async with session.post(
+                                            f"http://localhost:{MEMORY_SERVER_PORT}/renew/{lanlan_name}",
+                                            json={'input_history': json.dumps(chat_history, indent=2, ensure_ascii=False)},
+                                            timeout=aiohttp.ClientTimeout(total=30.0)
+                                        ) as response:
+                                            result = await response.json()
+                                            if result.get('status') == 'error':
+                                                logger.error(f"[{lanlan_name}] 热重置记忆处理失败: {result.get('message')}")
+                                            else:
+                                                logger.info(f"[{lanlan_name}] 热重置记忆已成功上传到 memory_server")
                                 except Exception as e:
                                     logger.error(f"[{lanlan_name}] 调用 /renew API 失败: {e}")
                                 chat_history.clear()
@@ -206,16 +213,24 @@ def sync_connector_process(message_queue, shutdown_event, lanlan_name, sync_serv
                                                 continue
                                             recent.append({'role': item.get('role'), 'text': txt})
                                     if recent:
-                                        requests.post(
-                                            f"http://localhost:{TOOL_SERVER_PORT}/analyze_and_plan",
-                                            json={'messages': recent, 'lanlan_name': lanlan_name},
-                                            timeout=0.2
-                                        )
+                                        async with aiohttp.ClientSession() as session:
+                                            await asyncio.wait_for(
+                                                session.post(
+                                                    f"http://localhost:{TOOL_SERVER_PORT}/analyze_and_plan",
+                                                    json={'messages': recent, 'lanlan_name': lanlan_name}
+                                                ),
+                                                timeout=0.2
+                                            )
                                 except Exception:
                                     pass
 
                             elif message["data"] == 'session end': # 当前session结束了
-                                # 先处理未完成的输出缓存（如果有）
+                                # 先处理未完成的用户输入缓存（如果有）
+                                if user_input_cache:
+                                    chat_history.append({'role': 'user', 'content': [{"type": "text", "text": user_input_cache}]})
+                                    user_input_cache = ''
+                                
+                                # 再处理未完成的输出缓存（如果有）
                                 current_turn = 'user'
                                 text_output_cache = normalize_text(text_output_cache)
                                 if len(text_output_cache) > 0:
@@ -237,26 +252,31 @@ def sync_connector_process(message_queue, shutdown_event, lanlan_name, sync_serv
                                                 continue
                                             recent.append({'role': item.get('role'), 'text': txt})
                                     if recent:
-                                        requests.post(
-                                            f"http://localhost:{TOOL_SERVER_PORT}/analyze_and_plan",
-                                            json={'messages': recent, 'lanlan_name': lanlan_name},
-                                            timeout=0.2
-                                        )
+                                        async with aiohttp.ClientSession() as session:
+                                            await asyncio.wait_for(
+                                                session.post(
+                                                    f"http://localhost:{TOOL_SERVER_PORT}/analyze_and_plan",
+                                                    json={'messages': recent, 'lanlan_name': lanlan_name}
+                                                ),
+                                                timeout=0.2
+                                            )
                                 except Exception:
                                     pass
                                 
                                 # 处理聊天历史
                                 logger.info(f"[{lanlan_name}] 会话结束：开始处理聊天历史，共 {len(chat_history)} 条消息")
                                 try:
-                                    response = requests.post(
-                                        f"http://localhost:{MEMORY_SERVER_PORT}/process/{lanlan_name}",
-                                        json={'input_history': json.dumps(chat_history, indent=2, ensure_ascii=False)},
-                                        timeout=5.0
-                                    )
-                                    if response.json()['status'] == 'error':
-                                        logger.error(f"[{lanlan_name}] 会话记忆处理失败: {response.json()['message']}")
-                                    else:
-                                        logger.info(f"[{lanlan_name}] 会话记忆已成功上传到 memory_server")
+                                    async with aiohttp.ClientSession() as session:
+                                        async with session.post(
+                                            f"http://localhost:{MEMORY_SERVER_PORT}/process/{lanlan_name}",
+                                            json={'input_history': json.dumps(chat_history, indent=2, ensure_ascii=False)},
+                                            timeout=aiohttp.ClientTimeout(total=30.0)
+                                        ) as response:
+                                            result = await response.json()
+                                            if result.get('status') == 'error':
+                                                logger.error(f"[{lanlan_name}] 会话记忆处理失败: {result.get('message')}")
+                                            else:
+                                                logger.info(f"[{lanlan_name}] 会话记忆已成功上传到 memory_server")
                                 except Exception as e:
                                     logger.error(f"[{lanlan_name}] 调用 /process API 失败: {e}")
                                 chat_history.clear()

@@ -25,6 +25,7 @@ dependencies = [
   "pillow",
   "pyautogui",
   "gui-agents",
+  "pyinstaller>=6.16.0",
 ]
 
 

@@ -18,7 +18,7 @@ from main_helper import core as core, cross_server as cross_server
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse
 from utils.preferences import load_user_preferences, update_model_preferences, validate_model_preferences, move_model_to_top
-from utils.frontend_utils import find_models, find_model_config_file
+from utils.frontend_utils import find_models, find_model_config_file, find_model_directory
 from multiprocessing import Process, Queue, Event
 import atexit
 import dashscope
@@ -27,11 +27,19 @@ import requests
 import httpx
 import pathlib, wave
 from openai import AsyncOpenAI
-from config import get_character_data, get_core_config, MAIN_SERVER_PORT, MONITOR_SERVER_PORT, MODELS_WITH_EXTRA_BODY, load_characters, save_characters, TOOL_SERVER_PORT, CORE_CONFIG_PATH
-from config.prompts_sys import emotion_analysis_prompt
+from config import get_character_data, get_core_config, MAIN_SERVER_PORT, MONITOR_SERVER_PORT, MEMORY_SERVER_PORT, MODELS_WITH_EXTRA_BODY, load_characters, save_characters, TOOL_SERVER_PORT, CORE_CONFIG_PATH
+from config.prompts_sys import emotion_analysis_prompt, proactive_chat_prompt
 import glob
 
-templates = Jinja2Templates(directory="./")
+# 确定 templates 目录位置（支持 PyInstaller 打包）
+if getattr(sys, 'frozen', False):
+    # 打包后运行：从 _MEIPASS 读取
+    template_dir = sys._MEIPASS
+else:
+    # 正常运行：当前目录
+    template_dir = "./"
+
+templates = Jinja2Templates(directory=template_dir)
 
 # Configure logging
 from utils.logger_config import setup_logging
@@ -76,7 +84,25 @@ class CustomStaticFiles(StaticFiles):
         if path.endswith('.js'):
             response.headers['Content-Type'] = 'application/javascript'
         return response
-app.mount("/static", CustomStaticFiles(directory="static"), name="static")
+
+# 确定 static 目录位置（支持 PyInstaller 打包）
+if getattr(sys, 'frozen', False):
+    # 打包后运行：从 _MEIPASS 读取（onedir 模式下是 _internal）
+    static_dir = os.path.join(sys._MEIPASS, 'static')
+else:
+    # 正常运行：当前目录
+    static_dir = 'static'
+
+app.mount("/static", CustomStaticFiles(directory=static_dir), name="static")
+
+# 挂载用户文档下的live2d目录
+from utils.config_manager import get_config_manager
+_config_manager = get_config_manager()
+_config_manager.ensure_live2d_directory()
+user_live2d_path = str(_config_manager.live2d_dir)
+if os.path.exists(user_live2d_path):
+    app.mount("/user_live2d", CustomStaticFiles(directory=user_live2d_path), name="user_live2d")
+    logger.info(f"已挂载用户Live2D目录: {user_live2d_path}")
 
 # 使用 FastAPI 的 app.state 来管理启动配置
 def get_start_config():
@@ -366,6 +392,9 @@ async def websocket_endpoint(websocket: WebSocket, lanlan_name: str):
         global session_id
         session_id[lanlan_name] = this_session_id
     logger.info(f"⭐websocketWebSocket accepted: {websocket.client}, new session id: {session_id[lanlan_name]}, lanlan_name: {lanlan_name}")
+    
+    # 立即设置websocket到session manager，以支持主动搭话
+    session_manager[lanlan_name].websocket = websocket
 
     try:
         while True:
@@ -421,6 +450,9 @@ async def websocket_endpoint(websocket: WebSocket, lanlan_name: str):
     finally:
         logger.info(f"Cleaning up WebSocket resources: {websocket.client}")
         await session_manager[lanlan_name].cleanup()
+        # cleanup() 已经会清理 websocket，但为了确保，再次检查
+        if session_manager[lanlan_name].websocket == websocket:
+            session_manager[lanlan_name].websocket = None
 
 @app.post('/api/notify_task_result')
 async def notify_task_result(request: Request):
@@ -428,7 +460,8 @@ async def notify_task_result(request: Request):
     try:
         data = await request.json()
         # 如果未显式提供，则使用当前默认角色
-        lanlan = data.get('lanlan_name') or her_name
+        _, her_name_current, _, _, _, _, _, _, _, _ = get_character_data()
+        lanlan = data.get('lanlan_name') or her_name_current
         text = (data.get('text') or '').strip()
         if not text:
             return JSONResponse({"success": False, "error": "text required"}, status_code=400)
@@ -441,12 +474,211 @@ async def notify_task_result(request: Request):
     except Exception as e:
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
+@app.post('/api/proactive_chat')
+async def proactive_chat(request: Request):
+    """主动搭话：爬取热门内容，让AI决定是否主动发起对话"""
+    try:
+        from utils.web_scraper import fetch_trending_content, format_trending_content
+        
+        # 获取当前角色数据
+        master_name_current, her_name_current, _, _, _, _, _, _, _, _ = get_character_data()
+        
+        data = await request.json()
+        lanlan_name = data.get('lanlan_name') or her_name_current
+        
+        # 获取session manager
+        mgr = session_manager.get(lanlan_name)
+        if not mgr:
+            return JSONResponse({"success": False, "error": f"角色 {lanlan_name} 不存在"}, status_code=404)
+        
+        # 检查是否正在响应中（如果正在说话，不打断）
+        if mgr.is_active and hasattr(mgr.session, '_is_responding') and mgr.session._is_responding:
+            return JSONResponse({
+                "success": False, 
+                "error": "AI正在响应中，无法主动搭话",
+                "message": "请等待当前响应完成"
+            }, status_code=409)
+        
+        logger.info(f"[{lanlan_name}] 开始主动搭话流程...")
+        
+        # 1. 爬取热门内容
+        try:
+            trending_content = await fetch_trending_content(bilibili_limit=10, weibo_limit=10)
+            
+            if not trending_content['success']:
+                return JSONResponse({
+                    "success": False,
+                    "error": "无法获取热门内容",
+                    "detail": trending_content.get('error', '未知错误')
+                }, status_code=500)
+            
+            formatted_content = format_trending_content(trending_content)
+            logger.info(f"[{lanlan_name}] 成功获取热门内容")
+            
+        except Exception as e:
+            logger.error(f"[{lanlan_name}] 获取热门内容失败: {e}")
+            return JSONResponse({
+                "success": False,
+                "error": "爬取热门内容时出错",
+                "detail": str(e)
+            }, status_code=500)
+        
+        # 2. 获取new_dialogue prompt
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(f"http://localhost:{MEMORY_SERVER_PORT}/new_dialog/{lanlan_name}", timeout=5.0)
+                memory_context = resp.text
+        except Exception as e:
+            logger.warning(f"[{lanlan_name}] 获取记忆上下文失败，使用空上下文: {e}")
+            memory_context = ""
+        
+        # 3. 构造提示词（使用prompts_sys中的模板）
+        system_prompt = proactive_chat_prompt.format(
+            lanlan_name=lanlan_name,
+            master_name=master_name_current,
+            trending_content=formatted_content,
+            memory_context=memory_context
+        )
+
+        # 4. 直接使用langchain ChatOpenAI获取AI回复（不创建临时session）
+        try:
+            core_config = get_core_config()
+            
+            # 直接使用langchain ChatOpenAI发送请求
+            from langchain_openai import ChatOpenAI
+            from langchain_core.messages import SystemMessage
+            
+            llm = ChatOpenAI(
+                model=core_config['CORRECTION_MODEL'],
+                base_url=core_config['OPENROUTER_URL'],
+                api_key=core_config['OPENROUTER_API_KEY'],
+                temperature=1.1,
+                streaming=False  # 不需要流式，直接获取完整响应
+            )
+            
+            # 发送请求获取AI决策
+            print(system_prompt)
+            response = await asyncio.wait_for(
+                llm.ainvoke([SystemMessage(content=system_prompt)]),
+                timeout=10.0
+            )
+            response_text = response.content.strip()
+            
+            logger.info(f"[{lanlan_name}] AI决策结果: {response_text[:100]}...")
+            
+            # 5. 判断AI是否选择搭话
+            if "[PASS]" in response_text or not response_text:
+                return JSONResponse({
+                    "success": True,
+                    "action": "pass",
+                    "message": "AI选择暂时不搭话"
+                })
+            
+            # 6. AI选择搭话，需要通过session manager处理
+            # 首先检查是否有真实的websocket连接
+            if not mgr.websocket:
+                return JSONResponse({
+                    "success": False,
+                    "error": "没有活跃的WebSocket连接，无法主动搭话。请先打开前端页面。"
+                }, status_code=400)
+            
+            # 检查websocket是否连接
+            try:
+                from starlette.websockets import WebSocketState
+                if hasattr(mgr.websocket, 'client_state'):
+                    if mgr.websocket.client_state != WebSocketState.CONNECTED:
+                        return JSONResponse({
+                            "success": False,
+                            "error": "WebSocket未连接，无法主动搭话"
+                        }, status_code=400)
+            except Exception as e:
+                logger.warning(f"检查WebSocket状态失败: {e}")
+            
+            # 检查是否有现有的session，如果没有则创建一个文本session
+            session_created = False
+            if not mgr.session or not hasattr(mgr.session, '_conversation_history'):
+                logger.info(f"[{lanlan_name}] 没有活跃session，创建文本session用于主动搭话")
+                # 使用现有的真实websocket启动session
+                await mgr.start_session(mgr.websocket, new=True, input_mode='text')
+                session_created = True
+                logger.info(f"[{lanlan_name}] 文本session已创建")
+            
+            # 如果是新创建的session，等待TTS准备好
+            if session_created and mgr.use_tts:
+                logger.info(f"[{lanlan_name}] 等待TTS准备...")
+                max_wait = 5  # 最多等待5秒
+                wait_step = 0.1
+                waited = 0
+                while waited < max_wait:
+                    async with mgr.tts_cache_lock:
+                        if mgr.tts_ready:
+                            logger.info(f"[{lanlan_name}] TTS已准备好")
+                            break
+                    await asyncio.sleep(wait_step)
+                    waited += wait_step
+                
+                if waited >= max_wait:
+                    logger.warning(f"[{lanlan_name}] TTS准备超时，继续发送（可能没有语音）")
+            
+            # 现在可以将AI的话添加到对话历史中
+            from langchain_core.messages import AIMessage
+            mgr.session._conversation_history.append(AIMessage(content=response_text))
+            logger.info(f"[{lanlan_name}] 已将主动搭话添加到对话历史")
+            
+            # 生成新的speech_id（用于TTS）
+            from uuid import uuid4
+            async with mgr.lock:
+                mgr.current_speech_id = str(uuid4())
+            
+            # 通过handle_text_data处理这段话（触发TTS和前端显示）
+            # 分chunk发送以模拟流式效果
+            chunks = [response_text[i:i+10] for i in range(0, len(response_text), 10)]
+            for i, chunk in enumerate(chunks):
+                await mgr.handle_text_data(chunk, is_first_chunk=(i == 0))
+                await asyncio.sleep(0.05)  # 小延迟模拟流式
+            
+            # 调用response完成回调
+            if hasattr(mgr, 'handle_response_complete'):
+                await mgr.handle_response_complete()
+            
+            return JSONResponse({
+                "success": True,
+                "action": "chat",
+                "message": "主动搭话已发送",
+                "lanlan_name": lanlan_name
+            })
+            
+        except asyncio.TimeoutError:
+            logger.error(f"[{lanlan_name}] AI回复超时")
+            return JSONResponse({
+                "success": False,
+                "error": "AI处理超时"
+            }, status_code=504)
+        except Exception as e:
+            logger.error(f"[{lanlan_name}] AI处理失败: {e}")
+            logger.error(traceback.format_exc())
+            return JSONResponse({
+                "success": False,
+                "error": "AI处理失败",
+                "detail": str(e)
+            }, status_code=500)
+        
+    except Exception as e:
+        logger.error(f"主动搭话接口异常: {e}")
+        logger.error(traceback.format_exc())
+        return JSONResponse({
+            "success": False,
+            "error": "服务器内部错误",
+            "detail": str(e)
+        }, status_code=500)
+
 @app.get("/l2d", response_class=HTMLResponse)
 async def get_l2d_manager(request: Request, lanlan_name: str = ""):
     """渲染Live2D模型管理器页面"""
+    _, her_name_current, _, _, _, _, _, _, _, _ = get_character_data()
     return templates.TemplateResponse("templates/l2d_manager.html", {
         "request": request,
-        "lanlan_name": lanlan_name
+        "lanlan_name": lanlan_name if lanlan_name else her_name_current
     })
 
 @app.get('/api/characters/current_live2d_model')
@@ -1145,8 +1377,8 @@ async def get_recent_file(filename: str):
 async def get_model_config(model_name: str):
     """获取指定Live2D模型的model3.json配置"""
     try:
-        # 在模型目录中查找.model3.json文件
-        model_dir = os.path.join('static', model_name)
+        # 查找模型目录（可能在static或用户文档目录）
+        model_dir, url_prefix = find_model_directory(model_name)
         if not os.path.exists(model_dir):
             return JSONResponse(status_code=404, content={"success": False, "error": "模型目录不存在"})
         
@@ -1198,8 +1430,8 @@ async def update_model_config(model_name: str, request: Request):
     try:
         data = await request.json()
         
-        # 在模型目录中查找.model3.json文件
-        model_dir = os.path.join('static', model_name)
+        # 查找模型目录（可能在static或用户文档目录）
+        model_dir, url_prefix = find_model_directory(model_name)
         if not os.path.exists(model_dir):
             return JSONResponse(status_code=404, content={"success": False, "error": "模型目录不存在"})
         
@@ -1235,8 +1467,8 @@ async def update_model_config(model_name: str, request: Request):
 async def get_model_files(model_name: str):
     """获取指定Live2D模型的动作和表情文件列表"""
     try:
-        # 构建模型目录路径
-        model_dir = os.path.join(os.path.dirname(__file__), 'static', model_name)
+        # 查找模型目录（可能在static或用户文档目录）
+        model_dir, url_prefix = find_model_directory(model_name)
         
         if not os.path.exists(model_dir):
             return {"success": False, "error": f"模型 {model_name} 不存在"}
@@ -1294,8 +1526,8 @@ async def live2d_emotion_manager(request: Request):
 async def get_emotion_mapping(model_name: str):
     """获取情绪映射配置"""
     try:
-        # 在模型目录中查找.model3.json文件
-        model_dir = os.path.join('static', model_name)
+        # 查找模型目录（可能在static或用户文档目录）
+        model_dir, url_prefix = find_model_directory(model_name)
         if not os.path.exists(model_dir):
             return JSONResponse(status_code=404, content={"success": False, "error": "模型目录不存在"})
         
@@ -1356,6 +1588,83 @@ async def get_emotion_mapping(model_name: str):
         logger.error(f"获取情绪映射配置失败: {e}")
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
+@app.post('/api/live2d/upload_model')
+async def upload_live2d_model(files: list[UploadFile] = File(...)):
+    """上传Live2D模型到用户文档目录"""
+    import shutil
+    import tempfile
+    import zipfile
+    
+    try:
+        if not files:
+            return JSONResponse(status_code=400, content={"success": False, "error": "没有上传文件"})
+        
+        # 创建临时目录来处理上传的文件
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = pathlib.Path(temp_dir)
+            
+            # 保存所有上传的文件到临时目录，保持目录结构
+            for file in files:
+                # 从文件的相对路径中提取目录结构
+                file_path = file.filename
+                # 确保路径安全，移除可能的危险路径字符
+                file_path = file_path.replace('\\', '/').lstrip('/')
+                
+                target_file_path = temp_path / file_path
+                target_file_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                # 保存文件
+                with open(target_file_path, 'wb') as f:
+                    content = await file.read()
+                    f.write(content)
+            
+            # 在临时目录中递归查找.model3.json文件
+            model_json_files = list(temp_path.rglob('*.model3.json'))
+            
+            if not model_json_files:
+                return JSONResponse(status_code=400, content={"success": False, "error": "未找到.model3.json文件"})
+            
+            if len(model_json_files) > 1:
+                return JSONResponse(status_code=400, content={"success": False, "error": "上传的文件中包含多个.model3.json文件"})
+            
+            model_json_file = model_json_files[0]
+            
+            # 确定模型根目录（.model3.json文件的父目录）
+            model_root_dir = model_json_file.parent
+            model_name = model_root_dir.name
+            
+            # 获取用户文档的live2d目录
+            config_mgr = get_config_manager()
+            config_mgr.ensure_live2d_directory()
+            user_live2d_dir = config_mgr.live2d_dir
+            
+            # 目标目录
+            target_model_dir = user_live2d_dir / model_name
+            
+            # 如果目标目录已存在，返回错误或覆盖（这里选择返回错误）
+            if target_model_dir.exists():
+                return JSONResponse(status_code=400, content={
+                    "success": False, 
+                    "error": f"模型 {model_name} 已存在，请先删除或重命名现有模型"
+                })
+            
+            # 复制模型根目录到用户文档的live2d目录
+            shutil.copytree(model_root_dir, target_model_dir)
+            
+            logger.info(f"成功上传Live2D模型: {model_name} -> {target_model_dir}")
+            
+            return JSONResponse(content={
+                "success": True,
+                "message": f"模型 {model_name} 上传成功",
+                "model_name": model_name,
+                "model_path": str(target_model_dir)
+            })
+            
+    except Exception as e:
+        logger.error(f"上传Live2D模型失败: {e}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
 @app.post('/api/live2d/emotion_mapping/{model_name}')
 async def update_emotion_mapping(model_name: str, request: Request):
     """更新情绪映射配置"""
@@ -1365,8 +1674,8 @@ async def update_emotion_mapping(model_name: str, request: Request):
         if not data:
             return JSONResponse(status_code=400, content={"success": False, "error": "无效的数据"})
 
-        # 在模型目录中查找.model3.json文件
-        model_dir = os.path.join('static', model_name)
+        # 查找模型目录（可能在static或用户文档目录）
+        model_dir, url_prefix = find_model_directory(model_name)
         if not os.path.exists(model_dir):
             return JSONResponse(status_code=404, content={"success": False, "error": "模型目录不存在"})
         
@@ -1622,7 +1931,8 @@ async def update_agent_flags(request: Request):
     """来自前端的Agent开关更新，级联到各自的session manager。"""
     try:
         data = await request.json()
-        lanlan = data.get('lanlan_name') or her_name
+        _, her_name_current, _, _, _, _, _, _, _, _ = get_character_data()
+        lanlan = data.get('lanlan_name') or her_name_current
         flags = data.get('flags') or {}
         mgr = session_manager.get(lanlan)
         if not mgr:

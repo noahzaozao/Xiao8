@@ -23,8 +23,17 @@ function addNewMessage(messageHTML) {
 }
 
 // --- 切换聊天框最小化/展开状态 ---
+// 用于跟踪是否刚刚发生了拖动
+let justDragged = false;
+
 toggleBtn.addEventListener('click', (event) => {
     event.stopPropagation();
+
+    // 如果刚刚发生了拖动，阻止切换
+    if (justDragged) {
+        justDragged = false;
+        return;
+    }
 
     const isMinimized = chatContainer.classList.toggle('minimized');
 
@@ -45,6 +54,7 @@ toggleBtn.addEventListener('click', (event) => {
 (function() {
     let isDragging = false;
     let hasMoved = false; // 用于判断是否发生了实际的移动
+    let dragStartedFromToggleBtn = false; // 记录是否从 toggleBtn 开始拖动
     let startMouseX = 0; // 开始拖动时的鼠标X位置
     let startMouseY = 0; // 开始拖动时的鼠标Y位置
     let startContainerLeft = 0; // 开始拖动时容器的left值
@@ -58,6 +68,7 @@ toggleBtn.addEventListener('click', (event) => {
     function startDrag(e, skipPreventDefault = false) {
         isDragging = true;
         hasMoved = false;
+        dragStartedFromToggleBtn = (e.target === toggleBtn || toggleBtn.contains(e.target));
         
         // 获取初始鼠标/触摸位置
         const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
@@ -120,16 +131,28 @@ toggleBtn.addEventListener('click', (event) => {
         if (isDragging) {
             const wasDragging = isDragging;
             const didMove = hasMoved;
+            const fromToggleBtn = dragStartedFromToggleBtn;
             
             isDragging = false;
             hasMoved = false;
+            dragStartedFromToggleBtn = false;
             chatContainer.style.cursor = '';
             if (chatHeader) chatHeader.style.cursor = '';
             
-            console.log('[Drag End] Moved:', didMove);
+            console.log('[Drag End] Moved:', didMove, 'FromToggleBtn:', fromToggleBtn);
+            
+            // 如果发生了移动，标记 justDragged 以阻止后续的 click 事件
+            if (didMove && fromToggleBtn) {
+                justDragged = true;
+                // 100ms 后清除标志（防止影响后续正常点击）
+                setTimeout(() => {
+                    justDragged = false;
+                }, 100);
+            }
             
             // 如果在折叠状态下，没有发生移动，则触发展开
-            if (wasDragging && !didMove && chatContainer.classList.contains('minimized')) {
+            // 但如果是从 toggleBtn 开始的，让自然的 click 事件处理
+            if (wasDragging && !didMove && chatContainer.classList.contains('minimized') && !fromToggleBtn) {
                 // 使用 setTimeout 确保 click 事件之前执行
                 setTimeout(() => {
                     toggleBtn.click();
@@ -152,6 +175,22 @@ toggleBtn.addEventListener('click', (event) => {
             if (!chatContainer.classList.contains('minimized')) {
                 startDrag(e);
             }
+        }, { passive: false });
+    }
+    
+    // 让切换按钮也可以触发拖拽（任何状态下都可以）
+    if (toggleBtn) {
+        // 鼠标事件
+        toggleBtn.addEventListener('mousedown', (e) => {
+            // 使用 skipPreventDefault=true 来保留 click 事件
+            startDrag(e, true);
+            e.stopPropagation(); // 阻止事件冒泡到 chatContainer
+        });
+        
+        // 触摸事件
+        toggleBtn.addEventListener('touchstart', (e) => {
+            startDrag(e, true);
+            e.stopPropagation(); // 阻止事件冒泡到 chatContainer
         }, { passive: false });
     }
     
@@ -213,16 +252,25 @@ const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
 
 toggleSidebarBtn.addEventListener('click', (event) => {
     event.stopPropagation();
+    const wasMinimized = sidebar.classList.contains('minimized');
     const isMinimized = sidebar.classList.toggle('minimized');
     if (isMinimized) {
         toggleSidebarBtn.textContent = '+';
         toggleSidebarBtn.title = '展开侧边栏';
         sidebar.style.width = sidebar.style.height = '48px';
+        // 从展开变为折叠，标记菜单关闭
+        if (!wasMinimized && typeof window.markMenuClosed === 'function') {
+            window.markMenuClosed();
+        }
     } else {
         toggleSidebarBtn.textContent = '-';
         toggleSidebarBtn.title = '折叠侧边栏';
         sidebar.style.width = maxsidebarboxWidth + 'px';
         sidebar.style.height = maxsidebarboxHeight + 'px';
+        // 从折叠变为展开，标记菜单打开
+        if (wasMinimized && typeof window.markMenuOpen === 'function') {
+            window.markMenuOpen();
+        }
     }
 });
 
@@ -345,14 +393,41 @@ if (!isMobileDevice()) {
 // });
 
 // PC端：鼠标离开 sidebar 时延迟5秒收缩
+let sidebarAutoCollapseTimer = null;
 sidebar.addEventListener('mouseleave', () => {
     if (!sidebar.classList.contains('minimized') && !isMobileDevice()) {
-        setTimeout(() => {
+        // 清除之前的定时器
+        if (sidebarAutoCollapseTimer) {
+            clearTimeout(sidebarAutoCollapseTimer);
+            sidebarAutoCollapseTimer = null;
+        }
+        
+        sidebarAutoCollapseTimer = setTimeout(() => {
+            // 检查是否有活动菜单（如麦克风列表），如果有则不自动收缩
             if (!sidebar.classList.contains('minimized')) {
+                if (window.activeMenuCount > 0) {
+                    return;
+                }
                 toggleSidebarBtn.click();
                 autoMinimized = true;
             }
         }, 5000);
+    }
+});
+
+// 鼠标进入侧边栏时取消自动收缩
+sidebar.addEventListener('mouseenter', () => {
+    if (sidebarAutoCollapseTimer) {
+        clearTimeout(sidebarAutoCollapseTimer);
+        sidebarAutoCollapseTimer = null;
+    }
+});
+
+// 监听自定义事件：取消侧边栏自动收缩（例如鼠标在麦克风列表上）
+window.addEventListener('cancel-sidebar-collapse', () => {
+    if (sidebarAutoCollapseTimer) {
+        clearTimeout(sidebarAutoCollapseTimer);
+        sidebarAutoCollapseTimer = null;
     }
 });
 
@@ -361,6 +436,10 @@ if (isMobileDevice()) {
     document.addEventListener('touchstart', (e) => {
         if (!sidebar.classList.contains('minimized')) {
             if (!sidebar.contains(e.target)) {
+                // 检查是否有活动菜单，如果有则不自动收缩
+                if (window.activeMenuCount > 0) {
+                    return;
+                }
                 toggleSidebarBtn.click();
                 autoMinimized = true;
             }

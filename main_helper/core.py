@@ -11,6 +11,7 @@ import threading
 import re
 import requests
 import logging
+import time
 from datetime import datetime
 from websockets import exceptions as web_exceptions
 from fastapi import WebSocket, WebSocketDisconnect
@@ -359,6 +360,24 @@ class LLMSessionManager:
         except Exception as e:
             logger.error(f"💥 WS Send Lanlan Response Error: {e}")
         
+    async def handle_silence_timeout(self):
+        """处理语音输入静默超时：自动关闭session但保持live2d显示"""
+        try:
+            logger.warning(f"[{self.lanlan_name}] 检测到长时间无语音输入，自动关闭session")
+            
+            # 向前端发送特殊消息，告知自动闭麦但不关闭live2d
+            if self.websocket and hasattr(self.websocket, 'client_state') and self.websocket.client_state == self.websocket.client_state.CONNECTED:
+                await self.websocket.send_json({
+                    "type": "auto_close_mic",
+                    "message": f"{self.lanlan_name}检测到长时间无语音输入，已自动关闭麦克风"
+                })
+            
+            # 关闭当前session
+            await self.end_session(by_server=True)
+            
+        except Exception as e:
+            logger.error(f"处理静默超时时出错: {e}")
+    
     async def handle_connection_error(self, message=None):
         if message:
             if '欠费' in message:
@@ -533,10 +552,13 @@ class LLMSessionManager:
             finally:
                 self.tts_process = None
 
-        # new session时重置部分状态
-        if self.use_tts:
-            # 启动TTS子进程（如果配置了自定义语音）
-            # 文本模式和语音模式都需要TTS支持
+        # 定义 TTS 启动协程（如果需要）
+        async def start_tts_if_needed():
+            """异步启动 TTS 进程并等待就绪"""
+            if not self.use_tts:
+                return True
+            
+            # 启动TTS子进程
             if self.tts_process is None or not self.tts_process.is_alive():
                 # 使用工厂函数获取合适的 TTS worker
                 has_custom_voice = bool(self.voice_id)
@@ -554,12 +576,42 @@ class LLMSessionManager:
                 self.tts_process.daemon = True
                 self.tts_process.start()
                 
-                # 等待TTS进程完全启动（给进程一点启动时间）
-                await asyncio.sleep(0.1)
-                
-                # 记录使用的 TTS 类型
+                # 等待TTS进程发送就绪信号（最多等待8秒）
                 tts_type = "自定义音色(CosyVoice)" if has_custom_voice else f"{self.core_api_type}默认TTS"
-                logger.info(f"TTS进程已启动，使用: {tts_type}")
+                logger.info(f"🎤 TTS进程已启动，等待就绪... (使用: {tts_type})")
+                
+                tts_ready = False
+                start_time = time.time()
+                timeout = 8.0  # 最多等待8秒
+                
+                while time.time() - start_time < timeout:
+                    try:
+                        # 非阻塞检查队列
+                        if not self.tts_response_queue.empty():
+                            msg = self.tts_response_queue.get_nowait()
+                            # 检查是否是就绪信号
+                            if isinstance(msg, tuple) and len(msg) == 2 and msg[0] == "__ready__":
+                                tts_ready = msg[1]
+                                if tts_ready:
+                                    logger.info(f"✅ TTS进程已就绪 (用时: {time.time() - start_time:.2f}秒)")
+                                else:
+                                    logger.error("❌ TTS进程初始化失败")
+                                break
+                            else:
+                                # 不是就绪信号，放回队列
+                                self.tts_response_queue.put(msg)
+                                break
+                    except:
+                        pass
+                    
+                    # 小睡眠避免忙等
+                    await asyncio.sleep(0.05)
+                
+                if not tts_ready:
+                    if time.time() - start_time >= timeout:
+                        logger.warning(f"⚠️ TTS进程就绪信号超时 ({timeout}秒)，继续执行...")
+                    else:
+                        logger.error("❌ TTS进程初始化失败，但继续执行...")
             
             # 确保旧的 TTS handler task 已经停止
             if self.tts_handler_task and not self.tts_handler_task.done():
@@ -578,24 +630,17 @@ class LLMSessionManager:
             
             # 处理在TTS启动期间可能已经缓存的文本chunk
             await self._flush_tts_pending_chunks()
+            return True
 
-        if new:
-            self.message_cache_for_new_session = []
-            self.last_time = None
-            self.is_preparing_new_session = False
-            self.summary_triggered_time = None
-            self.initial_cache_snapshot_len = 0
-            # 清空输入缓存（新对话时不需要保留旧的输入）
-            async with self.input_cache_lock:
-                self.pending_input_data.clear()
-
-        try:
+        # 定义 LLM Session 启动协程
+        async def start_llm_session():
+            """异步创建并连接 LLM Session"""
             # 获取初始 prompt
             initial_prompt = (f"你是一个角色扮演大师，并且精通电脑操作。请按要求扮演以下角色（{self.lanlan_name}），并在对方请求时、回答'我试试'并尝试操纵电脑。" if self._is_agent_enabled() else f"你是一个角色扮演大师。请按要求扮演以下角色（{self.lanlan_name}）。") + self.lanlan_prompt
             initial_prompt += requests.get(f"http://localhost:{self.memory_server_port}/new_dialog/{self.lanlan_name}").text
-            # logger.info("====Initial Prompt=====")
-            # logger.info(initial_prompt)
-
+            
+            logger.info(f"🤖 开始创建 LLM Session (input_mode={input_mode})")
+            
             # 根据input_mode创建不同的session
             if input_mode == 'text':
                 # 文本模式：使用 OmniOfflineClient with OpenAI-compatible API
@@ -622,12 +667,50 @@ class LLMSessionManager:
                     on_input_transcript=self.handle_input_transcript,
                     on_output_transcript=self.handle_output_transcript,
                     on_connection_error=self.handle_connection_error,
-                    on_response_done=self.handle_response_complete
+                    on_response_done=self.handle_response_complete,
+                    on_silence_timeout=self.handle_silence_timeout
                 )
 
-            # 标记 session 激活
+            # 连接 session
             if self.session:
                 await self.session.connect(initial_prompt, native_audio = not self.use_tts)
+                logger.info(f"✅ LLM Session 已连接")
+                return True
+            else:
+                raise Exception("Session not initialized")
+        
+        # 重置状态
+        if new:
+            self.message_cache_for_new_session = []
+            self.last_time = None
+            self.is_preparing_new_session = False
+            self.summary_triggered_time = None
+            self.initial_cache_snapshot_len = 0
+            # 清空输入缓存（新对话时不需要保留旧的输入）
+            async with self.input_cache_lock:
+                self.pending_input_data.clear()
+
+        try:
+            # 并行启动 TTS 和 LLM Session
+            logger.info(f"🚀 并行启动 TTS 和 LLM Session...")
+            start_parallel_time = time.time()
+            
+            tts_result, llm_result = await asyncio.gather(
+                start_tts_if_needed(),
+                start_llm_session(),
+                return_exceptions=True
+            )
+            
+            logger.info(f"⚡ 并行启动完成 (总用时: {time.time() - start_parallel_time:.2f}秒)")
+            
+            # 检查是否有错误
+            if isinstance(tts_result, Exception):
+                logger.error(f"TTS 启动失败: {tts_result}")
+            if isinstance(llm_result, Exception):
+                raise llm_result  # LLM Session 失败是致命的
+            
+            # 标记 session 激活
+            if self.session:
                 async with self.lock:
                     self.is_active = True
                     
@@ -828,10 +911,16 @@ class LLMSessionManager:
                 )
                 # 清空队列，避免重复注入
                 self.pending_extra_replies.clear()
-                await self.pending_session.create_response(final_prime_text, skipped=False)
+                try:
+                    await self.pending_session.create_response(final_prime_text, skipped=False)
+                except web_exceptions.ConnectionClosed as e:
+                    logger.warning(f"⚠️ Final Swap Sequence: pending_session连接已关闭，跳过create_response: {e}")
             else:
                 final_prime_text += f"=======以上为前情概要。现在请{self.lanlan_name}准备，即将开始用语音与{self.master_name}继续对话。\n"
-                await self.pending_session.create_response(final_prime_text, skipped=True)
+                try:
+                    await self.pending_session.create_response(final_prime_text, skipped=True)
+                except web_exceptions.ConnectionClosed as e:
+                    logger.warning(f"⚠️ Final Swap Sequence: pending_session连接已关闭，跳过create_response: {e}")
 
             # 2. Start temporary listener for PENDING session's *second* ignored response
             if self.pending_session_final_prime_complete_event:
@@ -1304,6 +1393,10 @@ class LLMSessionManager:
         while True:
             while not self.tts_response_queue.empty():
                 data = self.tts_response_queue.get_nowait()
+                # 过滤掉就绪信号（格式为 ("__ready__", True/False)）
+                if isinstance(data, tuple) and len(data) == 2 and data[0] == "__ready__":
+                    # 这是就绪信号，不是音频数据，跳过
+                    continue
                 await self.send_speech(data)
             await asyncio.sleep(0.01)
 

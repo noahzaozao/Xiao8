@@ -45,6 +45,19 @@ function init_app(){
     let isSwitchingMode = false; // 新增：模式切换标志
     let sessionStartedResolver = null; // 用于等待 session_started 消息
     
+    // 主动搭话功能相关
+    let proactiveChatEnabled = false;
+    let proactiveChatTimer = null;
+    let proactiveChatBackoffLevel = 0; // 退避级别：0=30s, 1=1min, 2=2min, 3=4min, etc.
+    const PROACTIVE_CHAT_BASE_DELAY = 30000; // 30秒基础延迟
+    
+    // Focus模式相关（兼容原有的focus_mode）
+    let focusModeEnabled = (typeof focus_mode !== 'undefined' && focus_mode === true) ? true : false;
+    
+    // 暴露到全局作用域，供 live2d.js 等其他模块访问
+    window.proactiveChatEnabled = proactiveChatEnabled;
+    window.focusModeEnabled = focusModeEnabled;
+    
     // WebSocket心跳保活
     let heartbeatInterval = null;
     const HEARTBEAT_INTERVAL = 30000; // 30秒发送一次心跳
@@ -215,12 +228,41 @@ function init_app(){
                             }
                         }, 100);
                     }
+                    
+                    // AI回复完成后，重置主动搭话计时器（如果已开启且在文本模式）
+                    if (proactiveChatEnabled && !isRecording) {
+                        resetProactiveChatBackoff();
+                    }
                 } else if (response.type === 'session_started') {
                     console.log('收到session_started事件，模式:', response.input_mode);
                     // 解析 session_started Promise
                     if (sessionStartedResolver) {
                         sessionStartedResolver(response.input_mode);
                         sessionStartedResolver = null;
+                    }
+                } else if (response.type === 'auto_close_mic') {
+                    console.log('收到auto_close_mic事件，自动关闭麦克风');
+                    // 长时间无语音输入，自动关闭麦克风但不关闭live2d
+                    if (isRecording) {
+                        // 停止录音，但不隐藏live2d
+                        stopRecording();
+                        
+                        // 复位按钮状态
+                        micButton.disabled = false;
+                        muteButton.disabled = true;
+                        screenButton.disabled = true;
+                        stopButton.disabled = true;
+                        resetSessionButton.disabled = false;
+                        
+                        // 移除录音状态类
+                        micButton.classList.remove('recording');
+                        const toggleButton = document.getElementById('toggle-mic-selector');
+                        if (toggleButton) {
+                            toggleButton.classList.remove('recording');
+                        }
+                        
+                        // 显示提示信息
+                        statusElement.textContent = response.message || '长时间无语音输入，已自动关闭麦克风';
                     }
                 }
             } catch (error) {
@@ -306,27 +348,30 @@ function init_app(){
             return;
         }
         
-        // 添加调试信息
-        console.log('麦克风选择器初始化 - 元素已找到');
-        
         // 页面加载时预加载麦克风列表，减少首次点击的延迟
         await loadMicrophoneList(true); // true表示预加载模式
         
         // 触发自定义事件，通知麦克风列表已初始化
-        console.log('麦克风列表已初始化，触发mic-list-ready事件');
         window.dispatchEvent(new CustomEvent('mic-list-ready'));
         
         // 点击切换按钮时显示/隐藏麦克风列表
         toggleButton.addEventListener('click', async (event) => {
-            // 添加调试信息
-            console.log('麦克风选择器按钮被点击');
             event.stopPropagation();
             if (micList.classList.contains('show')) {
                 micList.classList.remove('show');
                 // 列表收起时，箭头变为向右
                 toggleButton.textContent = '▶';
+                // 标记菜单关闭，允许自动折叠
+                if (typeof window.markMenuClosed === 'function') {
+                    window.markMenuClosed();
+                }
             } else {
                 try {
+                    // 标记菜单打开，禁用自动折叠
+                    if (typeof window.markMenuOpen === 'function') {
+                        window.markMenuOpen();
+                    }
+                    
                     // 快速显示缓存的列表
                     if (cachedMicrophones && (Date.now() - cacheTimestamp < CACHE_DURATION)) {
                         renderMicrophoneList(cachedMicrophones);
@@ -348,6 +393,10 @@ function init_app(){
                     console.log('麦克风列表已显示');
                 } catch (error) {
                     console.error('加载麦克风列表失败:', error);
+                    // 加载失败时也要标记菜单关闭
+                    if (typeof window.markMenuClosed === 'function') {
+                        window.markMenuClosed();
+                    }
                 }
             }
         });
@@ -359,12 +408,23 @@ function init_app(){
             });
         }
         
+        // 当鼠标在麦克风列表上时，通知 common_ui.js 取消侧边栏自动收缩
+        micList.addEventListener('mouseenter', () => {
+            // 触发自定义事件，通知取消侧边栏自动收缩
+            window.dispatchEvent(new CustomEvent('cancel-sidebar-collapse'));
+        });
+        
         // 点击页面其他地方时隐藏麦克风列表
         document.addEventListener('click', (event) => {
             if (!micList.contains(event.target) && event.target !== toggleButton) {
+                const wasShown = micList.classList.contains('show');
                 micList.classList.remove('show');
                 // 列表收起时，箭头变为向右
                 toggleButton.textContent = '▶';
+                // 如果菜单之前是打开的，标记菜单关闭
+                if (wasShown && typeof window.markMenuClosed === 'function') {
+                    window.markMenuClosed();
+                }
             }
         });
         
@@ -554,6 +614,9 @@ function init_app(){
             stopButton.disabled = true;
             resetSessionButton.disabled = false;
             statusElement.textContent = '正在语音...';
+            
+            // 开始录音时，停止主动搭话定时器
+            stopProactiveChatSchedule();
         } catch (err) {
             console.error('获取麦克风权限失败:', err);
             statusElement.textContent = '无法访问麦克风';
@@ -582,6 +645,11 @@ function init_app(){
         screenButton.disabled = true;
         stopButton.disabled = true;
         resetSessionButton.disabled = false;
+        
+        // 停止录音后，重置主动搭话退避级别并开始定时
+        if (proactiveChatEnabled) {
+            resetProactiveChatBackoff();
+        }
         
         // 显示文本输入区
         const textInputArea = document.getElementById('text-input-area');
@@ -727,8 +795,148 @@ function init_app(){
         }
     }
 
+    // 显示语音准备提示框
+    function showVoicePreparingToast(message) {
+        // 检查是否已存在提示框，避免重复创建
+        let toast = document.getElementById('voice-preparing-toast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'voice-preparing-toast';
+            toast.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 20px 32px;
+                border-radius: 16px;
+                font-size: 16px;
+                font-weight: 600;
+                box-shadow: 0 8px 24px rgba(102, 126, 234, 0.5);
+                z-index: 10000;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                animation: voiceToastFadeIn 0.3s ease;
+                pointer-events: none;
+            `;
+            
+            // 添加动画样式
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes voiceToastFadeIn {
+                    from {
+                        opacity: 0;
+                        transform: translate(-50%, -50%) scale(0.8);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translate(-50%, -50%) scale(1);
+                    }
+                }
+                @keyframes voiceToastPulse {
+                    0%, 100% {
+                        transform: scale(1);
+                    }
+                    50% {
+                        transform: scale(1.1);
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+            
+            document.body.appendChild(toast);
+        }
+        
+        // 更新消息内容
+        toast.innerHTML = `
+            <div style="
+                width: 20px;
+                height: 20px;
+                border: 3px solid rgba(255, 255, 255, 0.3);
+                border-top-color: white;
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
+            "></div>
+            <span>${message}</span>
+        `;
+        
+        // 添加旋转动画
+        const spinStyle = document.createElement('style');
+        spinStyle.textContent = `
+            @keyframes spin {
+                to { transform: rotate(360deg); }
+            }
+        `;
+        if (!document.querySelector('style[data-spin-animation]')) {
+            spinStyle.setAttribute('data-spin-animation', 'true');
+            document.head.appendChild(spinStyle);
+        }
+        
+        toast.style.display = 'flex';
+    }
+    
+    // 隐藏语音准备提示框
+    function hideVoicePreparingToast() {
+        const toast = document.getElementById('voice-preparing-toast');
+        if (toast) {
+            toast.style.animation = 'voiceToastFadeIn 0.3s ease reverse';
+            setTimeout(() => {
+                toast.style.display = 'none';
+            }, 300);
+        }
+    }
+    
+    // 显示"可以说话了"提示
+    function showReadyToSpeakToast() {
+        let toast = document.getElementById('voice-ready-toast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'voice-ready-toast';
+            toast.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+                color: white;
+                padding: 20px 32px;
+                border-radius: 16px;
+                font-size: 18px;
+                font-weight: 600;
+                box-shadow: 0 8px 24px rgba(40, 167, 69, 0.5);
+                z-index: 10000;
+                display: none;
+                align-items: center;
+                gap: 12px;
+                animation: voiceToastFadeIn 0.3s ease;
+                pointer-events: none;
+            `;
+            document.body.appendChild(toast);
+        }
+        
+        toast.innerHTML = `
+            <span style="font-size: 24px; animation: voiceToastPulse 0.6s ease;">🎤</span>
+            <span>可以开始说话了！</span>
+        `;
+        
+        toast.style.display = 'flex';
+        
+        // 2秒后自动消失
+        setTimeout(() => {
+            toast.style.animation = 'voiceToastFadeIn 0.3s ease reverse';
+            setTimeout(() => {
+                toast.style.display = 'none';
+            }, 300);
+        }, 2000);
+    }
+
     // 开始麦克风录音
     micButton.addEventListener('click', async () => {
+        // 立即显示准备提示
+        showVoicePreparingToast('🎙️ 语音系统准备中...');
+        
         // 如果有活跃的文本会话，先结束它
         if (isTextSessionActive) {
             isSwitchingMode = true; // 开始模式切换
@@ -739,6 +947,7 @@ function init_app(){
             }
             isTextSessionActive = false;
             statusElement.textContent = '正在切换到语音模式...';
+            showVoicePreparingToast('🔄 正在切换到语音模式...');
             // 增加等待时间，确保后端完全清理资源
             await new Promise(resolve => setTimeout(resolve, 1500)); // 从500ms增加到1500ms
         }
@@ -755,6 +964,7 @@ function init_app(){
         resetSessionButton.disabled = true;
         
         statusElement.textContent = '正在初始化语音对话...';
+        showVoicePreparingToast('⚙️ 正在连接服务器...');
         
         try {
             // 创建一个 Promise 来等待 session_started 消息
@@ -784,13 +994,27 @@ function init_app(){
             await sessionStartPromise;
             
             statusElement.textContent = '正在初始化麦克风...';
+            showVoicePreparingToast('🎤 正在初始化麦克风...');
             
             // 显示Live2D
             showLive2d();
             await startMicCapture();
+            
+            // 录音启动成功后，隐藏准备提示，显示"可以说话了"提示
+            hideVoicePreparingToast();
+            
+            // 延迟1秒显示"可以说话了"提示，确保系统真正准备好
+            setTimeout(() => {
+                showReadyToSpeakToast();
+            }, 1000);
+            
             isSwitchingMode = false; // 模式切换完成
         } catch (error) {
             console.error('启动语音会话失败:', error);
+            
+            // 隐藏准备提示
+            hideVoicePreparingToast();
+            
             // 如果失败，恢复按钮状态和文本输入区
             micButton.disabled = false;
             muteButton.disabled = true;
@@ -835,6 +1059,11 @@ function init_app(){
         screenshotThumbnailContainer.classList.remove('show');
         updateScreenshotCount();
         screenshotCounter = 0;
+        
+        // 结束会话后，重置主动搭话计时器（如果已开启）
+        if (proactiveChatEnabled) {
+            resetProactiveChatBackoff();
+        }
         
         // 如果不是"请她离开"模式，才显示文本输入区并启用按钮
         if (!isGoodbyeMode) {
@@ -988,6 +1217,11 @@ function init_app(){
                 
                 // 在聊天界面显示用户消息
                 appendMessage(text, 'user', true);
+            }
+            
+            // 文本聊天后，重置主动搭话计时器（如果已开启）
+            if (proactiveChatEnabled) {
+                resetProactiveChatBackoff();
             }
             
             statusElement.textContent = '正在文本聊天中';
@@ -1309,9 +1543,9 @@ function init_app(){
             workletNode.port.onmessage = (event) => {
                 const audioData = event.data;
 
-                // 新增逻辑：focus_mode为true且正在播放语音时，不回传麦克风音频
-                if (typeof focus_mode !== 'undefined' && focus_mode === true && isPlaying === true) {
-                    // 处于focus_mode且语音播放中，跳过回传
+                // 新增逻辑：focusModeEnabled为true且正在播放语音时，不回传麦克风音频
+                if (focusModeEnabled === true && isPlaying === true) {
+                    // 处于focus模式且语音播放中，跳过回传
                     return;
                 }
 
@@ -1695,6 +1929,101 @@ function init_app(){
         console.log('Agent工具按钮被点击，显示弹出框');
     });
     
+    // 设置按钮 - 填充弹出框内容
+    let settingsPopupInitialized = false;
+    window.addEventListener('live2d-settings-click', () => {
+        console.log('设置按钮被点击');
+        
+        // 仅第一次点击时填充内容
+        if (!settingsPopupInitialized) {
+            const popup = document.getElementById('live2d-popup-settings');
+            if (popup) {
+                // 清空现有内容
+                popup.innerHTML = '';
+                
+                // 创建设置项容器
+                const container = document.createElement('div');
+                container.style.cssText = 'min-width: 200px; max-width: 300px;';
+                
+                // 主动搭话开关
+                const proactiveChatDiv = document.createElement('div');
+                proactiveChatDiv.style.cssText = 'padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.1);';
+                proactiveChatDiv.innerHTML = `
+                    <span style="font-size: 14px;">💬 主动搭话</span>
+                    <input type="checkbox" id="proactive-chat-toggle-l2d" style="cursor: pointer; width: 18px; height: 18px;">
+                `;
+                container.appendChild(proactiveChatDiv);
+                
+                // Focus模式开关
+                const focusModeDiv = document.createElement('div');
+                focusModeDiv.style.cssText = 'padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.1);';
+                focusModeDiv.innerHTML = `
+                    <span style="font-size: 14px;">🎯 Focus模式</span>
+                    <input type="checkbox" id="focus-mode-toggle-l2d" style="cursor: pointer; width: 18px; height: 18px;">
+                `;
+                container.appendChild(focusModeDiv);
+                
+                // 页面链接
+                const links = [
+                    { href: `/memory_browser`, text: '📝 记忆管理' },
+                    { href: `/chara_manager`, text: '👤 角色设置' },
+                    { href: `/l2d?lanlan_name=${lanlan_config.lanlan_name}`, text: '🎨 Live2D管理' },
+                    { href: `/api_key`, text: '🔑 API设置' }
+                ];
+                
+                links.forEach(link => {
+                    const linkDiv = document.createElement('a');
+                    linkDiv.href = link.href;
+                    linkDiv.target = '_blank';
+                    linkDiv.style.cssText = 'display: block; padding: 10px 12px; text-decoration: none; color: #333; font-size: 14px; border-bottom: 1px solid rgba(0,0,0,0.05); transition: background 0.2s;';
+                    linkDiv.textContent = link.text;
+                    linkDiv.onmouseenter = () => linkDiv.style.background = 'rgba(79, 140, 255, 0.1)';
+                    linkDiv.onmouseleave = () => linkDiv.style.background = 'transparent';
+                    container.appendChild(linkDiv);
+                });
+                
+                popup.appendChild(container);
+                
+                // 设置初始状态
+                const proactiveChatToggle = document.getElementById('proactive-chat-toggle-l2d');
+                const focusModeToggle = document.getElementById('focus-mode-toggle-l2d');
+                
+                if (proactiveChatToggle) {
+                    proactiveChatToggle.checked = proactiveChatEnabled;
+                    proactiveChatToggle.addEventListener('change', (event) => {
+                        event.stopPropagation();
+                        proactiveChatEnabled = event.target.checked;
+                        window.proactiveChatEnabled = proactiveChatEnabled; // 同步到全局
+                        saveSettings();
+                        
+                        console.log(`主动搭话已${proactiveChatEnabled ? '开启' : '关闭'}`);
+                        
+                        if (proactiveChatEnabled) {
+                            resetProactiveChatBackoff();
+                        } else {
+                            stopProactiveChatSchedule();
+                        }
+                    });
+                }
+                
+                if (focusModeToggle) {
+                    focusModeToggle.checked = focusModeEnabled;
+                    focusModeToggle.addEventListener('change', (event) => {
+                        event.stopPropagation();
+                        focusModeEnabled = event.target.checked;
+                        window.focusModeEnabled = focusModeEnabled; // 同步到全局
+                        saveSettings();
+                        
+                        console.log(`Focus模式已${focusModeEnabled ? '开启' : '关闭'}`);
+                    });
+                }
+                
+                settingsPopupInitialized = true;
+                console.log('设置弹出框已初始化');
+            }
+        }
+    });
+    
     // 睡觉按钮（请她离开）
     window.addEventListener('live2d-goodbye-click', () => {
         console.log('[App] 请她离开按钮被点击，开始隐藏所有按钮');
@@ -1990,8 +2319,6 @@ function init_app(){
             const devices = await navigator.mediaDevices.enumerateDevices();
             const audioInputs = devices.filter(device => device.kind === 'audioinput');
             
-            console.log(`✅ 浮动麦克风列表: 找到 ${audioInputs.length} 个麦克风设备`);
-            
             micPopup.innerHTML = '';
             
             if (audioInputs.length === 0) {
@@ -2105,9 +2432,131 @@ function init_app(){
     
     // 页面加载后初始化浮动麦克风列表（延迟确保弹出框已创建）
     setTimeout(() => {
-        console.log('初始化浮动麦克风列表...');
         window.renderFloatingMicList();
     }, 1500);
+    
+    // 主动搭话定时触发功能
+    function scheduleProactiveChat() {
+        // 清除现有定时器
+        if (proactiveChatTimer) {
+            clearTimeout(proactiveChatTimer);
+            proactiveChatTimer = null;
+        }
+        
+        // 如果主动搭话未开启，不执行
+        if (!proactiveChatEnabled) {
+            return;
+        }
+        
+        // 只在非语音模式下执行（语音模式下不触发主动搭话）
+        // 文本模式或待机模式都可以触发主动搭话
+        if (isRecording) {
+            console.log('语音模式中，不安排主动搭话');
+            return;
+        }
+        
+        // 计算延迟时间（指数退避）
+        const delay = PROACTIVE_CHAT_BASE_DELAY * Math.pow(2, proactiveChatBackoffLevel);
+        console.log(`主动搭话：${delay / 1000}秒后触发（退避级别：${proactiveChatBackoffLevel}）`);
+        
+        proactiveChatTimer = setTimeout(async () => {
+            console.log('触发主动搭话...');
+            await triggerProactiveChat();
+            
+            // 增加退避级别（最多到4分钟，即level 3）
+            if (proactiveChatBackoffLevel < 3) {
+                proactiveChatBackoffLevel++;
+            }
+            
+            // 安排下一次
+            scheduleProactiveChat();
+        }, delay);
+    }
+    
+    async function triggerProactiveChat() {
+        try {
+            const response = await fetch('/api/proactive_chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    lanlan_name: lanlan_config.lanlan_name
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                if (result.action === 'chat') {
+                    console.log('主动搭话已发送:', result.message);
+                    // 后端会直接通过session发送消息和TTS，前端无需处理显示
+                } else if (result.action === 'pass') {
+                    console.log('AI选择不搭话');
+                }
+            } else {
+                console.warn('主动搭话失败:', result.error);
+            }
+        } catch (error) {
+            console.error('主动搭话触发失败:', error);
+        }
+    }
+    
+    function resetProactiveChatBackoff() {
+        // 重置退避级别
+        proactiveChatBackoffLevel = 0;
+        // 重新安排定时器
+        scheduleProactiveChat();
+    }
+    
+    function stopProactiveChatSchedule() {
+        if (proactiveChatTimer) {
+            clearTimeout(proactiveChatTimer);
+            proactiveChatTimer = null;
+        }
+    }
+    
+    // 暴露函数到全局作用域，供 live2d.js 调用
+    window.resetProactiveChatBackoff = resetProactiveChatBackoff;
+    window.stopProactiveChatSchedule = stopProactiveChatSchedule;
+    
+    // 保存设置到localStorage
+    function saveSettings() {
+        const settings = {
+            proactiveChatEnabled: proactiveChatEnabled,
+            focusModeEnabled: focusModeEnabled
+        };
+        localStorage.setItem('xiao8_settings', JSON.stringify(settings));
+    }
+    
+    // 从localStorage加载设置
+    function loadSettings() {
+        try {
+            const saved = localStorage.getItem('xiao8_settings');
+            if (saved) {
+                const settings = JSON.parse(saved);
+                proactiveChatEnabled = settings.proactiveChatEnabled || false;
+                window.proactiveChatEnabled = proactiveChatEnabled; // 同步到全局
+                // Focus模式：兼容URL传入的focus_mode或localStorage保存的设置
+                if (typeof focus_mode !== 'undefined' && focus_mode === true) {
+                    focusModeEnabled = true;
+                } else {
+                    focusModeEnabled = settings.focusModeEnabled || false;
+                }
+                window.focusModeEnabled = focusModeEnabled; // 同步到全局
+            }
+        } catch (error) {
+            console.error('加载设置失败:', error);
+        }
+    }
+    
+    // 加载设置
+    loadSettings();
+    
+    // 如果已开启主动搭话，立即启动定时器
+    if (proactiveChatEnabled) {
+        scheduleProactiveChat();
+    }
 } // 兼容老按钮
 
 const ready = () => {

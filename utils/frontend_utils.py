@@ -152,36 +152,63 @@ def is_only_punctuation(text):
 
 def find_models():
     """
-    递归扫描整个 'static' 文件夹，查找所有包含 '.model3.json' 文件的子目录。
+    递归扫描 'static' 文件夹和用户文档下的 'live2d' 文件夹，查找所有包含 '.model3.json' 文件的子目录。
     """
-    found_models = []
-    search_root_dir = 'static'
+    from utils.config_manager import get_config_manager
     
-    if not os.path.exists(search_root_dir):
-        logging.warning(f"警告：指定的静态文件夹路径不存在: {search_root_dir}")
-        return []
-
-    # os.walk会遍历指定的根目录下的所有文件夹和文件
-    for root, dirs, files in os.walk(search_root_dir):
-        for file in files:
-            if file.endswith('.model3.json'):
-                # 获取模型名称 (使用其所在的文件夹名，更加直观)
-                model_name = os.path.basename(root)
-                
-                # 构建可被浏览器访问的URL路径
-                # 1. 计算文件相对于 static_folder 的路径
-                relative_path = os.path.relpath(os.path.join(root, file), search_root_dir)
-                # 2. 将本地路径分隔符 (如'\') 替换为URL分隔符 ('/')
-                model_path = relative_path.replace(os.path.sep, '/')
-                
-                found_models.append({
-                    "name": model_name,
-                    "path": f"/static/{model_path}"
-                })
-                
-                # 优化：一旦在某个目录找到模型json，就无需再继续深入该目录的子目录
-                dirs[:] = []
-                break
+    found_models = []
+    search_dirs = []
+    
+    # 添加static目录
+    static_dir = 'static'
+    if os.path.exists(static_dir):
+        search_dirs.append(('static', static_dir, '/static'))
+    else:
+        logging.warning(f"警告：static文件夹路径不存在: {static_dir}")
+    
+    # 添加用户文档目录下的live2d文件夹
+    try:
+        config_mgr = get_config_manager()
+        config_mgr.ensure_live2d_directory()
+        docs_live2d_dir = str(config_mgr.live2d_dir)
+        if os.path.exists(docs_live2d_dir):
+            search_dirs.append(('documents', docs_live2d_dir, '/user_live2d'))
+    except Exception as e:
+        logging.warning(f"无法访问用户文档live2d目录: {e}")
+    
+    # 遍历所有搜索目录
+    for source, search_root_dir, url_prefix in search_dirs:
+        try:
+            # os.walk会遍历指定的根目录下的所有文件夹和文件
+            for root, dirs, files in os.walk(search_root_dir):
+                for file in files:
+                    if file.endswith('.model3.json'):
+                        # 获取模型名称 (使用其所在的文件夹名，更加直观)
+                        model_name = os.path.basename(root)
+                        
+                        # 构建可被浏览器访问的URL路径
+                        # 1. 计算文件相对于 search_root_dir 的路径
+                        relative_path = os.path.relpath(os.path.join(root, file), search_root_dir)
+                        # 2. 将本地路径分隔符 (如'\') 替换为URL分隔符 ('/')
+                        model_path = relative_path.replace(os.path.sep, '/')
+                        
+                        # 如果模型名称已存在，添加来源后缀以区分
+                        existing_names = [m["name"] for m in found_models]
+                        display_name = model_name
+                        if model_name in existing_names:
+                            display_name = f"{model_name}_{source}"
+                        
+                        found_models.append({
+                            "name": display_name,
+                            "path": f"{url_prefix}/{model_path}",
+                            "source": source
+                        })
+                        
+                        # 优化：一旦在某个目录找到模型json，就无需再继续深入该目录的子目录
+                        dirs[:] = []
+                        break
+        except Exception as e:
+            logging.error(f"搜索目录 {search_root_dir} 时出错: {e}")
                 
     return found_models
 
@@ -221,19 +248,44 @@ def upload_file_to_oss(policy_data, file_path):
     return f'oss://{key}'
 
 
+def find_model_directory(model_name: str):
+    """
+    查找模型目录，优先在用户文档目录，其次在static目录
+    返回 (实际路径, URL前缀) 元组
+    """
+    from utils.config_manager import get_config_manager
+    
+    # 首先尝试在用户文档目录
+    try:
+        config_mgr = get_config_manager()
+        docs_model_dir = config_mgr.live2d_dir / model_name
+        if docs_model_dir.exists():
+            return (str(docs_model_dir), '/user_live2d')
+    except Exception as e:
+        logging.warning(f"检查文档目录模型时出错: {e}")
+    
+    # 然后尝试static目录
+    static_model_dir = os.path.join('static', model_name)
+    if os.path.exists(static_model_dir):
+        return (static_model_dir, '/static')
+    
+    # 如果都不存在，返回static默认路径
+    return (static_model_dir, '/static')
+
 def find_model_config_file(model_name: str) -> str:
     """
     在模型目录中查找.model3.json配置文件
-    返回相对于static目录的路径
+    返回可访问的URL路径
     """
-    model_dir = os.path.join('static', model_name)
+    model_dir, url_prefix = find_model_directory(model_name)
+    
     if not os.path.exists(model_dir):
-        return f"/static/{model_name}/{model_name}.model3.json"  # 默认路径
+        return f"{url_prefix}/{model_name}/{model_name}.model3.json"  # 默认路径
     
     # 查找.model3.json文件
     for file in os.listdir(model_dir):
         if file.endswith('.model3.json'):
-            return f"/static/{model_name}/{file}"
+            return f"{url_prefix}/{model_name}/{file}"
     
     # 如果没找到，返回默认路径
-    return f"/static/{model_name}/{model_name}.model3.json"
+    return f"{url_prefix}/{model_name}/{model_name}.model3.json"

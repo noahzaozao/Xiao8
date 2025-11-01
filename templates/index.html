@@ -131,25 +131,45 @@
             background: #fff;
         }
 
-        /* 切换按钮样式 */
+        /* 切换按钮样式 - 更醒目的设计 */
         #toggle-chat-btn {
             pointer-events: auto; /* 恢复鼠标交互 */
             position: absolute; /* 绝对定位于容器内 */
-            top: 12px;
-            right: 12px;
+            top: 8px;
+            right: 8px;
             width: 24px;
             height: 24px;
-            background: #e0e1e2;
-            opacity: 0.8;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
+            background: linear-gradient(135deg, #4f8cff 0%, #667eea 100%);
+            opacity: 1;
+            border: 2px solid rgba(255, 255, 255, 0.8);
+            border-radius: 6px;
+            cursor: grab; /* 拖拽手势 */
             font-weight: bold;
-            line-height: 18px; /* 垂直居中 */
+            font-size: 1.2rem;
+            line-height: 20px; /* 垂直居中调整 */
             text-align: center;
+            color: #fff;
             z-index: 21; /* 确保在内容之上 */
             padding: 0;
             user-select: none;
+            box-shadow: 0 2px 8px rgba(79, 140, 255, 0.4);
+            transition: all 0.3s ease;
+            animation: buttonPulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes buttonPulse {
+            0%, 100% {
+                box-shadow: 0 2px 8px rgba(79, 140, 255, 0.4);
+            }
+            50% {
+                box-shadow: 0 2px 16px rgba(79, 140, 255, 0.8);
+            }
+        }
+        
+        #toggle-chat-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 16px rgba(79, 140, 255, 0.6);
+            animation: none;
         }
         
         /* 聊天框标题 */
@@ -1477,6 +1497,7 @@
         <button id="screenButton" class="side-btn" disabled><span class="desktop-text">🖥️ 屏幕共享</span><span class="mobile-text">📷 摄像头分享</span></button>
         <button id="stopButton" class="side-btn" disabled>🛑 停止共享</button>
         <button id="resetSessionButton" class="side-btn">👋 请她离开</button>
+        
         <div id="status"></div>
     </div>
 </div>
@@ -1560,6 +1581,21 @@
     window.addEventListener('unload', sendBeacon);
 </script>
 <script src="/static/libs/live2dcubismcore.min.js"></script>  <!-- Cubism 4核心库（支持Cubism 3/4模型） -->
+<script>
+  // 全局菜单跟踪机制 - 必须在所有其他脚本之前定义
+  // 用于跟踪当前是否有活动的菜单（麦克风列表、Agent面板、侧边栏等）
+  window.activeMenuCount = 0;
+  
+  // 辅助函数：标记菜单打开
+  window.markMenuOpen = function() {
+    window.activeMenuCount++;
+  };
+  
+  // 辅助函数：标记菜单关闭
+  window.markMenuClosed = function() {
+    window.activeMenuCount = Math.max(0, window.activeMenuCount - 1);
+  };
+</script>
 <script src="/static/libs/live2d.min.js"></script>  <!-- Cubism 2.1核心库（支持旧模型） -->
 <script src="/static/libs/pixi.min.js"></script>  <!-- PixiJS v7 CDN -->
 <script src="/static/libs/index.min.js"></script>  <!-- pixi-live2d-display v0.5.0-ls-6（RaSan147 fork，支持v7） -->
@@ -1569,6 +1605,7 @@
 <script>
   // 对话区提示框逻辑 - 仅在第一次访问时显示
   (function() {
+    
     // 等待 DOM 和所有脚本完全加载
     window.addEventListener('load', function() {
       // 再等待一小段时间，确保 common_ui.js 的事件监听器已设置
@@ -1621,19 +1658,30 @@
           textInputBox.addEventListener('focus', handleFocus);
           toggleBtn.addEventListener('click', handleToggleClick);
           
-          // 每次页面加载都执行：5秒后自动折叠整个对话区
+          // 每次页面加载都执行：5秒后自动折叠整个对话区（除非有活动菜单）
           autoCollapseTimer = setTimeout(() => {
+            // 检查是否有活动菜单，如果有则不自动折叠
+            if (window.activeMenuCount > 0) {
+              console.log('检测到活动菜单，跳过自动折叠');
+              return;
+            }
+            
             // 先隐藏提示框（带动画）
             chatTooltip.classList.add('hidden');
             // 等待提示框动画完成后再折叠对话区
             setTimeout(() => {
+              // 再次检查是否有活动菜单
+              if (window.activeMenuCount > 0) {
+                console.log('检测到活动菜单，跳过自动折叠');
+                return;
+              }
               // 直接模拟点击事件
               toggleBtn.click();
               console.log('自动折叠对话区');
             }, 300);
           }, 5000);
           
-          console.log('页面加载完成，5秒后将自动折叠对话区');
+          console.log('页面加载完成，5秒后将自动折叠对话区（除非有活动菜单）');
         }
       }, 100); // 100ms 延迟确保所有初始化完成
     });
@@ -1859,10 +1907,24 @@
   
   // Collapse/Expand functionality
   function toggleAgentPanel() {
+    const wasCollapsed = agentPanel.classList.contains('collapsed');
     agentPanel.classList.toggle('collapsed');
     const isCollapsed = agentPanel.classList.contains('collapsed');
     agentCollapseBtn.textContent = isCollapsed ? '+' : '−';
     agentCollapseBtn.title = isCollapsed ? '展开' : '收起';
+    
+    // 标记菜单打开/关闭状态，影响自动折叠
+    if (wasCollapsed && !isCollapsed) {
+      // 从折叠变为展开，标记菜单打开
+      if (typeof window.markMenuOpen === 'function') {
+        window.markMenuOpen();
+      }
+    } else if (!wasCollapsed && isCollapsed) {
+      // 从展开变为折叠，标记菜单关闭
+      if (typeof window.markMenuClosed === 'function') {
+        window.markMenuClosed();
+      }
+    }
   }
 
   async function checkToolServerHealth() {

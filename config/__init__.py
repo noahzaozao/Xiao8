@@ -59,14 +59,15 @@ def get_character_data():
     # 获取所有猫娘名
     catgirl_names = list(character_data['猫娘'].keys()) if character_data['猫娘'] and len(character_data['猫娘']) > 0 else list(_default_lanlan.keys())
     
-    # 获取当前猫娘，如果没有设置则使用第一个猫娘
+    # 获取当前猫娘，如果没有设置或设置的猫娘不存在，则使用第一个猫娘
     current_catgirl = character_data.get('当前猫娘', '')
     if current_catgirl and current_catgirl in catgirl_names:
         her_name = current_catgirl
     else:
         her_name = catgirl_names[0] if catgirl_names else ''
-        # 如果没有设置当前猫娘，自动设置第一个猫娘为当前猫娘
-        if her_name and not current_catgirl:
+        # 如果当前猫娘无效（不存在或为空），自动更新配置文件
+        if her_name and current_catgirl != her_name:
+            logger.info(f"当前猫娘配置无效 ('{current_catgirl}')，已自动切换到 '{her_name}'")
             character_data['当前猫娘'] = her_name
             save_characters(character_data)
     
@@ -158,7 +159,7 @@ def get_core_config():
                 config['IS_FREE_VERSION'] = True
             elif core_cfg['coreApi'] == 'qwen':
                 config['CORE_URL'] = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
-                config['CORE_MODEL'] = "qwen3-omni-flash-realtime-2025-09-15"
+                config['CORE_MODEL'] = "qwen3-omni-flash-realtime"
             elif core_cfg['coreApi'] == 'glm':
                 config['CORE_URL'] = "wss://open.bigmodel.cn/api/paas/v4/realtime"
                 config['CORE_MODEL'] = "glm-realtime-air"
@@ -236,6 +237,7 @@ def get_core_config():
             config['SUMMARY_MODEL'] = "qwen-plus-2025-07-14"
             config['CORRECTION_MODEL'] = "qwen3-235b-a22b-instruct-2507"
             config['EMOTION_MODEL'] = "qwen-turbo-2025-07-15"
+            config['VISION_MODEL'] = "qwen3-vl-plus-2025-09-23"
             config['AUDIO_API_KEY'] = config['OPENROUTER_API_KEY'] = config['ASSIST_API_KEY_QWEN']
     
     except FileNotFoundError:

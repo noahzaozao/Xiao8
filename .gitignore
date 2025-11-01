@@ -70,3 +70,11 @@ env.bak/
 Thumbs.db
 ehthumbs.db
 desktop.ini
+
+static/ziraitikuwa/*
+打包说明.txt
+runtime_hook_inflect.py
+backup/
+build*
+launcher.py
+*spec

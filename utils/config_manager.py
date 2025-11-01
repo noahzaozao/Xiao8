@@ -32,6 +32,7 @@ class ConfigManager:
         self.app_docs_dir = self.docs_dir / app_name
         self.config_dir = self.app_docs_dir / "config"
         self.memory_dir = self.app_docs_dir / "memory"
+        self.live2d_dir = self.app_docs_dir / "live2d"
         self.project_config_dir = self._get_project_config_directory()
         self.project_memory_dir = self._get_project_memory_directory()
     
@@ -94,8 +95,15 @@ class ConfigManager:
     def _get_project_config_directory(self):
         """获取项目的config目录"""
         if getattr(sys, 'frozen', False):
-            # 如果是打包后的exe
-            app_dir = Path(sys.executable).parent
+            # 如果是打包后的exe（PyInstaller）
+            # 单文件模式：数据文件在 _MEIPASS 临时目录
+            # 多文件模式：数据文件在 exe 同目录
+            if hasattr(sys, '_MEIPASS'):
+                # 单文件模式：使用临时解压目录
+                app_dir = Path(sys._MEIPASS)
+            else:
+                # 多文件模式：使用 exe 同目录
+                app_dir = Path(sys.executable).parent
         else:
             # 如果是脚本运行
             app_dir = Path.cwd()
@@ -105,8 +113,15 @@ class ConfigManager:
     def _get_project_memory_directory(self):
         """获取项目的memory/store目录"""
         if getattr(sys, 'frozen', False):
-            # 如果是打包后的exe
-            app_dir = Path(sys.executable).parent
+            # 如果是打包后的exe（PyInstaller）
+            # 单文件模式：数据文件在 _MEIPASS 临时目录
+            # 多文件模式：数据文件在 exe 同目录
+            if hasattr(sys, '_MEIPASS'):
+                # 单文件模式：使用临时解压目录
+                app_dir = Path(sys._MEIPASS)
+            else:
+                # 多文件模式：使用 exe 同目录
+                app_dir = Path(sys.executable).parent
         else:
             # 如果是脚本运行
             app_dir = Path.cwd()
@@ -129,6 +144,15 @@ class ConfigManager:
             return True
         except Exception as e:
             print(f"Warning: Failed to create memory directory: {e}", file=sys.stderr)
+            return False
+    
+    def ensure_live2d_directory(self):
+        """确保我的文档下的live2d目录存在"""
+        try:
+            self.live2d_dir.mkdir(parents=True, exist_ok=True)
+            return True
+        except Exception as e:
+            print(f"Warning: Failed to create live2d directory: {e}", file=sys.stderr)
             return False
     
     def get_config_path(self, filename):
@@ -174,6 +198,10 @@ class ConfigManager:
             print(f"Warning: Cannot create config directory, using project config", file=sys.stderr)
             return
         
+        # 显示项目配置目录位置（调试用）
+        print(f"[ConfigManager] Project config directory: {self.project_config_dir}")
+        print(f"[ConfigManager] User config directory: {self.config_dir}")
+        
         # 迁移每个配置文件
         for filename in self.CONFIG_FILES:
             docs_config_path = self.config_dir / filename
@@ -181,15 +209,18 @@ class ConfigManager:
             
             # 如果我的文档下已有，跳过
             if docs_config_path.exists():
+                print(f"[ConfigManager] Config already exists: {filename}")
                 continue
             
             # 如果项目config下有，复制过去
             if project_config_path.exists():
                 try:
                     shutil.copy2(project_config_path, docs_config_path)
-                    print(f"Migrated config: {filename} -> {docs_config_path}")
+                    print(f"[ConfigManager] ✓ Migrated config: {filename} -> {docs_config_path}")
                 except Exception as e:
                     print(f"Warning: Failed to migrate {filename}: {e}", file=sys.stderr)
+            else:
+                print(f"[ConfigManager] ✗ Source config not found: {project_config_path}")
     
     def migrate_memory_files(self):
         """
@@ -309,6 +340,7 @@ class ConfigManager:
             "app_dir": str(self.app_docs_dir),
             "config_dir": str(self.config_dir),
             "memory_dir": str(self.memory_dir),
+            "live2d_dir": str(self.live2d_dir),
             "project_config_dir": str(self.project_config_dir),
             "project_memory_dir": str(self.project_memory_dir),
             "config_files": {
