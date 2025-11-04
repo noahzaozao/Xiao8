@@ -31,6 +31,25 @@ from config import get_character_data, get_core_config, MAIN_SERVER_PORT, MONITO
 from config.prompts_sys import emotion_analysis_prompt, proactive_chat_prompt
 import glob
 
+
+
+
+# 在import语句之后添加
+VOICE_STORAGE_PATH = "config/voice_storage.json"
+
+def load_voice_storage():
+    """加载已保存的声音数据"""
+    if os.path.exists(VOICE_STORAGE_PATH):
+        with open(VOICE_STORAGE_PATH, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return {}
+
+def save_voice_storage(data):
+    """保存声音数据到文件"""
+    os.makedirs(os.path.dirname(VOICE_STORAGE_PATH), exist_ok=True)
+    with open(VOICE_STORAGE_PATH, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
 # 确定 templates 目录位置（支持 PyInstaller 打包）
 if getattr(sys, 'frozen', False):
     # 打包后运行：从 _MEIPASS 读取
@@ -60,7 +79,7 @@ sync_shutdown_event = {}
 session_manager = {}
 session_id = {}
 sync_process = {}
-registered_voices = {} 
+registered_voices = load_voice_storage()  # 直接加载初始化
 # Unpack character data once for initialization
 master_name, her_name, master_basic_config, lanlan_basic_config, name_mapping, lanlan_prompt, semantic_store, time_store, setting_store, recent_log = get_character_data()
 catgirl_names = list(lanlan_prompt.keys())
@@ -322,8 +341,14 @@ async def update_core_config(request: Request):
 
 @app.on_event("startup")
 async def startup_event():
-    global sync_process
+    global sync_process, registered_voices  # 添加registered_voices
+    # 确保配置目录存在
+    os.makedirs(os.path.dirname(VOICE_STORAGE_PATH), exist_ok=True)
+    # 加载已保存的声音数据
+    registered_voices = load_voice_storage()
     logger.info("Starting sync connector processes")
+    # 加载已保存的声音数据
+    registered_voices = load_voice_storage()
     # 启动同步连接器进程
     for k in sync_process:
         if sync_process[k] is None:
@@ -1174,7 +1199,8 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
                     'file_url': tmp_url,
                     'created_at': datetime.now().isoformat()
                 }
-
+                # 添加保存到文件
+                save_voice_storage(registered_voices)   
                 return JSONResponse({
                     'voice_id': voice_id,
                     'request_id': service.get_last_request_id(),
