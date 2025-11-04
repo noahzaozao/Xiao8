@@ -60,6 +60,7 @@ sync_shutdown_event = {}
 session_manager = {}
 session_id = {}
 sync_process = {}
+registered_voices = {} 
 # Unpack character data once for initialization
 master_name, her_name, master_basic_config, lanlan_basic_config, name_mapping, lanlan_prompt, semantic_store, time_store, setting_store, recent_log = get_character_data()
 catgirl_names = list(lanlan_prompt.keys())
@@ -1167,10 +1168,18 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
                     }, status_code=408)
                     
                 logger.info(f"音色注册成功，voice_id: {voice_id}")
+                registered_voices[voice_id] = {
+                    'voice_id': voice_id,
+                    'prefix': prefix,
+                    'file_url': tmp_url,
+                    'created_at': datetime.now().isoformat()
+                }
+
                 return JSONResponse({
                     'voice_id': voice_id,
                     'request_id': service.get_last_request_id(),
-                    'file_url': tmp_url
+                    'file_url': tmp_url,
+                    'message': '音色注册成功并已保存到音色库'
                 })
             except Exception as e:
                 logger.error(f"音色注册失败（尝试 {attempt + 1}/{max_retries}）: {str(e)}")
@@ -1212,6 +1221,42 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
         logger.error(f"注册音色时发生未预期的错误: {str(e)}")
         return JSONResponse({'error': f'注册音色时发生错误: {str(e)}', 'file_url': tmp_url}, status_code=500)
 
+# 在 @app.post('/api/voice_clone') 后添加
+@app.get('/api/voices')
+async def get_voices():
+    """获取所有已注册的音色"""
+    return {"voices": registered_voices}
+
+@app.post('/api/voices')
+async def register_voice(request: Request):
+    """注册新音色"""
+    try:
+        data = await request.json()
+        voice_id = data.get('voice_id')
+        voice_data = data.get('voice_data')
+        
+        if not voice_id or not voice_data:
+            return JSONResponse({
+                'success': False,
+                'error': '缺少必要参数'
+            }, status_code=400)
+            
+        registered_voices[voice_id] = {
+            **voice_data,
+            'voice_id': voice_id,
+            'created_at': datetime.now().isoformat()
+        }
+        try:
+            with open('config/voices.json', 'w', encoding='utf-8') as f:
+                json.dump(registered_voices, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning(f"保存音色配置失败: {e}")
+        return {"success": True, "message": "音色注册成功"}
+    except Exception as e:
+        return JSONResponse({
+            'success': False,
+            'error': str(e)
+        }, status_code=500)
 
 @app.delete('/api/characters/catgirl/{name}')
 async def delete_catgirl(name: str):
