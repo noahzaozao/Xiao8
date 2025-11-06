@@ -374,9 +374,10 @@ function showCatgirlForm(key, container) {
                 </div>
                 <div class="field-row">
                     <label>voice_id</label>
-                    <span>${cat['voice_id'] ? cat['voice_id'] : '未注册'}</span>
-                    <button type="button" class="btn sm" onclick="openVoiceClone('${key || ''}')">注册声音</button>
-                    ${cat['voice_id'] ? `<button type="button" class="btn sm delete" onclick="unregisterVoice('${key || ''}')">解除注册</button>` : ''}
+                    <select name="voice_id" class="form-control" style="flex:1">
+                        <option value="">请选择音色</option>
+                    </select>
+                    <button type="button" class="btn sm" onclick="openVoiceClone('${key || ''}')">注册新声音</button>
                 </div>
                 <div class="fold">
                     <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 8px 0;">
@@ -428,6 +429,37 @@ function showCatgirlForm(key, container) {
         row.innerHTML = `<label>${key}</label><input type="text" name="${key}"><button type="button" class="btn sm delete" style="margin-left:8px" onclick="deleteCatgirlField(this)">删除设定</button>`;
         form.insertBefore(row, form.querySelector('.fold'));
     };
+
+    // 在 form.onsubmit 之前添加
+    async function loadVoices() {
+        try {
+            const response = await fetch('/api/voices');
+            const data = await response.json();
+            const select = form.querySelector('select[name="voice_id"]');
+            if (select) {
+                // 清空现有选项
+                select.innerHTML = '<option value="">请选择音色</option>';
+                // 添加音色选项
+                Object.entries(data.voices).forEach(([voiceId, voiceData]) => {
+                    const option = document.createElement('option');
+                    option.value = voiceId;
+                    option.textContent = voiceData.prefix || voiceId;
+                    option.selected = voiceId === (cat['voice_id'] || '');
+                    select.appendChild(option);
+                });
+            }
+        } catch (error) {
+            console.error('加载音色列表失败:', error);
+        }
+    }
+
+    // 立即调用加载音色
+    loadVoices();
+
+
+
+
+
     form.onsubmit = async function(e) {
         e.preventDefault();
         const fd = new FormData(form);
