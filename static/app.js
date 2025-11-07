@@ -929,13 +929,12 @@ function init_app(){
         updateScreenshotCount();
         screenshotCounter = 0;
         
-        // 结束会话后，重置主动搭话计时器（如果已开启）
-        if (proactiveChatEnabled) {
-            resetProactiveChatBackoff();
-        }
-        
         // 如果不是"请她离开"模式，才显示文本输入区并启用按钮
         if (!isGoodbyeMode) {
+            // 结束会话后，重置主动搭话计时器（如果已开启）
+            if (proactiveChatEnabled) {
+                resetProactiveChatBackoff();
+            }
             // 显示文本输入区
             const textInputArea = document.getElementById('text-input-area');
             textInputArea.classList.remove('hidden');
@@ -1736,26 +1735,28 @@ function init_app(){
             lockIcon.style.removeProperty('opacity');
         }
         
+        // 恢复 sidebar、sidebarbox 和旧按钮，但保持它们隐藏
+        // 这些是旧的按钮面板，应该始终隐藏，只用于功能触发
         const sidebar = document.getElementById('sidebar');
         const sidebarbox = document.getElementById('sidebarbox');
         
         if (sidebar) {
-            sidebar.style.removeProperty('display');
             sidebar.style.removeProperty('visibility');
             sidebar.style.removeProperty('opacity');
+            sidebar.style.display = 'none'; // 保持隐藏
         }
         
         if (sidebarbox) {
-            sidebarbox.style.removeProperty('display');
             sidebarbox.style.removeProperty('visibility');
             sidebarbox.style.removeProperty('opacity');
+            sidebarbox.style.display = 'none'; // 保持隐藏
         }
         
         const sideButtons = document.querySelectorAll('.side-btn');
         sideButtons.forEach(btn => {
-            btn.style.removeProperty('display');
             btn.style.removeProperty('visibility');
             btn.style.removeProperty('opacity');
+            btn.style.display = 'none'; // 保持隐藏
         });
 
         // 先恢复容器尺寸和可见性，但保持透明度为0和位置在屏幕外
@@ -1906,6 +1907,10 @@ function init_app(){
         if (window.live2d) {
             window.live2d._goodbyeClicked = true;
         }
+        
+        // 停止主动搭话定时器
+        stopProactiveChatSchedule();
+        console.log('[App] 已停止主动搭话定时器');
         
         // 第二步：立即隐藏所有浮动按钮和锁按钮（设置为 !important 防止其他代码覆盖）
         const floatingButtons = document.getElementById('live2d-floating-buttons');
@@ -2322,6 +2327,12 @@ function init_app(){
             return;
         }
         
+        // 如果已点击"请她离开"，不执行主动搭话
+        if (window.live2d && window.live2d._goodbyeClicked) {
+            console.log('已点击"请她离开"，不安排主动搭话');
+            return;
+        }
+        
         // 只在非语音模式下执行（语音模式下不触发主动搭话）
         // 文本模式或待机模式都可以触发主动搭话
         if (isRecording) {
@@ -2348,6 +2359,12 @@ function init_app(){
     }
     
     async function triggerProactiveChat() {
+        // 如果已点击"请她离开"，不执行主动搭话
+        if (window.live2d && window.live2d._goodbyeClicked) {
+            console.log('已点击"请她离开"，取消主动搭话');
+            return;
+        }
+        
         try {
             const response = await fetch('/api/proactive_chat', {
                 method: 'POST',
@@ -2377,6 +2394,12 @@ function init_app(){
     }
     
     function resetProactiveChatBackoff() {
+        // 如果已点击"请她离开"，不重新安排主动搭话
+        if (window.live2d && window.live2d._goodbyeClicked) {
+            console.log('已点击"请她离开"，不重新安排主动搭话');
+            return;
+        }
+        
         // 重置退避级别
         proactiveChatBackoffLevel = 0;
         // 重新安排定时器
