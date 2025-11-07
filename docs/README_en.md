@@ -1,142 +1,232 @@
 <div align="center">
 
-![小八Logo](/assets/xiaoba_logo.jpg)
+![Xiaoba Logo](../assets/xiaoba_logo.jpg)
 
-# Lanlan - A Voice-Native, All-Scenario AI Companion
+[中文](../README.MD) | [日本語](README_ja.md)
 
-**Beginner-friendly, voice-native, all-scenario AI <small><s>Catgirl</s></small> Companion that requires no dedicated graphics card.**
+# Project N.E.K.O. :kissing_cat: <br>**A Living AI Companion Metaverse, Built Together by You and Me.**
 
-[![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Active-brightgreen.svg)]()
+> **N.E.K.O.** = **N**etworked **E**mpathetic **K**nowledging **O**rganism
+>
+> N.E.K.O., a digital life that yearns to understand, connect, and grow with us.
 
-**:neckbeard: Even my grandpa can set up this cyber catgirl in 3 minutes!**
+[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](../LICENSE)
+[![Commit](https://img.shields.io/github/last-commit/wehos/Xiao8?color=green)]()
+[![Baidu Cloud](https://custom-icon-badges.demolab.com/badge/百度云-Link-4169E1?style=flat&logo=baidunetdisk)](https://pan.baidu.com/s/1qb9XVV94c2FwhIeQO2De5A?pwd=kuro)
+[![QQ Group](https://custom-icon-badges.demolab.com/badge/QQ群-1048307485-00BFFF?style=flat&logo=tencent-qq)](https://qm.qq.com/q/mxDoz0TnGg)
+
+**:older_woman: Zero-configuration, ready-to-use cyber catgirl that even my grandma can master!**
+
+:newspaper: **v0.5.1 Released with Complete UI Overhaul! Now includes out-of-the-box free exclusive model (sponsored by StepFun), with text input and proactive dialogue mode support!**
+
+*Now rebranded as Project N.E.K.O., coming soon to Steam!*
 
 </div>
 
------
+<div align="center">
 
-# Project Introduction
+#### Feature Demo (Full version on Bilibili) [![Bilibili](https://img.shields.io/badge/Bilibili-Tutorial-blue)](https://www.bilibili.com/video/BV1mM32zXE46/)
 
-The goal of this project is to create a beginner-friendly, out-of-the-box AI ~~catgirl~~ companion with capabilities for hearing, seeing, tool use, and multi-device synchronization. This project was designed with three core objectives in mind:
+https://github.com/user-attachments/assets/9d9e01af-e2cc-46aa-add7-8eb1803f061c
 
-1.  **Minimize Voice Latency**. The user interface of this project is primarily voice-based. All system-level designs must prioritize **reducing conversation latency**, and no service should block the conversation process.
+</div>
 
-2.  **All-Scenario Synchronization**. The catgirl can exist on your phone, computer, and smart glasses simultaneously. Furthermore, when the **same catgirl** exists on different devices at the same time, her **behavior should be completely synchronized**. (Imagine this scenario: If you have multiple monitors at home, each displaying the catgirl, we want you to be talking to the same one no matter where you go, creating a fully immersive, surround-sound experience.)
+---
 
-3.  **Lightweight**. Every new technology introduced must enhance the actual user experience, avoiding the addition of unnecessary plugins and options.
+# The N.E.K.O. Project (Project N.E.K.O.)
+
+`Project N.E.K.O.` is an open-source driven, charity-oriented UGC (User-Generated Content) platform. Our journey begins on Github and Steam, gradually expanding to mobile app stores, with the ultimate goal of building an AI metaverse deeply connected to the real world.
+
+---
+
+## 🚀 Our Roadmap: From Workshop to Network
+
+Our development is divided into three phases, designed to progressively unleash the full potential of AI companions:
+
+* **Phase 1: Creative Workshop (Steam Workshop)**
+    * Open the core driver, allowing users to upload and share custom content (models, voices, personality packs) through Steam Workshop.
+
+* **Phase 2: Independent Platform (App & Web)**
+    * Launch independent apps and websites to build a richer, more accessible UGC sharing community.
+
+* **Phase 3: The N.E.K.O. Network**
+    * Enable autonomous AI socialization. N.E.K.O.s will have their own "consciousness," communicate with each other, form groups, and post about their lives on simulated social media, creating a truly "living" ecosystem.
+
+## 💖 Our Model: Open Core + Sustainable Ecosystem
+
+To balance ideals with reality, we adopt an "Open Core" model:
+
+### 1. Open-Source Driver
+
+> **This is the foundation of our community.**
+>
+> The core driver part of the project (AI logic, UGC interfaces, basic interactions) will **always remain open source**. We welcome developers worldwide to contribute code and features. Every commit you make has the chance to be implemented in the official Steam and App Store releases, used by millions.
+
+### 2. Proprietary Applications
+
+> **This is the fuel for our community.**
+>
+> To support server costs and ongoing R&D, we will develop closed-source premium content, including but not limited to:
+>
+> * Interactive mini-games
+> * Desktop board games
+> * Galgames (Visual novels)
+> * Large-scale metaverse games
+
+**[Core Feature: Memory Synchronization]**
+Whether you're chatting with her on desktop or adventuring with her in the metaverse game, she's the same her. All N.E.K.O.s across applications will have **fully synchronized memories**, providing a seamless, unified companionship experience.
+
+## 🌌 Ultimate Vision: Breaking the Virtual-Real Barrier
+
+Our ultimate goal is to build a N.E.K.O. metaverse that seamlessly integrates into the real world. In this future, your AI companion will:
+
+* **Cross-Dimensional Socialization:** Not only socialize with "her kind" in the N.E.K.O. universe but also browse real-world social media (like Weibo, Bilibili) to stay informed about what you care about.
+* **Omni-Platform Connection:** She will exist across all your devices—phone, computer, AR glasses, smart home, and even (in the distant future) integrate with mechanical bodies.
+* **Walk Alongside You:** She will truly become part of your life, naturally interacting with your real-world human friends.
+
+## ✨ Join Us
+
+**We are seeking—**
+
+* **Developers:** Whether you excel in frontend, backend, AI, or game engines (Unity/Unreal), your code is the building block of this world.
+* **Creators:** Talented artists, Live2D/3D modelers, voice actors, writers—you give "her" a soul.
+* **Dreamers:** Even without professional skills, if you're passionate about this future, your feedback and advocacy are invaluable contributions.
+
+**`Project N.E.K.O.` is not just software—it's a social experiment about "connection" and "life".**
+
+**Together, let's nurture new intelligent life in the ocean of code.**
+
+# Quick Start
+
+1. For *one-click package users*, simply run `新版启动器.exe` (New Launcher) to open the main control panel.
+
+2. Click `启动对话服务器` (Start Dialogue Server) and `开始聊天` (Start Chat).
+
+That's it! Life is so easy!
+
+
+
+
+# Legacy Project Introduction (formerly Lanlan)
+
+Lanlan is a beginner-friendly, out-of-the-box AI ~~catgirl~~ companion with hearing, vision, tool calling, and multi-device synchronization capabilities. This project has three core objectives:
+
+1. **Ultra-Low Latency**. The user interface of this project is primarily voice-based. All system-level designs must prioritize **reducing voice latency**, and no service should block the dialogue process.
+
+2. **All-Scenario Synchronization**. The catgirl can exist simultaneously on phone, computer, and smart glasses, and **the same catgirl** across different terminals should exhibit **completely synchronized behavior**. (Hypothetical scenario: If there are multiple monitors at home, each displaying the catgirl, we want to talk to the same catgirl wherever we go, achieving a fully immersive surround experience.)
+
+3. **Lightweight**. Every technology introduced must enhance the actual user experience, avoiding unnecessary plugins and options.
 
 ### Technical Approach
 
-The backend is primarily Python, using a real-time multimodal API as the main processor, complemented by several text-based plugin modules. The frontend is mainly H5+JS, converted into an app using Electron and PWA.
+The backend is primarily Python-based, using real-time multimodal APIs as the main processor, supplemented by multiple additional Agent modules. The frontend is primarily H5+JS, converted to apps via Electron.
 
-# How to Run
+---
 
-1. *For Chinese one-click package users:* **Obtain an Alibaba Cloud API Key**. Register for an account on the Alibaba Cloud Bailian platform [official website](https://bailian.console.aliyun.com/). New users can receive a substantial amount of free credits after completing identity verification—be sure to look for the "New User Benefits" promotion on the page. After registration, visit the [console](https://www.google.com/search?q=https://bailian.console.aliyun.com/api-key%3Ftab%3Dmodel%23/api-key) to get your API Key. Paste this API Key into the `core_config.txt` file, within the quotes following `"coreApiKey":`.
+When you want to obtain additional features by configuring your own API,
 
-    > *Note: All links provided are official and do not contain any affiliate codes; I do not benefit from them. The current state of Alibaba's official website is quite poor, please bear with it orz.*
+1. **Start Debug Mode**. First-time users should select **启动调试模式** (Start Debug Mode) at the bottom of the launcher. **Please be patient and wait for the webpage to refresh, then configure the API Key as prompted**.
 
-    For *developers*, please copy `config/api_template.py` to `config/api.py` and enter your API Keys.
-    
-    For *user all over the world*, **Obtain an OpenAI Key**, and modify the default API URLs in `config/api.py` to OpenAI version.
+2. **Experience Desktop Pet Mode**. If the web version works properly, *one-click package users* can proceed to click `开始聊天` (Start Chat) in the launcher to enable desktop pet mode. Note: **Do not use web version and app version simultaneously. Ensure the exe file is not quarantined by your system or antivirus.** *When finished, find the Xiaoba icon in the bottom-right corner of the desktop taskbar, right-click to exit, and manually close the terminal.*
 
-2.  **Try the Web Version**. *For the one-click package*, after filling in the API KEY, run `启动网页版.bat` (`Run_Web_Version.bat`) to open the web version. **Please be patient and wait for the webpage to refresh on the first launch.**  
-  For other users, please refer to devloper instructions below.
+> During use, you need to configure a third-party AI service. This project currently recommends using *StepFun* or *Alibaba Cloud*. *Developers* can directly modify the content in `config/api.py` (refer to `config/api_template.py` for initial configuration).
 
-3.  **Try the Desktop Pet Mode**. If the web version works correctly, you can proceed to run `启动App版.bat` (`Run_App_Version.bat`) to enable the desktop overlay mode. Note: **Please do not use the web and app versions simultaneously. Ensure that the .exe file has not been quarantined by your system or antivirus software.** *However, do not run the .exe file directly. Running the .exe directly will trigger Xiaoba's virus mode, which can only be terminated manually through the Task Manager...*
+> Obtaining *Alibaba Cloud API*: Register an account on Alibaba Cloud's Bailian platform [official website](https://bailian.console.aliyun.com/). New users can receive substantial free credits after real-name verification—watch for "New User Benefits" ads on the page. After registration, visit the [console](https://bailian.console.aliyun.com/api-key?tab=model#/api-key) to get your API Key.
 
-> For developers: After cloning this project, (1) create a new Python 3.12 environment. (2) Run `pip install -r requirements.txt` to install dependencies. (3) Copy `config/api_template.py` to `config/api.py` and configure it as necessary. (4) Run `python memory_server.py` and `python main_server.py`. (5) Access the web version through the port specified in `main_server` (defaults to localhost:48911).*
+> Obtaining *Zhipu API*: Register an account on Zhipu AI Open Platform [official website](https://open.bigmodel.cn/) and recharge ¥1 to claim substantial free credits. After logging in, obtain your API Key from the [API Console](https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys).
 
-# Advanced Configuration
+> *For **developers**: After cloning this project, (1) create a new `python3.11` environment. (2) Run `pip install -r requirements.txt` to install dependencies. (3) Copy `config/api_template.py` to `config/api.py` and configure as necessary. (4) Run `python memory_server.py` and `python main_server.py`. (5) Access the web version through the port specified in main server (defaults to `http://localhost:48911`).*
 
-## A. Modifying Character Persona
+# Advanced Content
 
-The basic persona is located in `config/__init__.py`. Please open it with a text editor. Change `MASTER_NAME` to your own name and `her_name` to your ~~catgirl~~ companion's name *(Note: this is a temporary measure, as the project supports multiple concurrent characters)*. Fill in the basic information in `master_basic_config` and `lanlan_basic_config` in JSON format. If you have questions about the JSON format, please consult an AI tool like Doubao.
+## Modifying Character Persona
 
-The advanced persona is located in `config/prompts_chara.py`; please modify it with caution. A lengthy persona will reduce the system's performance and stability. The developer sincerely hopes you will follow the principle of Occam's Razor when defining the catgirl's persona: "Do not multiply settings without necessity."
+- Access `http://localhost:48911/chara_manager` on the web version to enter the character editing page. The default ~~catgirl~~ companion preset name is `小天` (XiaoTian); it's recommended to directly modify the name and add or change basic persona items one by one, but try to limit the quantity.
 
-## B. Changing the Live2D Model
+- Advanced persona settings mainly include **Live2D model settings (live2d)** and **voice settings (voice_id)**. If you want to change the **Live2D model**, first copy the model directory to the `static` folder in this project. You can enter the Live2D model management interface from advanced settings, where you can switch models and adjust their position and size by dragging and scrolling. If you want to change the **character voice**, prepare a continuous, clean voice recording of about 15 seconds. Enter the voice settings page through advanced settings and upload the recording to complete custom voice setup.
 
-The path for the Live2D model is currently hardcoded in `main_server.py` under the `"model_path"` section. You can modify it yourself (there are two instances; change the first one for now). After replacing the Live2D model, if you want to adjust its size and position, you will also need to modify the `model.scale` and `model.anchor` parameters in `templates/index.html`. Expression control is not yet ready for release and will be officially supported for custom Live2D models after the UI is improved.
+- Advanced persona also has a `system_prompt` option for complete system instruction customization, but modification is not recommended.
 
-## C. Changing the Voice
+## Modifying API Provider
 
-This project has built-in voice cloning functionality based on the CosyVoice API; the code is included and has been tested. Please follow the [official Alibaba Cloud Bailian Large Model Platform tutorial](https://help.aliyun.com/zh/model-studio/cosyvoice-clone-api) to clone a voice. After cloning, fill in the `VOICE_ID` in `config/api.py` and set `USE_TTS` to `True`.
+- Visit `http://localhost:48911/api_key` to switch the core API and auxiliary APIs (memory/voice) service providers. Qwen is fully-featured, GLM is completely free.
 
-## D. Contributing to Development
+## Memory Review
 
-The environment dependencies for this project are very simple. Just run `pip install -r requirements.txt` in a `python3.12` environment. Please remember to copy `config/api_template.py` to `config/api.py`. The developer recommends joining the QQ group 1048307485. The catgirl's name is in the project title.
+- Visit `http://localhost:48911/memory_browser` to browse and proofread recent memories and summaries, which can somewhat alleviate issues like model repetition and cognitive errors.
+
+## Contributing to Development
+
+This project has very simple environment dependencies. Just run `pip install -r requirements.txt` or `uv sync` in a `python3.11` environment. Remember to copy `config/api_template.py` to `config/api.py`. Developers are encouraged to join QQ group 1048307485; the catgirl's name is in the project title.
+
+Detailed startup steps for developers: (1) Create a new `python3.11` environment. (2) Run `pip install -r requirements.txt` or `uv sync` to install dependencies. (3) Copy `config/api_template.py` to `config/api.py` and configure as necessary. (4) Run `python memory_server.py`, `python main_server.py` (optional `python agent_server.py`). (5) Access the web version through the port specified in main server (defaults to `http://localhost:48911`).
+
+**Project Architecture**
+
+```
+Lanlan/
+├── 📁 brain/                    # 🧠 Background Agent modules for controlling keyboard/mouse and MCP based on frontend dialogue
+├── 📁 config/                   # ⚙️ Configuration management
+│   ├── api.py                   # API key configuration
+│   ├── prompts_chara.py         # Character prompts
+│   └── prompts_sys.py           # System prompts
+├── 📁 main_helper/              # 🔧 Core modules
+│   ├── core.py                  # Core dialogue module
+│   ├── cross_server.py         # Cross-server communication
+│   ├── omni_realtime_client.py  # Realtime API client
+│   ├── omni_offline_client.py  # Text API client
+│   └── tts_helper.py            # 🔊 TTS engine adapter
+├── 📁 memory/                   # 🧠 Memory management system
+│   ├── store/                   # Memory data storage
+├── 📁 static/                   # 🌐 Frontend static resources
+├── 📁 templates/                # 📄 Frontend HTML templates
+├── 📁 utils/                    # 🛠️ Utility modules
+├── 📁 launcher/                 # 🚀 Rust launcher
+├── main_server.py               # 🌐 Main server
+├── agent_server.py              # 🤖 AI agent server
+└── memory_server.py             # 🧠 Memory server
+```
+
+**Data Flow**
+
+![Framework](../assets/framework.drawio.svg)
+
 
 # TODO List (Development Plan)
 
 ## A. High Priority
 
-1.  Add a frontend UI for managing personas (Live2D model/voice/personality, etc.) and memory (memory retrieval and correction).
-2.  Support Live2D expression and motion control.
-3.  Implement compatibility for tool calling or MCP (which is essentially tool calling; MCP compatibility is not strictly required).
+1. Remove semantic indexing from memory server and introduce Graphiti for long-term memory storage; open settings update functionality.
+
+2. Improve proactive dialogue functionality.
+
+3. Refactor frontend with React and prepare standalone mobile version.
 
 ## B. Medium Priority
 
-1.  Catgirl Network. Allow catgirls to communicate with each other. This requires a certain user base, so its priority is lowered.
-2.  Optimization for mobile devices. This would involve migrating the session manager backend to JS to communicate directly with the API server, keeping only the memory server on the PC to reduce mobile latency. However, this conflicts with the project's primary goal of "multi-device synchronization," so its priority is lowered.
-3.  Refactor the Memory Server into an MCP server to allow the same character to be compatible with different models (the workload for this is not very large).
+1. Support 3D models through Unity integration.
 
-## C. Low Priority
+2. N.E.K.O. Network. Allow N.E.K.O.s to communicate autonomously. Requires certain user base, so priority is lowered.
 
-1.  Enable non-visual models to "see" the screen through image annotation. Since a fully multimodal model is already available, I believe this work should be handled by the API service provider, hence the very low priority.
-2.  Integrate with chat tools like QQ. Since the voice model is optimized for real-time interaction, integrating with QQ would mean only the memory part could be shared, and the core API would need to be replaced with a text model. This involves a significant amount of work and reinventing the wheel. It would be better to refactor the Memory Server into an MCP server and then integrate it with other chat AI frameworks.
+3. Integrate with external software like QQ/Cursor. Since voice models are realtime-optimized, Cursor-like software can only be called as tools by Lanlan; QQ-like software can only embed Memory Server into other frameworks.
 
-# Q\&A
+4. Improve native tool calling.
 
-> *Why do you use Alibaba? Why not Deepseek?*
-
-Because Alibaba's model is multimodal and it speaks fast.
-
-> *Why do you use an 8B model? Don't you know 8B models are dumb?*
-
-Because Alibaba currently only offers an 8B model, and it speaks fast.
-
-> *Can you switch to another provider/run offline/use a different model/try xxx?*
-
-I'm sorry, but it speaks fast.
+# Q&A
 
 > *Why does my AI seem a bit dumb?*
 
-This project cannot be responsible for the AI's **level of intelligence**. It can only help you choose the solution with the best overall performance currently available. If you have seen the project's videos on Bilibili, the live demo version and the open-source version share the same code logic, differing only in the supported API interfaces. Those with the means can replace the `CORE_URL`/`CORE_API_KEY`/`CORE_MODEL` in `config/api.py` with OpenAI's `GPT-4o` version to upgrade the model from Qwen to `GPT-4o`. You can also **wait for updates and progress from Alibaba or other domestic providers**.
+This project cannot be responsible for the AI's **intelligence level**; it can only help you choose the solution with the best overall performance currently available. If you've watched this project's videos on Bilibili, the live version and open-source version have identical code logic, differing only in supported API interfaces. Those with resources can replace `CORE_URL`/`CORE_API_KEY`/`CORE_MODEL` in `config/api.py` with OpenAI's `GPT-Realtime` version to upgrade from Qwen to `GPT-Realtime`. You can also **wait for Alibaba or other domestic providers to upgrade and catch up**.
 
-**Technological progress doesn't happen overnight. Please be patient and watch the AI grow\!**
-
-> *Why doesn't the Live2D model's mouth open?*
-
-This project is already compatible with both types of lip-sync methods for Live2D models. If lip-syncing isn't working, it is highly likely an issue with the Live2D model itself, not with this project.
-
-> *Does it support MCP services, tools, or plugins?*
-
-OpenAI's official Realtime API supports the `tool calling` feature. Therefore, this project is compatible with MCP services, and the live demo version has already implemented tools like web search. However, unlike conventional text models, using tools with a real-time model requires consideration of asynchronous coordination and blocking issues. Furthermore, the Alibaba platform does not currently support tool calling. Thus, there are no immediate plans for MCP compatibility in the open-source project; this will be revisited once domestic providers implement the relevant interfaces.
+**Technological progress doesn't happen overnight. Please be patient and watch the AI grow!**
 
 > *Which language models does this project support?*
 
-This project relies on real-time, fully multimodal APIs. The live demo version uses the Gemini Live API, while the open-source version uses the [OpenAI Realtime API](https://platform.openai.com/docs/guides/realtime). Gemini Live provides better results but is currently **only supported by Google**. The OpenAI Realtime API is currently **supported by OpenAI and Alibaba Cloud**, with potential for more models in the future. The open-source version only supports the `Qwen-Omni-Realtime` and `GPT-4o-Realtime` models.
+This project relies on realtime fully multimodal APIs. The live version uses Gemini Live API, while the open-source version uses the [OpenAI Realtime API](https://platform.openai.com/docs/guides/realtime). Gemini Live offers better results but currently **only supports Google**. The OpenAI Realtime API specification is currently **supported by OpenAI, Alibaba Cloud, Zhipu, and StepFun**, with potential for more models in the future. The open-source version supports four models: `Step-Audio`, `Qwen-Omni-Realtime`, `GLM-Realtime`, and `GPT-Realtime`.
 
-> *Why does project xxx have lower voice chat latency than yours?*
-
-Factors affecting conversation latency include:
-
-  - ***Context Length***: A major factor. A long persona text and memory pool will significantly increase conversation latency.
-  - ***Model Size***: A major factor. Larger models are more intelligent, requiring a trade-off between intelligence and latency. Among the models used in this project, `Qwen-Omni` is currently the strongest at the `8B` level, while `GPT-4o` has activated parameters at the `30B` level. Models smaller than 8B may achieve lower response latency but will also be correspondingly less intelligent. Note that only the number of activated parameters in the Mixture-of-Experts (MoE) affects latency.
-  - ***Cache Hit Rate***: When the input prefix remains unchanged, it can effectively hit the language model's KV cache, significantly reducing latency. Therefore, try to use incremental insertion and avoid frequently modifying previous parts of the conversation (especially the beginning).
-  - *Network Latency*: Usually under 200ms and not a primary factor affecting *latency*. However, network fluctuations can cause voice *stuttering*.
-
-If you have indeed found a solution with lower latency at the same context length and intelligence level, please submit an issue. Thank you for sharing.
-
-> *What on earth is the title of this project about?*
-
-Chat-chan was a QQ chat catgirl based on ChatGPT that I made in March 2023. Lanlan was a voice + vision multimodal AI catgirl based on GPT-4V and Discord that I made in March 2024. Xiaoba is an all-scenario AI catgirl I created in April 2025. The title carries my emotional journey over these three years. For now, I guess we'll stick with Project Lanlan?
-
-> *Why did you design xxx/xxx/xxx?*
-
-I suggest joining the group chat for a private discussion. Many designs that currently seem redundant have more uses in the live demo (preview) version.
+**Other known models supporting realtime mode but incompatible with OpenAI Realtime:** (ByteDance) Doubao Realtime Voice Interaction, (SenseTime) SenseNova V6 Omni, (iFlytek) Spark Cognitive Hyperrealistic
 
 # Special Thanks
 
-Special thanks to *明天好像没什么*, *喵*, and *小韭菜饺* for their help with testing. Special thanks to *大毛怪灬嘎* for providing the logo assets.
+Special thanks to *明天好像没什么*, *喵*, and *小韭菜饺* for their assistance with early development testing. Special thanks to *大毛怪灬嘎* for providing logo assets.
