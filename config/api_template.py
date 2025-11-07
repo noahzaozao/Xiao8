@@ -16,7 +16,7 @@ COMMENTER_SERVER_PORT = 48914
 CORE_API_KEY = ''
 AUDIO_API_KEY = OPENROUTER_API_KEY = ''
 TOOL_SERVER_PORT = 48915
-MCP_ROUTER_URL = 'http://localhost:3282'
+MCP_ROUTER_URL = 'http://localhost:3283'
 MCP_ROUTER_API_KEY = 'Copy from MCP Router if needed'
 
 
