@@ -1762,7 +1762,7 @@ class Live2DManager {
                 const screenWidth = window.innerWidth;
                 const screenHeight = window.innerHeight;
                 const rightMargin = 20; // 距离屏幕右侧的安全边距
-                const bottomMargin = 20; // 距离屏幕底部的安全边距
+                const bottomMargin = 60; // 距离屏幕底部的安全边距（考虑系统任务栏，Windows任务栏约40-48px）
                 
                 // 检查是否超出屏幕右侧
                 const popupRight = popupRect.right;
