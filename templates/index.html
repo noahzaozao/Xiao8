@@ -23,8 +23,8 @@
             background: transparent;
             color: #222;
             font-family: 'Segoe UI', Arial, sans-serif;
-            pointer-events: none; /* 鍏佽榧犳爣浜嬩欢绌块€?*/
-            overflow: hidden; /* 闃叉鍑虹幇婊氬姩鏉?*/
+            pointer-events: none; /* 允许鼠标事件穿透 */
+            overflow: hidden; /* 防止出现滚动条 */
         }
 
         @keyframes fadeIn {
@@ -38,7 +38,7 @@
             }
         }
         
-        /* 鍏ㄥ眬鎸夐挳鏍峰紡 - 闃叉鏂囧瓧琚€変腑 */
+        /* 全局按钮样式 - 防止文字被选中 */
         button {
             user-select: none;
             -webkit-user-select: none;
@@ -46,7 +46,7 @@
             -ms-user-select: none;
         }
 
-        /* 鍝嶅簲寮忚璁?*/
+        /* 响应式设计 */
         @media (max-width: 480px) {
             .container {
                 width: 100%;
@@ -70,7 +70,7 @@
         }
 
         #live2d-container.minimized {
-            right: -800px; /* 鍚戝彸渚хЩ鍑哄睆骞?*/
+            right: -800px; /* 向右侧移出屏幕 */
             opacity: 0;
             visibility: hidden;
         }
@@ -94,7 +94,7 @@
 
         #chat-container {
             margin-bottom: 50px;
-            pointer-events: auto; /* 鎭㈠榧犳爣浜や簰 */
+            pointer-events: auto; /* 恢复鼠标交互 */
             position: fixed;
             left: 20px;
             bottom: 20px;
@@ -106,35 +106,35 @@
             border-radius: 12px;
             padding: 0;
             box-sizing: border-box;
-            overflow: hidden; /* 閲嶈锛氭敼涓?hidden锛屾粴鍔ㄤ氦缁欏唴閮?wrapper */
+            overflow: hidden; /* 重要：改为 hidden，滚动交给内部 wrapper */
             z-index: 20;
             box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
             scroll-behavior: smooth;
-            display: flex; /* 浣跨敤 flex 甯冨眬 */
+            display: flex; /* 使用 flex 布局 */
             flex-direction: column;
-            /* 娣诲姞杩囨浮鏁堟灉锛岃灏哄鍙樺寲骞虫粦 */
+            /* 添加过渡效果，让尺寸变化平滑 */
             transition: width 0.3s ease, height 0.3s ease, max-height 0.3s ease, padding 0.3s ease;
         }
 
-        /* 鍐呴儴鍐呭鍖呰９鍣紝璐熻矗婊氬姩 */
+        /* 内部内容包裹器，负责滚动 */
         #chat-content-wrapper {
-            pointer-events: auto; /* 鎭㈠榧犳爣浜や簰 */
-            flex-grow: 1; /* 鍗犳嵁鍙敤绌洪棿 */
-            padding: 16px; /* 鍐呰竟璺濈Щ鍒拌繖閲?*/
-            padding-top: 48px; /* 涓洪《閮ㄦ寜閽暀绌洪棿 */
-            overflow-y: auto; /* 婊氬姩鏉″湪杩欓噷 */
+            pointer-events: auto; /* 恢复鼠标交互 */
+            flex-grow: 1; /* 占据可用空间 */
+            padding: 16px; /* 内边距移到这里 */
+            padding-top: 48px; /* 为顶部按钮留空间 */
+            overflow-y: auto; /* 滚动条在这里 */
             scroll-behavior: smooth;
-            /* 娣诲姞杩囨浮锛岃鍐呭闅愯棌/鏄剧ず鏇村钩婊?*/
+            /* 添加过渡，让内容隐藏/显示更平滑 */
             transition: opacity 0.2s ease, visibility 0.2s ease;
             opacity: 1;
             visibility: visible;
             background: #fff;
         }
 
-        /* 鍒囨崲鎸夐挳鏍峰紡 - 鏇撮啋鐩殑璁捐 */
+        /* 切换按钮样式 - 更醒目的设计 */
         #toggle-chat-btn {
-            pointer-events: auto; /* 鎭㈠榧犳爣浜や簰 */
-            position: absolute; /* 缁濆瀹氫綅浜庡鍣ㄥ唴 */
+            pointer-events: auto; /* 恢复鼠标交互 */
+            position: absolute; /* 绝对定位于容器内 */
             top: 8px;
             right: 8px;
             width: 24px;
@@ -143,13 +143,13 @@
             opacity: 1;
             border: 2px solid rgba(255, 255, 255, 0.8);
             border-radius: 6px;
-            cursor: grab; /* 鎷栨嫿鎵嬪娍 */
+            cursor: grab; /* 可拖拽 */
             font-weight: bold;
             font-size: 1.2rem;
-            line-height: 20px; /* 鍨傜洿灞呬腑璋冩暣 */
+            line-height: 20px;
             text-align: center;
             color: #fff;
-            z-index: 21; /* 纭繚鍦ㄥ唴瀹逛箣涓?*/
+            z-index: 21; /* 确保在内容之上 */   
             padding: 0;
             user-select: none;
             box-shadow: 0 2px 8px rgba(79, 140, 255, 0.4);
@@ -172,7 +172,7 @@
             animation: none;
         }
         
-        /* 鑱婂ぉ妗嗘爣棰?*/
+        /* 聊天框标题 */
         #chat-header {
             position: absolute;
             top: 0;
@@ -186,8 +186,8 @@
             padding: 0 16px;
             box-sizing: border-box;
             z-index: 21;
-            cursor: grab; /* 鎷栧姩鎵嬫焺鏍峰紡 */
-            user-select: none; /* 闃叉鎷栧姩鏃堕€変腑鏂囧瓧 */
+            cursor: grab; /* 拖动手柄样式 */
+            user-select: none; /* 防止拖动时选中文字 */
         }
         
         #chat-title {
@@ -196,7 +196,7 @@
             color: #333;
         }
 
-        /* 瀵硅瘽鍖烘彁绀烘 */
+        /* 对话区提示框 */
         #chat-tooltip {
             position: absolute;
             top: 60px;
@@ -247,7 +247,7 @@
             }
         }
         
-        /* 鑱婂ぉ娑堟伅鏍峰紡 */
+        /* 聊天消息样式 */
         #chatContainer {
             display: flex;
             flex-direction: column;
@@ -291,13 +291,10 @@
             }
         }
 
-        #toggle-sidebar-btn:hover {
-            background: #cacbcd;
-        }
 
         
         
-        /* 鏂囨湰杈撳叆鍖哄煙鏍峰紡 - 鍦ㄨ亰澶╂搴曢儴 */
+        /* 文本输入区域样式 - 在聊天框底部 */
         #text-input-area {
             pointer-events: auto;
             display: flex;
@@ -312,12 +309,12 @@
             z-index: 25;
         }
         
-        /* 璇煶妯″紡涓嬮殣钘忔枃鏈緭鍏ュ尯 */
+        /* 语音模式下隐藏文本输入区 */
         #text-input-area.hidden {
             display: none;
         }
         
-        /* 鎴浘缂╃暐鍥惧鍣?- 妯悜婊氬姩甯冨眬 */
+        /* 截图缩略图容器 - 横向滚动布局 */
         #screenshot-thumbnail-container {
             display: none;
             flex-direction: column;
@@ -344,7 +341,7 @@
             }
         }
         
-        /* 鎴浘鍒楄〃澶撮儴 */
+        /* 截图列表头部 */
         #screenshots-header {
             display: flex;
             justify-content: space-between;
@@ -373,7 +370,7 @@
             background: #c82333;
         }
         
-        /* 鎴浘鍒楄〃 - 妯悜婊氬姩 */
+        /* 截图列表 - 横向滚动 */
         #screenshots-list {
             display: flex;
             gap: 8px;
@@ -401,7 +398,7 @@
             background: #999;
         }
         
-        /* 鍗曚釜鎴浘鍗＄墖 */
+        /* 单个截图卡片 */
         .screenshot-item {
             position: relative;
             flex-shrink: 0;
@@ -567,7 +564,7 @@
             background: #5a6268;
         }
         
-        /* 妗岄潰绔拰绉诲姩绔枃鏈樉绀烘帶鍒?*/
+        /* 修改麦克风列表样式 - 向右扩展并设置半透明背景 */
         .desktop-text {
             display: inline;
         }
@@ -576,15 +573,15 @@
             display: none;
         }
 
-        /* --- 鏈€灏忓寲鐘舵€?--- */
+        /* --- 最小化状态 --- */
         #chat-container.minimized {
             background: transparent;
             opacity: 1;
-            width: 60px; /* 鏈€灏忓寲瀹藉害 */
-            height: 40px; /* 鏈€灏忓寲楂樺害 */
+            width: 60px; /* 最小化宽度 */
+            height: 40px; /* 最小化高度 */
             max-height: 40px;
-            padding: 0; /* 绉婚櫎鍐呰竟璺?*/
-            cursor: pointer; /* 璁╂暣涓皬鏂瑰潡鍙偣鍑伙紙铏界劧鎸夐挳涔熷湪锛?*/
+            padding: 0; /* 移除内边距 */
+            cursor: pointer; /* 让整个小方块可点击（虽然按钮也在） */
         }
 
         #chat-container.minimized #chat-header {
@@ -592,12 +589,12 @@
         }
 
         #chat-container.minimized #chat-content-wrapper {
-            /* 闅愯棌鍐呭鍖哄煙 */
+            /* 隐藏内容区域 */
             opacity: 0;
             visibility: hidden;
-            height: 0; /* 纭繚涓嶅崰绌洪棿 */
+            height: 0; /* 确保不占空间 */
             padding: 0;
-            overflow: hidden; /* 闅愯棌婊氬姩鏉?*/
+            overflow: hidden; /* 隐藏滚动条 */
         }
 
         #chat-container.minimized #text-input-area {
@@ -609,7 +606,7 @@
         }
 
         #chat-container.minimized #toggle-chat-btn {
-            /* 灏嗘寜閽眳涓樉绀?*/
+            /* 将按钮居中显示 */
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
@@ -654,7 +651,7 @@
 
 
         @media only screen and (max-width: 768px) {
-            /* 鎵嬫満绔儗鏅涓洪粦鑹?*/
+            /* 手机端背景设为黑色 */
             html, body {
                 background: #000 !important;
             }
@@ -733,8 +730,7 @@
                 font-size: 0.9rem;
                 max-width: 85%;
             }
-            
-            /* 绉诲姩绔樉绀烘媿鐓э紝闅愯棌鎴浘 */
+
             .desktop-text {
                 display: none;
             }
@@ -747,41 +743,41 @@
     </style>
 </head>
 <body>
-<!-- 鏃х殑鎸夐挳闈㈡澘宸茶縼绉诲埌娴姩鎸夐挳绯荤粺锛坙ive2d.js锛夛紝淇濈暀闅愯棌鐨勬棫鎸夐挳鍏冪礌渚涘姛鑳借Е鍙戜娇鐢?-->
+
 <div id="sidebar" style="display: none;">
     <div id="sidebarbox">
-        <button id="micButton" class="side-btn">馃帳 寮€濮嬭闊?/button>
-        <button id="muteButton" class="side-btn" disabled>鈴革笍 浼戞伅涓€涓?/button>
-        <button id="screenButton" class="side-btn" disabled>馃枼锔?灞忓箷鍏变韩</button>
-        <button id="stopButton" class="side-btn" disabled>馃洃 鍋滄鍏变韩</button>
-        <button id="resetSessionButton" class="side-btn">馃憢 璇峰ス绂诲紑</button>
+        <button id="micButton" class="side-btn">开始语音</button>
+        <button id="muteButton" class="side-btn" disabled>休息一下</button>
+        <button id="screenButton" class="side-btn" disabled>屏幕共享</button>
+        <button id="stopButton" class="side-btn" disabled>停止共享</button>
+        <button id="resetSessionButton" class="side-btn">请她离开</button>
         <div id="status"></div>
     </div>
 </div>
 <div id="chat-container">
     <div id="chat-header">
-        <span id="chat-title">馃挰 瀵硅瘽</span>
+        <span id="chat-title">对话区</span>
     </div>
-    <button id="toggle-chat-btn" title="鏈€灏忓寲">鈥?/button>
-    <div id="chat-tooltip">鉁?瀵硅瘽鍖?/div>
+    <button id="toggle-chat-btn" title="最小化"></button>
+    <div id="chat-tooltip">✨ 对话区</div>
     <div id="chat-content-wrapper">
         <div id="chatContainer"></div>
     </div>
     <div id="text-input-area">
         <div id="screenshot-thumbnail-container">
             <div id="screenshots-header">
-                <span id="screenshots-title">馃摳 寰呭彂閫佹埅鍥?(<span id="screenshot-count">0</span>)</span>
-                <button id="clear-all-screenshots">娓呯┖鍏ㄩ儴</button>
+                <span id="screenshots-title">📸 待发送截图 (<span id="screenshot-count">0</span>)</span>
+                <button id="clear-all-screenshots">清空全部</button>
             </div>
             <div id="screenshots-list">
-                <!-- 鎴浘椤瑰皢鍔ㄦ€佹坊鍔犲埌杩欓噷 -->
+                <!-- 截图项将动态添加到这里 -->
             </div>
         </div>
         <div id="text-input-row">
-            <textarea id="textInputBox" placeholder="鏂囧瓧鑱婂ぉ妯″紡...鍥炶溅鍙戦€侊紝Shift+鍥炶溅鎹㈣" tabindex="0"></textarea>
+            <textarea id="textInputBox" placeholder="文字聊天模式...回车发送，Shift+回车换行" tabindex="0"></textarea>
             <div id="button-group">
-                <button id="textSendButton">馃摛 鍙戦€?/button>
-                <button id="screenshotButton"><span class="desktop-text">馃摳 鎴浘</span><span class="mobile-text">馃摲 鎷嶇収</span></button>
+                <button id="textSendButton">发送</button>
+                <button id="screenshotButton"><span class="desktop-text">截图</span><span class="mobile-text">拍照</span></button>
             </div>
         </div>
     </div>
@@ -791,30 +787,33 @@
 </div>
 
 <script>
-    // 浠庢ā鏉垮彉閲忎腑娉ㄥ叆鍊?    const lanlan_config = {
+    // 从模板变量中注入值
+    const lanlan_config = {
         lanlan_name: "{{lanlan_name}}"
     };
     const cubism4Model = "{{model_path}}";
     const focus_mode = {{ focus_mode | tojson }};
 </script>
 <script>
-    // Beacon鍔熻兘 - 椤甸潰鍏抽棴鏃跺彂閫佷俊鍙风粰鏈嶅姟鍣?    let beaconSent = false;
+    // Beacon功能 - 页面关闭时发送信号给服务器
+    let beaconSent = false;
 
     function sendBeacon() {
-        if (beaconSent) return; // 闃叉閲嶅鍙戦€?        beaconSent = true;
+        if (beaconSent) return; // 防止重复发送
+        beaconSent = true;
         
         try {
-            // 浣跨敤navigator.sendBeacon纭繚淇″彿涓嶈鎷︽埅
+            // 使用navigator.sendBeacon确保信号不被拦截
             const success = navigator.sendBeacon('/api/beacon/shutdown', JSON.stringify({
                 timestamp: Date.now(),
                 action: 'shutdown'
             }));
             
             if (success) {
-                console.log('Beacon淇″彿宸插彂閫?);
+                console.log('Beacon信号已发送');
             } else {
-                console.warn('Beacon鍙戦€佸け璐ワ紝灏濊瘯浣跨敤fetch');
-                // 澶囩敤鏂规锛氫娇鐢╢etch
+                console.warn('Beacon发送失败，尝试使用fetch');
+                // 备用方案：使用fetch
                 fetch('/api/beacon/shutdown', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -822,53 +821,59 @@
                         timestamp: Date.now(),
                         action: 'shutdown'
                     }),
-                    keepalive: true // 纭繚璇锋眰鍦ㄩ〉闈㈠叧闂椂浠嶈兘鍙戦€?                }).catch(err => console.log('澶囩敤beacon鍙戦€佸け璐?', err));
+                    keepalive: true // 确保请求在页面关闭时仍能发送
+                }).catch(err => console.log('备用beacon发送失败:', err));
             }
         } catch (e) {
-            console.log('Beacon鍙戦€佸紓甯?', e);
+            console.log('Beacon发送异常:', e);
         }
     }
 
-    // 鐩戝惉椤甸潰鍏抽棴浜嬩欢
+    // 监听页面关闭事件
     window.addEventListener('beforeunload', sendBeacon);
     window.addEventListener('unload', sendBeacon);
 </script>
-<script src="/static/libs/live2dcubismcore.min.js"></script>  <!-- Cubism 4鏍稿績搴擄紙鏀寔Cubism 3/4妯″瀷锛?-->
+<script src="/static/libs/live2dcubismcore.min.js"></script>  <!-- Cubism 4核心库（支持Cubism 3/4模型） -->
 <script>
-  // 鍏ㄥ眬鑿滃崟璺熻釜鏈哄埗 - 蹇呴』鍦ㄦ墍鏈夊叾浠栬剼鏈箣鍓嶅畾涔?  // 鐢ㄤ簬璺熻釜褰撳墠鏄惁鏈夋椿鍔ㄧ殑鑿滃崟锛堥害鍏嬮鍒楄〃銆丄gent闈㈡澘銆佷晶杈规爮绛夛級
+  // 全局菜单跟踪机制 - 必须在所有其他脚本之前定义
+  // 用于跟踪当前是否有活动的菜单（麦克风列表、Agent面板、侧边栏等）
   window.activeMenuCount = 0;
   
-  // 杈呭姪鍑芥暟锛氭爣璁拌彍鍗曟墦寮€
+  // 辅助函数：标记菜单打开
   window.markMenuOpen = function() {
     window.activeMenuCount++;
   };
   
-  // 杈呭姪鍑芥暟锛氭爣璁拌彍鍗曞叧闂?  window.markMenuClosed = function() {
+  // 辅助函数：标记菜单关闭
+  window.markMenuClosed = function() {
     window.activeMenuCount = Math.max(0, window.activeMenuCount - 1);
   };
 </script>
-<script src="/static/libs/live2d.min.js"></script>  <!-- Cubism 2.1鏍稿績搴擄紙鏀寔鏃фā鍨嬶級 -->
+<script src="/static/libs/live2d.min.js"></script>  <!-- Cubism 2.1核心库（支持旧模型） -->
 <script src="/static/libs/pixi.min.js"></script>  <!-- PixiJS v7 CDN -->
-<script src="/static/libs/index.min.js"></script>  <!-- pixi-live2d-display v0.5.0-ls-6锛圧aSan147 fork锛屾敮鎸乿7锛?-->
+<script src="/static/libs/index.min.js"></script>  <!-- pixi-live2d-display v0.5.0-ls-6（RaSan147 fork，支持v7） -->
 <script src="/static/common_ui.js"></script>
 <script src="/static/live2d.js"></script>
 <script src="/static/app.js"></script>
 <script>
-  // 瀵硅瘽鍖烘彁绀烘閫昏緫 - 浠呭湪绗竴娆¤闂椂鏄剧ず
+  // 对话区提示框逻辑 - 仅在第一次访问时显示
   (function() {
     
-    // 绛夊緟 DOM 鍜屾墍鏈夎剼鏈畬鍏ㄥ姞杞?    window.addEventListener('load', function() {
-      // 鍐嶇瓑寰呬竴灏忔鏃堕棿锛岀‘淇?common_ui.js 鐨勪簨浠剁洃鍚櫒宸茶缃?      setTimeout(function() {
+    // 等待 DOM 和所有脚本完全加载
+    window.addEventListener('load', function() {
+      // 再等待一小段时间，确保 common_ui.js 的事件监听器已设置
+      setTimeout(function() {
         const chatTooltip = document.getElementById('chat-tooltip');
         const textInputBox = document.getElementById('textInputBox');
         const chatContainer = document.getElementById('chat-container');
         const toggleBtn = document.getElementById('toggle-chat-btn');
         let autoCollapseTimer = null;
         
-        // 妫€鏌ユ槸鍚︽槸绗竴娆¤闂紙鍙奖鍝嶆彁绀烘鏄剧ず锛?        const hasVisitedBefore = localStorage.getItem('chat_tooltip_shown');
+        // 检查是否是第一次访问（只影响提示框显示）
+        const hasVisitedBefore = localStorage.getItem('chat_tooltip_shown');
         
         if (chatTooltip && textInputBox && chatContainer && toggleBtn) {
-          // 鎻愮ず妗嗗彧鍦ㄧ涓€娆¤闂椂鏄剧ず
+          // 提示框只在第一次访问时显示
           if (!hasVisitedBefore) {
             chatTooltip.classList.remove('hidden');
             localStorage.setItem('chat_tooltip_shown', 'true');
@@ -876,62 +881,64 @@
             chatTooltip.classList.add('hidden');
           }
           
-          // 鐩戝惉鏂囨湰妗嗙劍鐐逛簨浠?          const handleFocus = () => {
-            // 鐢ㄦ埛鑱氱劍浜嗘枃鏈锛岀珛鍗抽殣钘忔彁绀哄苟鍙栨秷鑷姩鎶樺彔
+          // 监听文本框焦点事件
+          const handleFocus = () => {
+            // 用户聚焦了文本框，立即隐藏提示并取消自动折叠
             if (autoCollapseTimer) {
               clearTimeout(autoCollapseTimer);
               autoCollapseTimer = null;
-              console.log('鐢ㄦ埛鑱氱劍鏂囨湰妗嗭紝鍙栨秷鑷姩鎶樺彔');
+              console.log('用户聚焦文本框，取消自动折叠');
             }
             chatTooltip.classList.add('hidden');
-            // 绉婚櫎鐩戝惉鍣紝鍥犱负宸茬粡瀹屾垚浠诲姟
+            // 移除监听器，因为已经完成任务
             textInputBox.removeEventListener('focus', handleFocus);
           };
           
-          // 鐩戝惉鎵嬪姩鎶樺彔鎸夐挳鐐瑰嚮浜嬩欢
+          // 监听手动折叠按钮点击事件
           const handleToggleClick = () => {
-            // 鐢ㄦ埛鎵嬪姩鐐瑰嚮浜嗘姌鍙犳寜閽紝鍙栨秷鑷姩鎶樺彔
+            // 用户手动点击了折叠按钮，取消自动折叠
             if (autoCollapseTimer) {
               clearTimeout(autoCollapseTimer);
               autoCollapseTimer = null;
-              console.log('鐢ㄦ埛鎵嬪姩鎶樺彔瀵硅瘽鍖猴紝鍙栨秷鑷姩鎶樺彔');
+              console.log('用户手动折叠对话区，取消自动折叠');
             }
             chatTooltip.classList.add('hidden');
-            // 绉婚櫎鐩戝惉鍣紝鍥犱负宸茬粡瀹屾垚浠诲姟
+            // 移除监听器，因为已经完成任务
             toggleBtn.removeEventListener('click', handleToggleClick);
           };
           
-          // 娉ㄥ唽浜嬩欢鐩戝惉鍣?          textInputBox.addEventListener('focus', handleFocus);
+          // 注册事件监听器
+          textInputBox.addEventListener('focus', handleFocus);
           toggleBtn.addEventListener('click', handleToggleClick);
           
-          // 姣忔椤甸潰鍔犺浇閮芥墽琛岋細5绉掑悗鑷姩鎶樺彔鏁翠釜瀵硅瘽鍖猴紙闄ら潪鏈夋椿鍔ㄨ彍鍗曪級
+          // 每次页面加载都执行：5秒后自动折叠整个对话区（除非有活动菜单）
           autoCollapseTimer = setTimeout(() => {
-            // 妫€鏌ユ槸鍚︽湁娲诲姩鑿滃崟锛屽鏋滄湁鍒欎笉鑷姩鎶樺彔
+            // 检查是否有活动菜单，如果有则不自动折叠
             if (window.activeMenuCount > 0) {
-              console.log('妫€娴嬪埌娲诲姩鑿滃崟锛岃烦杩囪嚜鍔ㄦ姌鍙?);
+              console.log('检测到活动菜单，跳过自动折叠');
               return;
             }
             
-            // 鍏堥殣钘忔彁绀烘锛堝甫鍔ㄧ敾锛?            chatTooltip.classList.add('hidden');
-            // 绛夊緟鎻愮ず妗嗗姩鐢诲畬鎴愬悗鍐嶆姌鍙犲璇濆尯
+            // 先隐藏提示框（带动画）
+            chatTooltip.classList.add('hidden');
+            // 等待提示框动画完成后再折叠对话区
             setTimeout(() => {
-              // 鍐嶆妫€鏌ユ槸鍚︽湁娲诲姩鑿滃崟
+              // 再次检查是否有活动菜单
               if (window.activeMenuCount > 0) {
-                console.log('妫€娴嬪埌娲诲姩鑿滃崟锛岃烦杩囪嚜鍔ㄦ姌鍙?);
+                console.log('检测到活动菜单，跳过自动折叠');
                 return;
               }
-              // 鐩存帴妯℃嫙鐐瑰嚮浜嬩欢
+              // 直接模拟点击事件
               toggleBtn.click();
-              console.log('鑷姩鎶樺彔瀵硅瘽鍖?);
+              console.log('自动折叠对话区');
             }, 300);
           }, 5000);
           
-          console.log('椤甸潰鍔犺浇瀹屾垚锛?绉掑悗灏嗚嚜鍔ㄦ姌鍙犲璇濆尯锛堥櫎闈炴湁娲诲姩鑿滃崟锛?);
+          console.log('页面加载完成，5秒后将自动折叠对话区（除非有活动菜单）');
         }
-      }, 100); // 100ms 寤惰繜纭繚鎵€鏈夊垵濮嬪寲瀹屾垚
+      }, 100); // 100ms 延迟确保所有初始化完成
     });
   })();
 </script>
-<!-- Agent鍔熻兘宸茶縼绉诲埌娴姩鎸夐挳绯荤粺锛岀浉鍏抽€昏緫鍦?app.js 涓?-->
 </body>
 </html>
