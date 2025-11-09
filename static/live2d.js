@@ -1606,39 +1606,36 @@ class Live2DManager {
                     toggleItem.style.background = 'transparent';
                 });
                 
-                // 点击切换（优先通过 app.js 中的开关来触发，确保逻辑完整执行）
+                // 点击切换（直接更新全局状态并保存）
                 checkbox.addEventListener('change', (e) => {
                     e.stopPropagation();
                     const isChecked = checkbox.checked;
                     
-                    // 同步到 app.js 中的对应开关（这样会触发 app.js 的完整逻辑）
                     if (toggle.id === 'focus-mode') {
-                        // inverted: 允许打断的值需要取反后赋给 focusModeEnabled
+                        // inverted: "允许打断"的值需要取反后赋给 focusModeEnabled
+                        // 勾选"允许打断" = focusModeEnabled为false（允许打断）
+                        // 取消勾选"允许打断" = focusModeEnabled为true（focus模式，AI说话时静音麦克风）
                         const actualValue = toggle.inverted ? !isChecked : isChecked;
-                        const appCheckbox = document.getElementById('focus-mode-toggle-l2d');
-                        if (appCheckbox && appCheckbox.checked !== actualValue) {
-                            appCheckbox.checked = actualValue;
-                            appCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
-                        } else if (!appCheckbox) {
-                            // 如果 app.js 的开关不存在，直接更新全局变量
-                            window.focusModeEnabled = actualValue;
-                            console.log(`允许打断已${isChecked ? '开启' : '关闭'}（focusModeEnabled=${actualValue}）`);
+                        window.focusModeEnabled = actualValue;
+                        
+                        // 保存到localStorage
+                        if (typeof window.saveXiao8Settings === 'function') {
+                            window.saveXiao8Settings();
                         }
                     } else if (toggle.id === 'proactive-chat') {
-                        const appCheckbox = document.getElementById('proactive-chat-toggle-l2d');
-                        if (appCheckbox && appCheckbox.checked !== isChecked) {
-                            appCheckbox.checked = isChecked;
-                            appCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
-                        } else if (!appCheckbox) {
-                            // 如果 app.js 的开关不存在，直接执行功能
-                            window.proactiveChatEnabled = isChecked;
-                            if (isChecked && typeof window.resetProactiveChatBackoff === 'function') {
-                                window.resetProactiveChatBackoff();
-                            } else if (!isChecked && typeof window.stopProactiveChatSchedule === 'function') {
-                                window.stopProactiveChatSchedule();
-                            }
-                            console.log(`主动搭话已${isChecked ? '开启' : '关闭'}`);
+                        window.proactiveChatEnabled = isChecked;
+                        
+                        // 保存到localStorage
+                        if (typeof window.saveXiao8Settings === 'function') {
+                            window.saveXiao8Settings();
                         }
+                        
+                        if (isChecked && typeof window.resetProactiveChatBackoff === 'function') {
+                            window.resetProactiveChatBackoff();
+                        } else if (!isChecked && typeof window.stopProactiveChatSchedule === 'function') {
+                            window.stopProactiveChatSchedule();
+                        }
+                        console.log(`主动搭话已${isChecked ? '开启' : '关闭'}`);
                     }
                 });
                 
@@ -1762,7 +1759,7 @@ class Live2DManager {
                 const screenWidth = window.innerWidth;
                 const screenHeight = window.innerHeight;
                 const rightMargin = 20; // 距离屏幕右侧的安全边距
-                const bottomMargin = 20; // 距离屏幕底部的安全边距
+                const bottomMargin = 60; // 距离屏幕底部的安全边距（考虑系统任务栏，Windows任务栏约40-48px）
                 
                 // 检查是否超出屏幕右侧
                 const popupRight = popupRect.right;

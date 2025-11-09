@@ -218,9 +218,7 @@
         await window.live2dManager.initPIXI('live2d-canvas', 'live2d-container');
         showStatus('PIXI 初始化完成');
 
-        // 加载当前角色的模型
-        await loadCurrentCharacterModel();
-
+        // 先加载模型列表
         try {
             const response = await fetch('/api/live2d/models');
             availableModels = await response.json();
@@ -233,20 +231,25 @@
                     modelSelect.appendChild(option);
                 });
 
-                // 如果已自动加载了一个模型，则在下拉框中选中它
-                if (currentModelInfo && currentModelInfo.name) {
-                    const exists = availableModels.some(m => m.name === currentModelInfo.name);
-                    if (exists) {
-                        modelSelect.value = currentModelInfo.name;
-                    }
-                }
-
                 showStatus('模型列表加载成功');
             } else {
                 showStatus('未找到可用模型');
             }
         } catch (e) {
             showStatus('加载模型列表失败');
+        }
+
+        // 然后加载当前角色的模型（此时下拉框已经有选项了）
+        await loadCurrentCharacterModel();
+
+        // 如果已自动加载了一个模型，确保在下拉框中选中它
+        // 这是双重保险：防止 loadCurrentCharacterModel() 内部设置失败
+        if (currentModelInfo && currentModelInfo.name) {
+            const exists = availableModels.some(m => m.name === currentModelInfo.name);
+            if (exists && modelSelect.value !== currentModelInfo.name) {
+                console.log('下拉框值未正确设置，执行补救:', currentModelInfo.name);
+                modelSelect.value = currentModelInfo.name;
+            }
         }
 
         // 保存模型设置到角色的函数
