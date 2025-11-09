@@ -1216,11 +1216,11 @@ class Live2DManager {
 
         // 定义按钮配置（从上到下：麦克风、显示屏、锤子、设置、睡觉）
         const buttonConfigs = [
-            { id: 'mic', emoji: '🎤', title: '语音控制', hasPopup: true, toggle: true, separatePopupTrigger: true },
-            { id: 'screen', emoji: '🖥️', title: '屏幕分享', hasPopup: false, toggle: true },
-            { id: 'agent', emoji: '🔨', title: 'Agent工具', hasPopup: true, popupToggle: true, exclusive: 'settings' },
-            { id: 'settings', emoji: '⚙️', title: '设置', hasPopup: true, popupToggle: true, exclusive: 'agent' },
-            { id: 'goodbye', emoji: '💤', title: '请她离开', hasPopup: false }
+            { id: 'mic', emoji: '🎤', title: '语音控制', hasPopup: true, toggle: true, separatePopupTrigger: true, iconOff: '/static/icons/mic_icon_off.png', iconOn: '/static/icons/mic_icon_on.png' },
+            { id: 'screen', emoji: '🖥️', title: '屏幕分享', hasPopup: false, toggle: true, iconOff: '/static/icons/screen_icon_off.png', iconOn: '/static/icons/screen_icon_on.png' },
+            { id: 'agent', emoji: '🔨', title: 'Agent工具', hasPopup: true, popupToggle: true, exclusive: 'settings', iconOff: '/static/icons/Agent_off.png', iconOn: '/static/icons/Agent_on.png' },
+            { id: 'settings', emoji: '⚙️', title: '设置', hasPopup: true, popupToggle: true, exclusive: 'agent', iconOff: '/static/icons/set_off.png', iconOn: '/static/icons/set_on.png' },
+            { id: 'goodbye', emoji: '💤', title: '请她离开', hasPopup: false, iconOff: '/static/icons/rest_off.png', iconOn: '/static/icons/rest_on.png' }
         ];
 
         // 创建主按钮
@@ -1234,34 +1234,127 @@ class Live2DManager {
             const btn = document.createElement('div');
             btn.id = `live2d-btn-${config.id}`;
             btn.className = 'live2d-floating-btn';
-            btn.innerText = config.emoji;
             btn.title = config.title;
+            
+            let imgOff = null; // off状态图片
+            let imgOn = null;  // on状态图片
+            
+            // 优先使用带off/on的PNG图标，如果有iconOff和iconOn则使用叠加方式实现淡入淡出
+            if (config.iconOff && config.iconOn) {
+                // 创建图片容器，用于叠加两张图片
+                const imgContainer = document.createElement('div');
+                Object.assign(imgContainer.style, {
+                    position: 'relative',
+                    width: '48px',
+                    height: '48px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                });
+                
+                // 创建off状态图片（默认显示）
+                imgOff = document.createElement('img');
+                imgOff.src = config.iconOff;
+                imgOff.alt = config.title;
+                Object.assign(imgOff.style, {
+                    position: 'absolute',
+                    width: '48px',
+                    height: '48px',
+                    objectFit: 'contain',
+                    pointerEvents: 'none',
+                    opacity: '1',
+                    transition: 'opacity 0.3s ease'
+                });
+                
+                // 创建on状态图片（默认隐藏）
+                imgOn = document.createElement('img');
+                imgOn.src = config.iconOn;
+                imgOn.alt = config.title;
+                Object.assign(imgOn.style, {
+                    position: 'absolute',
+                    width: '48px',
+                    height: '48px',
+                    objectFit: 'contain',
+                    pointerEvents: 'none',
+                    opacity: '0',
+                    transition: 'opacity 0.3s ease'
+                });
+                
+                imgContainer.appendChild(imgOff);
+                imgContainer.appendChild(imgOn);
+                btn.appendChild(imgContainer);
+            } else if (config.icon) {
+                // 兼容单图标配置
+                const img = document.createElement('img');
+                img.src = config.icon;
+                img.alt = config.title;
+                Object.assign(img.style, {
+                    width: '48px',
+                    height: '48px',
+                    objectFit: 'contain',
+                    pointerEvents: 'none'
+                });
+                btn.appendChild(img);
+            } else if (config.emoji) {
+                // 备用方案：使用emoji
+                btn.innerText = config.emoji;
+            }
             
             Object.assign(btn.style, {
                 width: '48px',
                 height: '48px',
                 borderRadius: '50%',
-                background: 'rgba(255, 255, 255, 0.9)',
-                backdropFilter: 'blur(10px)',
+                background: 'rgba(255, 255, 255, 0.7)',  // 白色背景，70透明度（30透明度）
+                backdropFilter: 'blur(10px)',  // 保留模糊效果
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 fontSize: '24px',
                 cursor: 'pointer',
                 userSelect: 'none',
-                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',  // 保留阴影
                 transition: 'all 0.2s ease',
                 pointerEvents: 'auto'
             });
 
-            // 鼠标悬停效果
+            // 鼠标悬停效果：通过opacity切换图标，实现淡入淡出
             btn.addEventListener('mouseenter', () => {
                 btn.style.transform = 'scale(1.1)';
                 btn.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.3)';
+                // 淡出off图标，淡入on图标
+                if (imgOff && imgOn) {
+                    imgOff.style.opacity = '0';
+                    imgOn.style.opacity = '1';
+                }
             });
             btn.addEventListener('mouseleave', () => {
                 btn.style.transform = 'scale(1)';
                 btn.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.2)';
+                // 恢复原始背景色（根据按钮状态）
+                const isActive = btn.dataset.active === 'true';
+                const popup = document.getElementById(`live2d-popup-${config.id}`);
+                const isPopupVisible = popup && popup.style.display === 'flex' && popup.style.opacity === '1';
+                
+                if (isActive || isPopupVisible) {
+                    // 保持和悬停时一样的背景色（白色）
+                    btn.style.background = 'rgba(255, 255, 255, 0.7)';
+                } else {
+                    btn.style.background = 'rgba(255, 255, 255, 0.7)';
+                }
+                
+                // 根据按钮激活状态决定显示哪个图标
+                // 如果按钮已激活，保持显示on图标；否则显示off图标
+                if (imgOff && imgOn) {
+                    if (isActive || isPopupVisible) {
+                        // 激活状态：保持on图标
+                        imgOff.style.opacity = '0';
+                        imgOn.style.opacity = '1';
+                    } else {
+                        // 未激活状态：显示off图标
+                        imgOff.style.opacity = '1';
+                        imgOn.style.opacity = '0';
+                    }
+                }
             });
 
             // popupToggle: 按钮点击切换弹出框显示，弹出框显示时按钮变蓝
@@ -1290,8 +1383,16 @@ class Live2DManager {
                                 setTimeout(() => {
                                     exclusivePopup.style.display = 'none';
                                 }, 200);
-                                // 对方按钮恢复白色
-                                exclusiveBtn.button.style.background = 'rgba(255, 255, 255, 0.9)';
+                                // 对方按钮恢复白色（通过移除激活状态）
+                                exclusiveBtn.button.dataset.active = 'false';
+                                // 恢复白色背景
+                                exclusiveBtn.button.style.background = 'rgba(255, 255, 255, 0.7)';
+                                
+                                // 更新对方按钮的图标状态（显示off图标）
+                                if (exclusiveBtn.imgOff && exclusiveBtn.imgOn) {
+                                    exclusiveBtn.imgOff.style.opacity = '1';
+                                    exclusiveBtn.imgOn.style.opacity = '0';
+                                }
                             }
                         }
                     }
@@ -1299,12 +1400,21 @@ class Live2DManager {
                     // 切换弹出框
                     this.showPopup(config.id, popup);
                     
-                    // 等待弹出框状态更新后设置按钮颜色（异步操作完成后）
+                    // 等待弹出框状态更新后更新图标状态
                     setTimeout(() => {
                         const newPopupVisible = popup.style.display === 'flex' && popup.style.opacity === '1';
-                        btn.style.background = newPopupVisible ? 
-                            'rgba(79, 140, 255, 0.9)' : 
-                            'rgba(255, 255, 255, 0.9)';
+                        // 根据弹出框状态更新图标
+                        if (imgOff && imgOn) {
+                            if (newPopupVisible) {
+                                // 弹出框显示：显示on图标
+                                imgOff.style.opacity = '0';
+                                imgOn.style.opacity = '1';
+                            } else {
+                                // 弹出框隐藏：显示off图标
+                                imgOff.style.opacity = '1';
+                                imgOn.style.opacity = '0';
+                            }
+                        }
                     }, 50);
                 });
                 
@@ -1315,14 +1425,25 @@ class Live2DManager {
                 btn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const isActive = btn.dataset.active === 'true';
-                    btn.dataset.active = (!isActive).toString();
-                    btn.style.background = !isActive ? 
-                        'rgba(79, 140, 255, 0.9)' : 
-                        'rgba(255, 255, 255, 0.9)';
+                    const newActive = !isActive;
+                    btn.dataset.active = newActive.toString();
+                    
+                    // 更新图标状态
+                    if (imgOff && imgOn) {
+                        if (newActive) {
+                            // 激活：显示on图标
+                            imgOff.style.opacity = '0';
+                            imgOn.style.opacity = '1';
+                        } else {
+                            // 未激活：显示off图标
+                            imgOff.style.opacity = '1';
+                            imgOn.style.opacity = '0';
+                        }
+                    }
                     
                     // 触发自定义事件
                     const event = new CustomEvent(`live2d-${config.id}-toggle`, {
-                        detail: { active: !isActive }
+                        detail: { active: newActive }
                     });
                     window.dispatchEvent(event);
                 });
@@ -1341,12 +1462,13 @@ class Live2DManager {
                         width: '24px',
                         height: '24px',
                         borderRadius: '50%',
-                        background: 'rgba(255, 255, 255, 0.9)',
+                        background: 'rgba(255, 255, 255, 0.7)',  // 与其他按钮一致的不透明度
                         backdropFilter: 'blur(10px)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        fontSize: '12px',
+                        fontSize: '13px',
+                        color: '#44b7fe',  // 设置图标颜色
                         cursor: 'pointer',
                         userSelect: 'none',
                         boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
@@ -1394,7 +1516,12 @@ class Live2DManager {
             }
 
             buttonsContainer.appendChild(btnWrapper);
-            this._floatingButtons[config.id] = { button: btn, wrapper: btnWrapper };
+            this._floatingButtons[config.id] = { 
+                button: btn, 
+                wrapper: btnWrapper,
+                imgOff: imgOff,  // 保存图标引用
+                imgOn: imgOn      // 保存图标引用
+            };
         });
 
         console.log('[Live2D] 所有浮动按钮已创建完成');
@@ -1459,7 +1586,7 @@ class Live2DManager {
             left: '100%',
             top: '0',
             marginLeft: '8px',
-            background: 'rgba(255, 255, 255, 0.95)',
+            background: 'rgba(255, 255, 255, 0.7)',  // 与按钮一致的70%不透明度
             backdropFilter: 'blur(10px)',
             borderRadius: '12px',
             padding: '8px',
@@ -1522,7 +1649,23 @@ class Live2DManager {
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
                 checkbox.id = `live2d-${toggle.id}`;
-                checkbox.style.cursor = 'pointer';
+                // 隐藏原生 checkbox
+                Object.assign(checkbox.style, {
+                    display: 'none'
+                });
+                
+                // 创建自定义圆形指示器
+                const indicator = document.createElement('div');
+                Object.assign(indicator.style, {
+                    width: '16px',
+                    height: '16px',
+                    borderRadius: '50%',
+                    border: '2px solid #ccc',
+                    backgroundColor: 'transparent',
+                    cursor: 'pointer',
+                    flexShrink: '0',
+                    transition: 'all 0.2s ease'
+                });
                 
                 const label = document.createElement('label');
                 label.innerText = toggle.label;
@@ -1530,8 +1673,29 @@ class Live2DManager {
                 label.style.cursor = 'pointer';
                 label.style.userSelect = 'none';
                 label.style.fontSize = '13px';
+                label.style.color = '#333';  // 文本始终为深灰色，不随选中状态改变
+                
+                // 根据 checkbox 状态更新指示器颜色（文本颜色保持不变）
+                const updateStyle = () => {
+                    if (checkbox.checked) {
+                        // 选中状态：蓝色填充，无边框
+                        indicator.style.backgroundColor = '#44b7fe';
+                        indicator.style.borderColor = '#44b7fe';
+                    } else {
+                        // 未选中状态：灰色边框，透明填充
+                        indicator.style.backgroundColor = 'transparent';
+                        indicator.style.borderColor = '#ccc';
+                    }
+                };
+                
+                // 监听 checkbox 状态变化
+                checkbox.addEventListener('change', updateStyle);
+                
+                // 初始化样式（根据当前状态）
+                updateStyle();
                 
                 toggleItem.appendChild(checkbox);
+                toggleItem.appendChild(indicator);
                 toggleItem.appendChild(label);
                 popup.appendChild(toggleItem);
                 
@@ -1542,12 +1706,21 @@ class Live2DManager {
                     toggleItem.style.background = 'transparent';
                 });
                 
-                // 点击切换
+                // 点击切换（点击整个项目或指示器都可以切换）
                 toggleItem.addEventListener('click', (e) => {
                     if (e.target !== checkbox) {
                         checkbox.checked = !checkbox.checked;
                         checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                        updateStyle();  // 更新样式
                     }
+                });
+                
+                // 点击指示器也可以切换
+                indicator.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    checkbox.checked = !checkbox.checked;
+                    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                    updateStyle();
                 });
             });
         } else if (buttonId === 'settings') {
@@ -1555,8 +1728,8 @@ class Live2DManager {
             
             // 先添加 Focus 模式和主动搭话开关（在最上面）
             const settingsToggles = [
-                { id: 'focus-mode', label: '🎯 允许打断', storageKey: 'focusModeEnabled', inverted: true }, // inverted表示值与focusModeEnabled相反
-                { id: 'proactive-chat', label: '💬 主动搭话', storageKey: 'proactiveChatEnabled' }
+                { id: 'focus-mode', label: '允许打断', storageKey: 'focusModeEnabled', inverted: true }, // inverted表示值与focusModeEnabled相反
+                { id: 'proactive-chat', label: '主动搭话', storageKey: 'proactiveChatEnabled' }
             ];
             
             settingsToggles.forEach(toggle => {
@@ -1577,7 +1750,10 @@ class Live2DManager {
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
                 checkbox.id = `live2d-${toggle.id}`;
-                checkbox.style.cursor = 'pointer';
+                // 隐藏原生 checkbox
+                Object.assign(checkbox.style, {
+                    display: 'none'
+                });
                 
                 // 从 window 获取当前状态（如果 app.js 已经初始化）
                 if (toggle.id === 'focus-mode' && typeof window.focusModeEnabled !== 'undefined') {
@@ -1587,6 +1763,19 @@ class Live2DManager {
                     checkbox.checked = window.proactiveChatEnabled;
                 }
                 
+                // 创建自定义圆形指示器
+                const indicator = document.createElement('div');
+                Object.assign(indicator.style, {
+                    width: '16px',
+                    height: '16px',
+                    borderRadius: '50%',
+                    border: '2px solid #ccc',
+                    backgroundColor: 'transparent',
+                    cursor: 'pointer',
+                    flexShrink: '0',
+                    transition: 'all 0.2s ease'
+                });
+                
                 const label = document.createElement('label');
                 label.innerText = toggle.label;
                 label.htmlFor = `live2d-${toggle.id}`;
@@ -1594,8 +1783,26 @@ class Live2DManager {
                 label.style.userSelect = 'none';
                 label.style.fontSize = '13px';
                 label.style.flex = '1';
+                label.style.color = '#333';  // 文本始终为深灰色，不随选中状态改变
+                
+                // 根据 checkbox 状态更新指示器颜色（文本颜色保持不变）
+                const updateStyle = () => {
+                    if (checkbox.checked) {
+                        // 选中状态：蓝色填充，蓝色边框
+                        indicator.style.backgroundColor = '#44b7fe';
+                        indicator.style.borderColor = '#44b7fe';
+                    } else {
+                        // 未选中状态：灰色边框，透明填充
+                        indicator.style.backgroundColor = 'transparent';
+                        indicator.style.borderColor = '#ccc';
+                    }
+                };
+                
+                // 初始化样式（根据当前状态）
+                updateStyle();
                 
                 toggleItem.appendChild(checkbox);
+                toggleItem.appendChild(indicator);
                 toggleItem.appendChild(label);
                 popup.appendChild(toggleItem);
                 
@@ -1611,6 +1818,10 @@ class Live2DManager {
                     e.stopPropagation();
                     const isChecked = checkbox.checked;
                     
+                    // 更新样式
+                    updateStyle();
+                    
+                    // 同步到 app.js 中的对应开关（这样会触发 app.js 的完整逻辑）
                     if (toggle.id === 'focus-mode') {
                         // inverted: "允许打断"的值需要取反后赋给 focusModeEnabled
                         // 勾选"允许打断" = focusModeEnabled为false（允许打断）
@@ -1644,7 +1855,16 @@ class Live2DManager {
                     if (e.target !== checkbox) {
                         checkbox.checked = !checkbox.checked;
                         checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                        updateStyle();  // 更新样式
                     }
+                });
+                
+                // 点击指示器也可以切换
+                indicator.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    checkbox.checked = !checkbox.checked;
+                    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                    updateStyle();
                 });
             });
             
@@ -1659,24 +1879,46 @@ class Live2DManager {
             
             // 然后添加导航菜单项
             const settingsItems = [
-                { id: 'live2d-manage', label: '🎨 Live2D设置', action: 'navigate', urlBase: '/l2d' },
-                { id: 'api-keys', label: '🔑 API密钥', action: 'navigate', url: '/api_key' },
-                { id: 'character', label: '👤 角色管理', action: 'navigate', url: '/chara_manager' },
-                { id: 'voice-clone', label: '🎙️ 声音克隆', action: 'navigate', url: '/voice_clone' },
-                { id: 'memory', label: '🧠 记忆浏览', action: 'navigate', url: '/memory_browser' }
+                { id: 'live2d-manage', label: 'Live2D设置', icon: '/static/icons/live2d_settings_icon.png', action: 'navigate', urlBase: '/l2d' },
+                { id: 'api-keys', label: 'API密钥', icon: '/static/icons/api_key_icon.png', action: 'navigate', url: '/api_key' },
+                { id: 'character', label: '角色管理', icon: '/static/icons/character_icon.png', action: 'navigate', url: '/chara_manager' },
+                { id: 'voice-clone', label: '声音克隆', icon: '/static/icons/voice_clone_icon.png', action: 'navigate', url: '/voice_clone' },
+                { id: 'memory', label: '记忆浏览', icon: '/static/icons/memory_icon.png', action: 'navigate', url: '/memory_browser' }
             ];
             
             settingsItems.forEach(item => {
                 const menuItem = document.createElement('div');
                 Object.assign(menuItem.style, {
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
                     padding: '8px 12px',
                     cursor: 'pointer',
                     borderRadius: '6px',
                     transition: 'background 0.2s ease',
                     fontSize: '13px',
-                    whiteSpace: 'nowrap'
+                    whiteSpace: 'nowrap',
+                    color: '#333'  // 文本颜色为深灰色
                 });
-                menuItem.innerText = item.label;
+                
+                // 添加图标（如果有）
+                if (item.icon) {
+                    const iconImg = document.createElement('img');
+                    iconImg.src = item.icon;
+                    iconImg.alt = item.label;
+                    Object.assign(iconImg.style, {
+                        width: '24px',
+                        height: '24px',
+                        objectFit: 'contain',
+                        flexShrink: '0'
+                    });
+                    menuItem.appendChild(iconImg);
+                }
+                
+                // 添加文本
+                const labelText = document.createElement('span');
+                labelText.textContent = item.label;
+                menuItem.appendChild(labelText);
                 
                 menuItem.addEventListener('mouseenter', () => {
                     menuItem.style.background = 'rgba(79, 140, 255, 0.1)';
@@ -2069,38 +2311,6 @@ if (typeof cubism4Model !== 'undefined' && cubism4Model) {
             window.LanLan1.live2dModel = window.live2dManager.getCurrentModel();
             window.LanLan1.currentModel = window.live2dManager.getCurrentModel();
             window.LanLan1.emotionMapping = window.live2dManager.getEmotionMapping();
-
-            // 等待几帧后根据模型位置动态设置文本框初始位置
-            setTimeout(() => {
-                try {
-                    const model = window.live2dManager.getCurrentModel();
-                    const chatContainer = document.getElementById('chat-container');
-                    
-                    if (model && chatContainer && window.innerWidth > 768) {
-                        // 只在桌面端调整，移动端使用响应式CSS
-                        const bounds = model.getBounds();
-                        const screenWidth = window.innerWidth;
-                        const screenHeight = window.innerHeight;
-                        
-                        // 计算锁按钮的位置（与setupLockIcon中的逻辑一致）
-                        const lockX = bounds.right * 0.7 + bounds.left * 0.3;
-                        const lockY = bounds.top * 0.3 + bounds.bottom * 0.7;
-                        
-                        // 文本框位置：在模型左侧，比锁按钮稍低一些
-                        // left: 在锁按钮左侧偏移一点，但不要太靠左
-                        const chatLeft = Math.max(20, bounds.left - 400);
-                        // bottom: 比锁按钮低60px左右
-                        const chatBottom = Math.max(20, screenHeight - lockY - 200);
-                        
-                        chatContainer.style.left = `${chatLeft}px`;
-                        chatContainer.style.bottom = `${chatBottom}px`;
-                        
-                        console.log('文本框位置已根据模型位置调整:', {chatLeft, chatBottom, lockX, lockY});
-                    }
-                } catch (error) {
-                    console.warn('调整文本框位置失败:', error);
-                }
-            }, 500);
 
             console.log('Live2D 管理器自动初始化完成');
         } catch (error) {

@@ -262,18 +262,6 @@ function init_app(){
                             toggleButton.classList.remove('recording');
                         }
                         
-                        // 重置浮动按钮状态（恢复默认白色背景）
-                        const floatingMicBtn = document.getElementById('live2d-btn-mic');
-                        if (floatingMicBtn) {
-                            floatingMicBtn.dataset.active = 'false';
-                            floatingMicBtn.style.background = 'rgba(255, 255, 255, 0.9)';
-                        }
-                        const floatingScreenBtn = document.getElementById('live2d-btn-screen');
-                        if (floatingScreenBtn) {
-                            floatingScreenBtn.dataset.active = 'false';
-                            floatingScreenBtn.style.background = 'rgba(255, 255, 255, 0.9)';
-                        }
-                        
                         // 显示提示信息
                         statusElement.textContent = response.message || '长时间无语音输入，已自动关闭麦克风';
                     }
@@ -349,7 +337,170 @@ function init_app(){
     let cacheTimestamp = 0;
     const CACHE_DURATION = 30000; // 缓存30秒
 
-    // 麦克风选择器UI已迁移到浮动按钮系统（live2d.js），保留核心函数供其使用
+    // 初始化麦克风选择器
+    async function initMicrophoneSelector() {
+        const toggleButton = document.getElementById('toggle-mic-selector');
+        const micList = document.getElementById('mic-list');
+        const micContainer = document.getElementById('mic-container');
+        
+        // 检查元素是否存在
+        if (!toggleButton || !micList) {
+            console.error('麦克风选择器元素未找到');
+            return;
+        }
+        
+        // 页面加载时预加载麦克风列表，减少首次点击的延迟
+        await loadMicrophoneList(true); // true表示预加载模式
+        
+        // 触发自定义事件，通知麦克风列表已初始化
+        window.dispatchEvent(new CustomEvent('mic-list-ready'));
+        
+        // 点击切换按钮时显示/隐藏麦克风列表
+        toggleButton.addEventListener('click', async (event) => {
+            event.stopPropagation();
+            if (micList.classList.contains('show')) {
+                micList.classList.remove('show');
+                // 列表收起时，箭头变为向右
+                toggleButton.textContent = '▶';
+                // 标记菜单关闭，允许自动折叠
+                if (typeof window.markMenuClosed === 'function') {
+                    window.markMenuClosed();
+                }
+            } else {
+                try {
+                    // 标记菜单打开，禁用自动折叠
+                    if (typeof window.markMenuOpen === 'function') {
+                        window.markMenuOpen();
+                    }
+                    
+                    // 快速显示缓存的列表
+                    if (cachedMicrophones && (Date.now() - cacheTimestamp < CACHE_DURATION)) {
+                        renderMicrophoneList(cachedMicrophones);
+                        micList.classList.add('show');
+                        toggleButton.textContent = '◀';
+                        console.log('使用缓存的麦克风列表');
+                        
+                        // 后台刷新缓存，不阻塞UI
+                        setTimeout(() => {
+                            loadMicrophoneList();
+                        }, 0);
+                    } else {
+                        // 缓存过期或不存在，重新加载
+                        await loadMicrophoneList();
+                        micList.classList.add('show');
+                        toggleButton.textContent = '◀';
+                    }
+                    // 添加调试信息
+                    console.log('麦克风列表已显示');
+                } catch (error) {
+                    console.error('加载麦克风列表失败:', error);
+                    // 加载失败时也要标记菜单关闭
+                    if (typeof window.markMenuClosed === 'function') {
+                        window.markMenuClosed();
+                    }
+                }
+            }
+        });
+        
+        // 修复：确保点击事件不会被父元素拦截
+        if (micContainer) {
+            micContainer.addEventListener('click', (event) => {
+                event.stopPropagation();
+            });
+        }
+        
+        // 当鼠标在麦克风列表上时，通知 common_ui.js 取消侧边栏自动收缩
+        micList.addEventListener('mouseenter', () => {
+            // 触发自定义事件，通知取消侧边栏自动收缩
+            window.dispatchEvent(new CustomEvent('cancel-sidebar-collapse'));
+        });
+        
+        // 点击页面其他地方时隐藏麦克风列表
+        document.addEventListener('click', (event) => {
+            if (!micList.contains(event.target) && event.target !== toggleButton) {
+                const wasShown = micList.classList.contains('show');
+                micList.classList.remove('show');
+                // 列表收起时，箭头变为向右
+                toggleButton.textContent = '▶';
+                // 如果菜单之前是打开的，标记菜单关闭
+                if (wasShown && typeof window.markMenuClosed === 'function') {
+                    window.markMenuClosed();
+                }
+            }
+        });
+        
+        // 尝试从本地存储或配置中加载上次选择的麦克风
+        await loadSelectedMicrophone();
+    }
+    
+    // 加载麦克风列表
+    async function loadMicrophoneList(isPreload = false) {
+        try {
+            // 获取所有媒体设备
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const audioInputs = devices.filter(device => device.kind === 'audioinput');
+            
+            // 缓存结果
+            cachedMicrophones = audioInputs;
+            cacheTimestamp = Date.now();
+            
+            // 仅在非预加载模式或没有麦克风时渲染UI
+            if (!isPreload || audioInputs.length === 0) {
+                renderMicrophoneList(audioInputs);
+            }
+        } catch (err) {
+            console.error('获取麦克风设备列表失败:', err);
+            
+            if (!isPreload) {
+                const micList = document.getElementById('mic-list');
+                micList.innerHTML = '';
+                const errorItem = document.createElement('div');
+                errorItem.className = 'mic-option';
+                errorItem.textContent = '获取麦克风列表失败';
+                micList.appendChild(errorItem);
+            }
+        }
+    }
+
+    // 渲染麦克风列表到UI
+    function renderMicrophoneList(audioInputs) {
+        const micList = document.getElementById('mic-list');
+        micList.innerHTML = '';
+        
+        // 如果没有麦克风设备
+        if (audioInputs.length === 0) {
+            const noMicItem = document.createElement('div');
+            noMicItem.className = 'mic-option';
+            noMicItem.textContent = '没有检测到麦克风设备';
+            noMicItem.disabled = true;
+            micList.appendChild(noMicItem);
+            return;
+        }
+        
+        // 添加默认麦克风选项（使用系统默认）
+        const defaultOption = document.createElement('button');
+        defaultOption.className = `mic-option ${selectedMicrophoneId === null ? 'selected' : ''} default`;
+        defaultOption.textContent = '系统默认麦克风';
+        defaultOption.addEventListener('click', () => selectMicrophone(null));
+        micList.appendChild(defaultOption);
+        
+        // 添加分隔线
+        const separator = document.createElement('div');
+        separator.style.height = '1px';
+        separator.style.backgroundColor = '#eee';
+        separator.style.margin = '5px 0';
+        micList.appendChild(separator);
+        
+        // 添加各个麦克风设备选项
+        audioInputs.forEach(device => {
+            const option = document.createElement('button');
+            option.className = `mic-option ${selectedMicrophoneId === device.deviceId ? 'selected' : ''}`;
+            option.textContent = device.label || `麦克风 ${micList.children.length - 1}`;
+            option.dataset.deviceId = device.deviceId; // 存储设备ID
+            option.addEventListener('click', () => selectMicrophone(device.deviceId));
+            micList.appendChild(option);
+        });
+    }
     
     // 选择麦克风
     async function selectMicrophone(deviceId) {
@@ -425,13 +576,6 @@ function init_app(){
                 toggleButton.classList.add('recording');
             }
             
-            // 同步更新浮动麦克风按钮状态（设置为激活状态，蓝色高亮）
-            const floatingMicBtn = document.getElementById('live2d-btn-mic');
-            if (floatingMicBtn) {
-                floatingMicBtn.dataset.active = 'true';
-                floatingMicBtn.style.background = 'rgba(79, 140, 255, 0.9)';
-            }
-            
             if (!audioPlayerContext) {
                 audioPlayerContext = new (window.AudioContext || window.webkitAudioContext)();
             }
@@ -472,6 +616,9 @@ function init_app(){
             resetSessionButton.disabled = false;
             statusElement.textContent = '正在语音...';
             
+            // 添加active类以保持激活状态的颜色
+            micButton.classList.add('active');
+            
             // 开始录音时，停止主动搭话定时器
             stopProactiveChatSchedule();
         } catch (err) {
@@ -483,12 +630,8 @@ function init_app(){
             if (toggleButton) {
                 toggleButton.classList.remove('recording');
             }
-            // 失败时也重置浮动麦克风按钮状态
-            const floatingMicBtn = document.getElementById('live2d-btn-mic');
-            if (floatingMicBtn) {
-                floatingMicBtn.dataset.active = 'false';
-                floatingMicBtn.style.background = 'rgba(255, 255, 255, 0.9)';
-            }
+            // 移除active类
+            micButton.classList.remove('active');
         }
     }
 
@@ -502,12 +645,9 @@ function init_app(){
             toggleButton.classList.remove('recording');
         }
         
-        // 同步重置浮动麦克风按钮状态
-        const floatingMicBtn = document.getElementById('live2d-btn-mic');
-        if (floatingMicBtn) {
-            floatingMicBtn.dataset.active = 'false';
-            floatingMicBtn.style.background = 'rgba(255, 255, 255, 0.9)';
-        }
+        // 移除active类
+        micButton.classList.remove('active');
+        screenButton.classList.remove('active');
         
         stopRecording();
         micButton.disabled = false;
@@ -608,9 +748,15 @@ function init_app(){
             screenButton.disabled = true;
             stopButton.disabled = false;
             resetSessionButton.disabled = false;
+            
+            // 添加active类以保持激活状态的颜色
+            screenButton.classList.add('active');
 
             // 当用户停止共享屏幕时
-            screenCaptureStream.getVideoTracks()[0].onended = stopScreening;
+            screenCaptureStream.getVideoTracks()[0].onended = () => {
+                stopScreening();
+                screenButton.classList.remove('active');
+            };
 
             // 获取麦克风流
             if (!isRecording) statusElement.textContent = '没开麦啊喂！';
@@ -643,6 +789,9 @@ function init_app(){
         resetSessionButton.disabled = false;
         screenCaptureStream = null;
         statusElement.textContent = '正在语音...';
+        
+        // 移除active类
+        screenButton.classList.remove('active');
     }
 
     window.switchMicCapture = async () => {
@@ -894,6 +1043,10 @@ function init_app(){
             textInputArea.classList.remove('hidden');
             statusElement.textContent = `启动失败: ${error.message}`;
             isSwitchingMode = false; // 切换失败，重置标志
+            
+            // 移除active类
+            micButton.classList.remove('active');
+            screenButton.classList.remove('active');
         }
     });
 
@@ -924,18 +1077,23 @@ function init_app(){
         // 重置所有状态
         isTextSessionActive = false;
         
+        // 移除所有按钮的active类
+        micButton.classList.remove('active');
+        screenButton.classList.remove('active');
+        
         // 清除所有截图
         screenshotsList.innerHTML = '';
         screenshotThumbnailContainer.classList.remove('show');
         updateScreenshotCount();
         screenshotCounter = 0;
         
+        // 结束会话后，重置主动搭话计时器（如果已开启）
+        if (proactiveChatEnabled) {
+            resetProactiveChatBackoff();
+        }
+        
         // 如果不是"请她离开"模式，才显示文本输入区并启用按钮
         if (!isGoodbyeMode) {
-            // 结束会话后，重置主动搭话计时器（如果已开启）
-            if (proactiveChatEnabled) {
-                resetProactiveChatBackoff();
-            }
             // 显示文本输入区
             const textInputArea = document.getElementById('text-input-area');
             textInputArea.classList.remove('hidden');
@@ -1481,14 +1639,6 @@ function init_app(){
                 action: 'pause_session'
             }));
         }
-        
-        // 同步重置浮动麦克风按钮状态（恢复默认白色背景）
-        const floatingMicBtn = document.getElementById('live2d-btn-mic');
-        if (floatingMicBtn) {
-            floatingMicBtn.dataset.active = 'false';
-            floatingMicBtn.style.background = 'rgba(255, 255, 255, 0.9)';
-        }
-        
         // statusElement.textContent = '录制已停止';
     }
 
@@ -1736,28 +1886,26 @@ function init_app(){
             lockIcon.style.removeProperty('opacity');
         }
         
-        // 恢复 sidebar、sidebarbox 和旧按钮，但保持它们隐藏
-        // 这些是旧的按钮面板，应该始终隐藏，只用于功能触发
         const sidebar = document.getElementById('sidebar');
         const sidebarbox = document.getElementById('sidebarbox');
         
         if (sidebar) {
+            sidebar.style.removeProperty('display');
             sidebar.style.removeProperty('visibility');
             sidebar.style.removeProperty('opacity');
-            sidebar.style.display = 'none'; // 保持隐藏
         }
         
         if (sidebarbox) {
+            sidebarbox.style.removeProperty('display');
             sidebarbox.style.removeProperty('visibility');
             sidebarbox.style.removeProperty('opacity');
-            sidebarbox.style.display = 'none'; // 保持隐藏
         }
         
         const sideButtons = document.querySelectorAll('.side-btn');
         sideButtons.forEach(btn => {
+            btn.style.removeProperty('display');
             btn.style.removeProperty('visibility');
             btn.style.removeProperty('opacity');
-            btn.style.display = 'none'; // 保持隐藏
         });
 
         // 先恢复容器尺寸和可见性，但保持透明度为0和位置在屏幕外
@@ -1774,6 +1922,9 @@ function init_app(){
     window.startScreenSharing = startScreenSharing;
     window.stopScreenSharing  = stopScreenSharing;
     window.screen_share       = startScreenSharing;
+    
+    // 初始化麦克风选择器
+    initMicrophoneSelector();
     
     // ========== 连接浮动按钮到原有功能 ==========
     
@@ -1908,10 +2059,6 @@ function init_app(){
         if (window.live2d) {
             window.live2d._goodbyeClicked = true;
         }
-        
-        // 停止主动搭话定时器
-        stopProactiveChatSchedule();
-        console.log('[App] 已停止主动搭话定时器');
         
         // 第二步：立即隐藏所有浮动按钮和锁按钮（设置为 !important 防止其他代码覆盖）
         const floatingButtons = document.getElementById('live2d-floating-buttons');
@@ -2328,12 +2475,6 @@ function init_app(){
             return;
         }
         
-        // 如果已点击"请她离开"，不执行主动搭话
-        if (window.live2d && window.live2d._goodbyeClicked) {
-            console.log('已点击"请她离开"，不安排主动搭话');
-            return;
-        }
-        
         // 只在非语音模式下执行（语音模式下不触发主动搭话）
         // 文本模式或待机模式都可以触发主动搭话
         if (isRecording) {
@@ -2360,12 +2501,6 @@ function init_app(){
     }
     
     async function triggerProactiveChat() {
-        // 如果已点击"请她离开"，不执行主动搭话
-        if (window.live2d && window.live2d._goodbyeClicked) {
-            console.log('已点击"请她离开"，取消主动搭话');
-            return;
-        }
-        
         try {
             const response = await fetch('/api/proactive_chat', {
                 method: 'POST',
@@ -2395,12 +2530,6 @@ function init_app(){
     }
     
     function resetProactiveChatBackoff() {
-        // 如果已点击"请她离开"，不重新安排主动搭话
-        if (window.live2d && window.live2d._goodbyeClicked) {
-            console.log('已点击"请她离开"，不重新安排主动搭话');
-            return;
-        }
-        
         // 重置退避级别
         proactiveChatBackoffLevel = 0;
         // 重新安排定时器

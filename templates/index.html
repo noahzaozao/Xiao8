@@ -139,37 +139,27 @@
             right: 8px;
             width: 24px;
             height: 24px;
-            background: linear-gradient(135deg, #4f8cff 0%, #667eea 100%);
-            opacity: 1;
-            border: 2px solid rgba(255, 255, 255, 0.8);
-            border-radius: 6px;
-            cursor: grab; /* 拖拽手势 */
-            font-weight: bold;
-            font-size: 1.2rem;
-            line-height: 20px; /* 垂直居中调整 */
-            text-align: center;
-            color: #fff;
+            background: transparent; /* 透明背景 */
+            border: none; /* 无边框 */
+            cursor: pointer;
             z-index: 21; /* 确保在内容之上 */
             padding: 0;
             user-select: none;
-            box-shadow: 0 2px 8px rgba(79, 140, 255, 0.4);
-            transition: all 0.3s ease;
-            animation: buttonPulse 2s ease-in-out infinite;
+            box-shadow: none; /* 无阴影 */
+            transition: transform 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         
-        @keyframes buttonPulse {
-            0%, 100% {
-                box-shadow: 0 2px 8px rgba(79, 140, 255, 0.4);
-            }
-            50% {
-                box-shadow: 0 2px 16px rgba(79, 140, 255, 0.8);
-            }
+        #toggle-chat-btn img {
+            width: 24px;
+            height: 24px;
+            object-fit: contain;
         }
         
         #toggle-chat-btn:hover {
             transform: scale(1.1);
-            box-shadow: 0 4px 16px rgba(79, 140, 255, 0.6);
-            animation: none;
         }
         
         /* 聊天框标题 */
@@ -194,6 +184,15 @@
             font-size: 1rem;
             font-weight: 600;
             color: #333;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        #chat-title img {
+            width: 20px;
+            height: 20px;
+            object-fit: contain;
         }
 
         /* 对话区提示框 */
@@ -266,7 +265,7 @@
         
         .message.user {
             align-self: flex-end;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #44b7fe;  /* 蓝色 */
             color: #fff;
             margin-left: auto;
             border-bottom-right-radius: 4px;
@@ -274,7 +273,7 @@
         
         .message.gemini {
             align-self: flex-start;
-            background: #f0f0f0;
+            background: #CCEEFF;  /* 浅蓝色 */
             color: #333;
             margin-right: auto;
             border-bottom-left-radius: 4px;
@@ -295,7 +294,69 @@
             background: #cacbcd;
         }
 
+        /* 麦克风选择器样式 */
+        #mic-container {
+            position: relative;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: nowrap;
+            min-width: 0;
+        }
         
+        /* 修复开始聊天按钮样式，使其与其他按钮一致 */
+        #micButton {
+            padding: 10px 15px; /* 与其他side-btn一致 */
+            border-radius: 8px;
+            border: none;
+            background: #333;
+            color: #fff;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-bottom: 4px;
+            opacity: 1;
+            transition: background 0.2s, color 0.2s, box-shadow 0.2s, opacity 0.2s;
+            width: 100%;
+            text-align: center;
+            box-sizing: border-box;
+            margin-right: 5px;
+        }
+        
+        #micButton:hover:not(:disabled) {
+            background: #4f8cff;
+            color: #fff;
+        }
+        
+        /* 确保禁用状态下的样式与其他按钮一致 */
+        #micButton:disabled {
+            background: #e0e0e0 !important;
+            color: #888 !important;
+            opacity: 0.7;
+            cursor: not-allowed;
+            border: 1px solid #ccc;
+        }
+        
+        /* 侧边栏最小化状态下的处理 */
+        #sidebar.minimized #mic-container {
+            min-width: 0;
+        }
+        
+        /* 侧边栏最小化状态下隐藏麦克风选择器 */
+        #sidebar.minimized .mic-selector {
+            display: none;
+        }
+        
+        /* 修改麦克风选择器按钮样式 */
+        .mic-selector {
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 24px;
+            height: 24px;
+            z-index: 2;
+        }
         
         /* 文本输入区域样式 - 在聊天框底部 */
         #text-input-area {
@@ -539,7 +600,7 @@
             padding: 8px 16px;
             border-radius: 8px;
             border: none;
-            background: #4f8cff;
+            background: #44b7fe;  /* 发送按钮使用蓝色背景 */
             color: #fff;
             cursor: pointer;
             transition: background 0.2s;
@@ -547,10 +608,31 @@
             font-weight: 500;
             white-space: nowrap;
             min-width: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
         }
         
-        #textSendButton:hover:not(:disabled), #screenshotButton:hover:not(:disabled) {
+        .button-icon {
+            width: 18px;
+            height: 18px;
+            object-fit: contain;
+            flex-shrink: 0;
+        }
+        
+        #textSendButton:hover:not(:disabled) {
             background: #2662c8;
+        }
+        
+        #screenshotButton {
+            background: #fff;  /* 白色背景 */
+            border: 2px solid #44b7fe;  /* 蓝色边框 */
+            color: #44b7fe;  /* 蓝色文字 */
+        }
+        
+        #screenshotButton:hover:not(:disabled) {
+            background: #f0f8ff;  /* 浅蓝色背景（悬停） */
         }
         
         #textSendButton:disabled, #screenshotButton:disabled {
@@ -559,21 +641,95 @@
             opacity: 0.6;
         }
         
-        #screenshotButton {
-            background: #6c757d;
+        .toggle-mic-selector {
+            background: #333; /* 与side-btn一致的背景色 */
+            color: #fff; /* 与side-btn一致的文字颜色 */
+            border: none; /* 移除边框 */
+            border-radius: 8px; /* 与side-btn一致的圆角 */
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            font-size: 12px;
+            line-height: 1;
+            opacity: 0.8;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            position: relative;
+            user-select: none;
         }
         
-        #screenshotButton:hover:not(:disabled) {
-            background: #5a6268;
+        .toggle-mic-selector:hover {
+            background: #4f8cff; /* 与side-btn一致的悬停背景色 */
+            opacity: 1;
+            color: #fff;
         }
         
-        /* 桌面端和移动端文本显示控制 */
-        .desktop-text {
-            display: inline;
-        }
-        
-        .mobile-text {
+        /* 修改麦克风列表样式 - 向右扩展并设置半透明背景 */
+        .mic-list {
+            position: absolute;
+            left: 100%; /* 向右扩展 */
+            top: 0; /* 与按钮顶部对齐 */
+            background: rgba(255, 255, 255, 0.95); /* 半透明背景 */
+            backdrop-filter: blur(5px); /* 可选：添加模糊效果 */
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+            max-height: 200px;
+            overflow-y: auto;
+            min-width: 220px;
             display: none;
+            z-index: 1000;
+            margin-left: 5px; /* 与按钮之间的间距 */
+            transition: all 0.2s ease;
+        }
+        
+        .mic-list.show {
+            display: block;
+            animation: fadeInRight 0.2s ease;
+        }
+        
+        /* 添加淡入动画 */
+        @keyframes fadeInRight {
+            from {
+                opacity: 0;
+                transform: translateX(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .mic-option {
+            padding: 8px 12px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+            font-size: 0.9rem;
+            color: #333;
+            transition: background-color 0.2s;
+            user-select: none;
+        }
+        
+        .mic-option:hover {
+            background-color: #f0f0f0;
+        }
+        
+        .mic-option.selected {
+            background-color: #e6f0ff;
+            color: #4f8cff;
+            font-weight: 500;
+        }
+        
+        .mic-option.default::after {
+            content: ' (默认)';
+            font-size: 0.8rem;
+            color: #666;
         }
 
         /* --- 最小化状态 --- */
@@ -651,12 +807,503 @@
             opacity: 0.7;
         }
 
+        #sidebar {
+            /*background: #f7f8fa;*/
+            /*opacity: 0.7;*/
+            border-radius: 12px;
+            box-sizing: border-box;
+            box-shadow: None;
 
+            background: transparent;
+            pointer-events: auto; /* 恢复鼠标交互 */
+            position: fixed;
+            left: 20px;
+            top: 20px;
+            z-index: 20;
+            transition: width 0.3s ease, min-width 0.3s ease, height 0.3s ease, padding 0.3s ease, opacity 0.3s;
+            /* 隐藏侧边栏 */
+            display: none;
+        }
+
+        #sidebarbox {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-width: 150px;
+            transition: width 0.3s ease, min-width 0.3s ease, height 0.3s ease, padding 0.3s ease, opacity 0.3s;
+        }
+
+        #sidebar.minimized {
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            width: 48px;
+            min-width: 0;
+            height: 48px;
+            padding: 0;
+            opacity: 0.9;
+            background: transparent;
+            gap: 0;
+            overflow: hidden;
+            /* 只显示折叠按钮 */
+            position: fixed;
+            left: 20px;
+            top: 20px;
+        }
+
+        #sidebar.minimized .side-btn:not(#toggle-sidebar-btn) {
+            /* 透明度0%，鼠标穿透 */
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #sidebar.minimized #status {
+            /* 透明度0%，鼠标穿透 */
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #toggle-sidebar-btn {
+            position: absolute;
+
+            top: -10px;
+            right: -10px;
+            width: 24px;
+            height: 24px;
+            padding: 0;
+
+            font-weight: bold;
+            text-align: center;
+
+            pointer-events: auto;
+            z-index: 31;
+            background: #e0e1e2;
+            color: #333;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            opacity: 0.8;
+            transition: background 0.2s, color 0.2s, box-shadow 0.2s, top 0.2s, right 0.2s;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        #toggle-sidebar-btn img {
+            width: 16px;
+            height: 16px;
+            object-fit: contain;
+        }
+
+        #sidebar.minimized #toggle-sidebar-btn {
+            /* 将按钮居中显示 */
+            top: 24px;
+            right: 0px;
+            transform: translate(-50%, -50%);
+        }
+
+        #toggle-sidebar-btn:hover {
+            background: #cacbcd;
+        }
+
+        /* 确保所有按钮的禁用状态显示一致 */
+        .side-btn {
+            padding: 10px 15px; /* 调整内边距，使按钮更加紧凑 */
+            border-radius: 8px;
+            border: none;
+            background: #333;
+            color: #fff;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-bottom: 4px;
+            opacity: 1;
+            pointer-events: auto;
+            transition: background 0.2s, color 0.2s, box-shadow 0.2s, opacity 0.2s;
+            width: 100%; /* 确保所有按钮宽度一致 */
+            text-align: center;
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        .side-btn:active {
+            background: #555;
+        }
+
+        /* 增强禁用状态的视觉效果 */
+        .side-btn:disabled {
+            background: #e0e0e0 !important; /* 强制应用灰色背景 */
+            color: #888 !important; /* 强制应用灰色文字 */
+            cursor: not-allowed;
+            border: 1px solid #ccc;
+            opacity: 0.7;
+        }
+
+        .side-btn:hover:not(:disabled) {
+            background: #4f8cff;
+            color: #fff;
+        }
+        
+        .side-btn.active {
+            background: #4f8cff;
+            color: #fff;
+        }
+        
+        .side-btn.active:hover:not(:disabled) {
+            background: #2662c8;
+        }
+        
+        #micButton.active {
+            background: #4f8cff;
+            color: #fff;
+        }
+        
+        #micButton.active:hover:not(:disabled) {
+            background: #2662c8;
+        }
+
+        .mobile-text {
+            display: none;
+        }
+
+        .desktop-text {
+            display: inline;
+        }
+
+        #status {
+            /*margin-top: 5px;*/
+            color: #4f8cff;
+            background: transparent;
+            font-size: 0.95rem;
+            max-width: 150px;
+            word-break: break-all;
+        }
+
+        /* Agent control panel (top-right) */
+        #agent-panel {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            z-index: 30;
+            pointer-events: auto;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 6px;
+            background: rgba(255,255,255,0.6);
+            border-radius: 12px;
+            padding: 12px 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            backdrop-filter: blur(8px);
+            min-width: 200px;
+            /* 隐藏Agent面板 */
+            display: none !important;
+        }
+        #agent-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            width: 100%;
+        }
+        
+        .master-control-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            justify-content: space-between;
+            width: 100%;
+            padding-bottom: 0;
+            border-bottom: none;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .master-control-row.expanded {
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(79, 140, 255, 0.2);
+        }
+        
+        .sub-controls-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            justify-content: space-between;
+            width: 100%;
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            pointer-events: none;
+            max-height: 0;
+            margin-top: 0;
+            overflow: hidden;
+        }
+        
+        .sub-controls-row.show {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+            max-height: 40px;
+            margin-top: 8px;
+        }
+        
+        .control-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .control-label {
+            font-size: 0.85rem;
+            color: #333;
+            white-space: nowrap;
+            font-weight: 500;
+        }
+        
+        .master-control-row .control-label {
+            font-size: 0.9rem;
+            color: #4f8cff;
+            font-weight: 600;
+        }
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 48px;
+            height: 24px;
+            flex-shrink: 0;
+        }
+        .switch input { display: none; }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #ccc;
+            transition: .2s;
+            border-radius: 24px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px; width: 18px;
+            left: 3px; bottom: 3px;
+            background-color: white;
+            transition: .2s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #4f8cff;
+        }
+        input:checked + .slider:before {
+            transform: translateX(24px);
+        }
+        #agent-status {
+            font-size: 0.9rem;
+            color: #4f8cff;
+            max-width: 100%;
+            margin-top: 8px;
+            min-height: 0;
+            height: 0;
+            overflow: hidden;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        #agent-status:not(:empty) {
+            min-height: 1.2em;
+            height: auto;
+            margin-top: 8px;
+        }
+        
+        /* Task progress display */
+        #task-progress {
+            margin-top: 12px;
+            padding: 12px;
+            background: rgba(255,255,255,0.7);
+            border-radius: 8px;
+            border: 1px solid rgba(79,140,255,0.3);
+            max-width: 100%;
+            display: none; /* Hidden by default */
+            backdrop-filter: blur(5px);
+        }
+        
+        #task-progress.show {
+            display: block;
+        }
+        
+        .task-progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: #333;
+        }
+        
+        .task-progress-stats {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+            font-size: 0.75rem;
+            color: #666;
+        }
+        
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .stat-count {
+            background: #4f8cff;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 0.7rem;
+            font-weight: 500;
+        }
+        
+        .task-list {
+            max-height: 120px;
+            overflow-y: auto;
+            font-size: 0.8rem;
+        }
+        
+        .task-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+        
+        .task-item:last-child {
+            border-bottom: none;
+        }
+        
+        .task-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        
+        .task-status.running {
+            background: #4f8cff;
+            animation: pulse 1.5s infinite;
+        }
+        
+        .task-status.queued {
+            background: #ffa500;
+        }
+        
+        .task-status.completed {
+            background: #28a745;
+        }
+        
+        .task-status.failed {
+            background: #dc3545;
+        }
+        
+        .task-info {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .task-title {
+            color: #333;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .task-meta {
+            color: #666;
+            font-size: 0.7rem;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        /* Collapse/Expand button - 模仿左上角按钮样式 */
+        #agent-collapse-btn {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            font-weight: bold;
+            text-align: center;
+            pointer-events: auto;
+            z-index: 31;
+            background: #e0e1e2;
+            color: #333;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            opacity: 0.8;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        #agent-collapse-btn img {
+            width: 16px;
+            height: 16px;
+            object-fit: contain;
+        }
+        
+        #agent-collapse-btn:hover {
+            background: #cacbcd;
+        }
+        
+        #agent-panel.collapsed {
+            width: 48px;
+            height: 48px;
+            min-width: 48px;
+            max-width: 48px;
+            overflow: hidden;
+            padding: 0;
+            background: transparent;
+            box-shadow: none;
+            border-radius: 0;
+            backdrop-filter: none;
+        }
+        
+        #agent-panel.collapsed * {
+            display: none !important;
+        }
+        
+        #agent-panel.collapsed #agent-collapse-btn {
+            display: block !important;
+        }
+        
+        #agent-panel.collapsed #agent-controls,
+        #agent-panel.collapsed #agent-status,
+        #agent-panel.collapsed #task-progress {
+            display: none !important;
+        }
+        
+        #agent-panel.collapsed #agent-collapse-btn {
+            /* 将按钮居中显示，模仿左上角按钮的折叠状态 */
+            top: 24px;
+            right: 0px;
+            transform: translate(-50%, -50%);
+        }
 
         @media only screen and (max-width: 768px) {
             /* 手机端背景设为黑色 */
             html, body {
                 background: #000 !important;
+            }
+            
+            /* 手机端隐藏麦克风选择器 */
+            .mic-selector {
+                display: none !important;
+            }
+            
+            /* 手机端隐藏agent选单 */
+            #agent-panel {
+                display: none !important;
             }
             
             #live2d-container {
@@ -733,36 +1380,188 @@
                 font-size: 0.9rem;
                 max-width: 85%;
             }
-            
-            /* 移动端显示拍照，隐藏截图 */
+
+            #sidebar {
+                left: 5vw;
+                top: 5vh;
+                /* width: 90vw;
+                flex-direction: row;
+                flex-wrap: wrap; */
+                /*gap: 8px;*/
+            }
+
+            #sidebarbox {           
+                flex-direction: row;
+                flex-wrap: wrap;
+            }
+
+            .side-btn {
+                flex: 1 1 40%;
+                padding: 6px 10px;
+                font-size: 0.85rem;
+            }
+
+            .mobile-text {
+                display: inline;
+            }
+
             .desktop-text {
                 display: none;
             }
             
-            .mobile-text {
-                display: inline;
+            /* Mobile agent panel adjustments */
+            #agent-panel {
+                top: 8px;
+                right: 8px;
+                max-width: 90vw;
+                min-width: auto;
+                padding: 10px 12px;
+            }
+            
+            #agent-panel.collapsed {
+                width: 40px;
+                height: 40px;
+                min-width: 40px;
+                max-width: 40px;
+                background: transparent;
+                box-shadow: none;
+                border-radius: 0;
+                backdrop-filter: none;
+            }
+            
+            #agent-panel.collapsed * {
+                display: none !important;
+            }
+            
+            #agent-panel.collapsed #agent-collapse-btn {
+                display: block !important;
+            }
+            
+            #agent-panel.collapsed #agent-collapse-btn {
+                top: 20px;
+                right: 0px;
+            }
+            
+            #agent-controls {
+                gap: 0;
+            }
+            
+            .master-control-row.expanded {
+                padding-bottom: 6px;
+            }
+            
+            .sub-controls-row.show {
+                margin-top: 6px;
+            }
+            
+            .control-label {
+                font-size: 0.8rem;
+            }
+            
+            .master-control-row .control-label {
+                font-size: 0.85rem;
+            }
+            
+            #agent-status:not(:empty) {
+                margin-top: 6px;
+            }
+            
+            #task-progress {
+                max-width: 90vw;
+                margin-top: 8px;
+                padding: 10px;
+            }
+            
+            .task-progress-stats {
+                flex-wrap: wrap;
+                gap: 4px;
+            }
+            
+            .stat-item {
+                font-size: 0.7rem;
             }
         }
 
     </style>
 </head>
 <body>
-<!-- 旧的按钮面板已迁移到浮动按钮系统（live2d.js），保留隐藏的旧按钮元素供功能触发使用 -->
-<div id="sidebar" style="display: none;">
+<div id="agent-panel" class="collapsed">
+    <button id="agent-collapse-btn" title="展开">
+        <img src="/static/icons/expand_icon.png" alt="展开" id="expand-icon">
+    </button>
+    <div id="agent-controls">
+        <div class="master-control-row">
+            <div class="control-item">
+                <span class="control-label">Agent模式总开关</span>
+                <label class="switch"><input id="agentMasterToggle" type="checkbox"><span class="slider"></span></label>
+            </div>
+        </div>
+        <div class="sub-controls-row" id="sub-controls-row">
+            <div class="control-item">
+                <span class="control-label">键鼠</span>
+                <label class="switch"><input id="agentCUtoggle" type="checkbox" disabled><span class="slider"></span></label>
+            </div>
+            <div class="control-item">
+                <span class="control-label">MCP</span>
+                <label class="switch"><input id="agentMCPtoggle" type="checkbox" disabled><span class="slider"></span></label>
+            </div>
+        </div>
+    </div>
+    <div id="agent-status"></div>
+    <div id="task-progress">
+        <div class="task-progress-header">
+            <span>任务进度</span>
+        </div>
+        <div class="task-progress-stats">
+            <div class="stat-item">
+                <span>运行中</span>
+                <span class="stat-count" id="running-count">0</span>
+            </div>
+            <div class="stat-item">
+                <span>排队中</span>
+                <span class="stat-count" id="queued-count">0</span>
+            </div>
+            <div class="stat-item">
+                <span>已完成</span>
+                <span class="stat-count" id="completed-count">0</span>
+            </div>
+        </div>
+        <div class="task-list" id="task-list">
+            <!-- 任务列表将在这里动态生成 -->
+        </div>
+    </div>
+</div>
+<div id="sidebar">
     <div id="sidebarbox">
-        <button id="micButton" class="side-btn">🎤 开始语音</button>
+        <button id="toggle-sidebar-btn" title="折叠侧边栏">
+            <img src="/static/icons/minimize_icon.png" alt="折叠">
+        </button>
+        <div id="mic-container">
+            <button id="micButton" class="side-btn">🎤 开始语音</button>
+            <div id="mic-selector" class="mic-selector">
+                <!-- 默认显示向右的三角形 -->
+                <button id="toggle-mic-selector" class="toggle-mic-selector" title="选择麦克风">▶</button>
+                <div id="mic-list" class="mic-list"></div>
+            </div>
+        </div>
         <button id="muteButton" class="side-btn" disabled>⏸️ 休息一下</button>
-        <button id="screenButton" class="side-btn" disabled>🖥️ 屏幕共享</button>
+        <button id="screenButton" class="side-btn" disabled><span class="desktop-text">🖥️ 屏幕共享</span><span class="mobile-text">📷 摄像头分享</span></button>
         <button id="stopButton" class="side-btn" disabled>🛑 停止共享</button>
         <button id="resetSessionButton" class="side-btn">👋 请她离开</button>
+        
         <div id="status"></div>
     </div>
 </div>
 <div id="chat-container">
     <div id="chat-header">
-        <span id="chat-title">💬 对话</span>
+        <span id="chat-title">
+            <img src="/static/icons/chat_icon.gif" alt="对话">
+            <span>对话</span>
+        </span>
     </div>
-    <button id="toggle-chat-btn" title="最小化">—</button>
+    <button id="toggle-chat-btn" title="最小化">
+        <img src="/static/icons/minimize_icon.png" alt="最小化">
+    </button>
     <div id="chat-tooltip">✨ 对话区</div>
     <div id="chat-content-wrapper">
         <div id="chatContainer"></div>
@@ -780,8 +1579,16 @@
         <div id="text-input-row">
             <textarea id="textInputBox" placeholder="文字聊天模式...回车发送，Shift+回车换行" tabindex="0"></textarea>
             <div id="button-group">
-                <button id="textSendButton">📤 发送</button>
-                <button id="screenshotButton"><span class="desktop-text">📸 截图</span><span class="mobile-text">📷 拍照</span></button>
+                <button id="textSendButton">
+                    <img src="/static/icons/send_icon.png" alt="发送" class="button-icon">
+                    <span>发送</span>
+                </button>
+                <button id="screenshotButton">
+                    <img src="/static/icons/screenshot_icon.png" alt="截图" class="button-icon desktop-text">
+                    <img src="/static/icons/screenshot_icon.png" alt="拍照" class="button-icon mobile-text">
+                    <span class="desktop-text">截图</span>
+                    <span class="mobile-text">拍照</span>
+                </button>
             </div>
         </div>
     </div>
@@ -944,6 +1751,501 @@
     });
   })();
 </script>
-<!-- Agent功能已迁移到浮动按钮系统，相关逻辑在 app.js 中 -->
+<script>
+  const agentStatusEl = document.getElementById('agent-status');
+  let agentStatusTimer = null;
+  const masterToggle = document.getElementById('agentMasterToggle');
+  const cuToggle = document.getElementById('agentCUtoggle');
+  const mcpToggle = document.getElementById('agentMCPtoggle');
+  
+  // Task progress elements
+  const taskProgressEl = document.getElementById('task-progress');
+  const runningCountEl = document.getElementById('running-count');
+  const queuedCountEl = document.getElementById('queued-count');
+  const completedCountEl = document.getElementById('completed-count');
+  const taskListEl = document.getElementById('task-list');
+  
+  // Collapse button
+  const agentCollapseBtn = document.getElementById('agent-collapse-btn');
+  const agentPanel = document.getElementById('agent-panel');
+  
+  // Task polling
+  let taskPollingInterval = null;
+  let lastTaskData = null;
+  let pollingErrorCount = 0;
+  let maxPollingErrors = 3;
+  let pollingInterval = 1000; // 1秒轮询一次，确保任务状态及时更新
+
+  function setStatus(msg) {
+    if (agentStatusTimer) { clearTimeout(agentStatusTimer); agentStatusTimer = null; }
+    if (!msg) { agentStatusEl.textContent = ''; return; }
+    agentStatusEl.textContent = msg;
+    agentStatusTimer = setTimeout(() => { agentStatusEl.textContent = ''; }, 5000);
+  }
+  function resetToggles() {
+    masterToggle.checked = false;
+    cuToggle.checked = false; cuToggle.disabled = true;
+    mcpToggle.checked = false; mcpToggle.disabled = true;
+    
+    // Reset UI state
+    const masterControlRow = document.querySelector('.master-control-row');
+    masterControlRow.classList.remove('expanded');
+    
+    const subControlsRow = document.getElementById('sub-controls-row');
+    subControlsRow.classList.remove('show');
+    
+    const taskProgressEl = document.getElementById('task-progress');
+    taskProgressEl.classList.remove('show');
+  }
+  
+  // Task progress functions
+  function startTaskPolling() {
+    if (taskPollingInterval) {
+      clearInterval(taskPollingInterval);
+    }
+    // 持续轮询，固定1秒间隔，不根据任务状态停止
+    taskPollingInterval = setInterval(updateTaskStatus, 1000);
+    updateTaskStatus(); // 立即执行一次
+  }
+  
+  function stopTaskPolling() {
+    if (taskPollingInterval) {
+      clearTimeout(taskPollingInterval);
+      taskPollingInterval = null;
+    }
+  }
+  
+  async function updateTaskStatus() {
+    try {
+      // 使用更轻量的请求，只获取必要信息，添加 AbortController 避免长时间阻塞
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3秒超时
+      
+      const response = await fetch('/api/agent/task_status', {
+        method: 'GET',
+        headers: {
+          'Cache-Control': 'no-cache'
+        },
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        pollingErrorCount++;
+        
+        // 只在连续多次失败后才显示提示，避免短暂错误导致提示闪现
+        if (pollingErrorCount >= maxPollingErrors) {
+          setStatus('任务状态更新失败，但继续尝试');
+        }
+        return;
+      }
+      
+      // 重置错误计数
+      pollingErrorCount = 0;
+      
+      const data = await response.json();
+      if (data.success) {
+        // 使用 requestAnimationFrame 确保 UI 更新不阻塞
+        requestAnimationFrame(() => {
+          updateTaskDisplay(data);
+        });
+        lastTaskData = data;
+        
+        // 持续轮询模式下，不需要检查任务状态来启动/停止轮询
+        // 轮询由 masterToggle 控制，开启时始终进行，关闭时停止
+      }
+    } catch (error) {
+      pollingErrorCount++;
+      
+      // 区分不同类型的错误（静默处理）
+      if (error.name === 'AbortError') {
+        // 只在连续超时多次后才显示提示，避免偶尔超时导致提示闪现
+        if (pollingErrorCount >= 2) {
+          setStatus('任务状态查询较慢，请稍候...');
+        }
+      } else {
+        // 只在连续多次失败后才显示提示
+        if (pollingErrorCount >= maxPollingErrors) {
+          setStatus('任务状态更新失败，但继续尝试');
+        }
+      }
+    }
+  }
+  
+  function updateTaskDisplay(data) {
+    // Update counts
+    runningCountEl.textContent = data.running_count || 0;
+    completedCountEl.textContent = data.completed_count || 0;
+    queuedCountEl.textContent = data.queued_count || 0;
+    
+    // Update task list
+    const tasks = data.tasks || [];
+    taskListEl.innerHTML = '';
+    
+    if (tasks.length === 0) {
+      taskListEl.innerHTML = '<div style="text-align: center; color: #999; padding: 10px;">暂无任务</div>';
+      return;
+    }
+    
+    // Show only active tasks (running, queued, failed)
+    const activeTasks = tasks.filter(task => 
+      ['running', 'queued', 'failed'].includes(task.status)
+    );
+    
+    activeTasks.forEach(task => {
+      const taskItem = document.createElement('div');
+      taskItem.className = 'task-item';
+      taskItem.dataset.startTime = task.start_time || '';
+      
+      const statusDot = document.createElement('div');
+      statusDot.className = `task-status ${task.status}`;
+      
+      const taskInfo = document.createElement('div');
+      taskInfo.className = 'task-info';
+      
+      const taskTitle = document.createElement('div');
+      taskTitle.className = 'task-title';
+      taskTitle.textContent = task.params?.query || task.params?.instruction || '未知任务';
+      
+      const taskMeta = document.createElement('div');
+      taskMeta.className = 'task-meta';
+      const lanlanName = task.lanlan_name || '未知';
+      
+      // 创建时长显示元素，用于实时更新
+      const durationSpan = document.createElement('span');
+      durationSpan.className = 'task-duration';
+      
+      // 计算并显示运行/排队时长
+      const updateDuration = () => {
+        if (task.start_time) {
+          const startTime = new Date(task.start_time);
+          const now = new Date();
+          const duration = now - startTime;
+          
+          if (duration < 60000) { // 小于1分钟
+            durationSpan.textContent = `${Math.floor(duration / 1000)}秒`;
+          } else if (duration < 3600000) { // 小于1小时
+            durationSpan.textContent = `${Math.floor(duration / 60000)}分钟`;
+          } else { // 大于等于1小时
+            const hours = Math.floor(duration / 3600000);
+            const minutes = Math.floor((duration % 3600000) / 60000);
+            durationSpan.textContent = `${hours}小时${minutes}分钟`;
+          }
+        } else {
+          durationSpan.textContent = '';
+        }
+      };
+      
+      // 立即更新一次
+      updateDuration();
+      
+      // 每秒更新一次时长
+      const durationInterval = setInterval(() => {
+        if (taskItem.parentNode) {
+          updateDuration();
+        } else {
+          // 如果任务项被移除，清除定时器
+          clearInterval(durationInterval);
+        }
+      }, 1000);
+      
+      taskMeta.textContent = `${lanlanName} • `;
+      taskMeta.appendChild(durationSpan);
+      
+      taskInfo.appendChild(taskTitle);
+      taskInfo.appendChild(taskMeta);
+      taskItem.appendChild(statusDot);
+      taskItem.appendChild(taskInfo);
+      taskListEl.appendChild(taskItem);
+    });
+  }
+  
+  // 重置任务显示状态
+  function resetTaskDisplay() {
+    runningCountEl.textContent = '0';
+    completedCountEl.textContent = '0';
+    queuedCountEl.textContent = '0';
+    taskListEl.innerHTML = '<div style="text-align: center; color: #999; padding: 10px;">暂无任务</div>';
+  }
+  
+  // Collapse/Expand functionality
+  function toggleAgentPanel() {
+    const wasCollapsed = agentPanel.classList.contains('collapsed');
+    agentPanel.classList.toggle('collapsed');
+    const isCollapsed = agentPanel.classList.contains('collapsed');
+    const expandIcon = document.getElementById('expand-icon');
+    if (expandIcon) {
+      expandIcon.src = isCollapsed ? '/static/icons/expand_icon.png' : '/static/icons/collapse_icon.png';
+    }
+    agentCollapseBtn.title = isCollapsed ? '展开' : '收起';
+    
+    // 标记菜单打开/关闭状态，影响自动折叠
+    if (wasCollapsed && !isCollapsed) {
+      // 从折叠变为展开，标记菜单打开
+      if (typeof window.markMenuOpen === 'function') {
+        window.markMenuOpen();
+      }
+    } else if (!wasCollapsed && isCollapsed) {
+      // 从展开变为折叠，标记菜单关闭
+      if (typeof window.markMenuClosed === 'function') {
+        window.markMenuClosed();
+      }
+    }
+  }
+
+  async function checkToolServerHealth() {
+    try {
+      const resp = await fetch(`/api/agent/health`);
+      if (!resp.ok) throw new Error('not ok');
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  masterToggle.addEventListener('change', async () => {
+    if (masterToggle.checked) {
+      try {
+        const ok = await checkToolServerHealth();
+        if (!ok) throw new Error('tool server down');
+      } catch (e) {
+        setStatus('Agent服务器未启动');
+        resetToggles();
+        return;
+      }
+      setStatus('Agent模式已开启');
+      cuToggle.disabled = false;
+      mcpToggle.disabled = false;
+      
+      // Expand master control row with border and padding
+      const masterControlRow = document.querySelector('.master-control-row');
+      masterControlRow.classList.add('expanded');
+      
+      // Show sub controls row with animation
+      const subControlsRow = document.getElementById('sub-controls-row');
+      subControlsRow.classList.add('show');
+      
+      // Show task progress and start continuous polling
+      taskProgressEl.classList.add('show');
+      
+      try {
+        const r = await fetch('/api/agent/flags', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({lanlan_name: lanlan_config.lanlan_name, flags: {agent_enabled:true, computer_use_enabled:false, mcp_enabled:false}})});
+        if (!r.ok) throw new Error('main_server rejected');
+        
+        // 开启成功后，立即启动持续轮询
+        startTaskPolling();
+        
+        // 检查所有能力并显示错误信息
+        setTimeout(() => {
+          checkAllCapabilities();
+        }, 500);
+        
+      } catch(e) {
+        // auto close on failure
+        resetToggles();
+        setStatus('开启失败');
+        // Hide task progress and stop polling
+        taskProgressEl.classList.remove('show');
+        stopTaskPolling();
+      }
+    } else {
+      setStatus('Agent模式已关闭');
+      
+      // 重置所有子开关状态
+      cuToggle.checked = false;
+      cuToggle.disabled = true;
+      mcpToggle.checked = false;
+      mcpToggle.disabled = true;
+      
+      // Collapse master control row (remove border and padding)
+      const masterControlRow = document.querySelector('.master-control-row');
+      masterControlRow.classList.remove('expanded');
+      
+      // Hide sub controls row with animation
+      const subControlsRow = document.getElementById('sub-controls-row');
+      subControlsRow.classList.remove('show');
+      
+      // Hide task progress and stop polling
+      taskProgressEl.classList.remove('show');
+      stopTaskPolling();
+      
+      // 立即重置前端任务显示
+      resetTaskDisplay();
+      
+      // 停止所有任务并重置状态（静默处理）
+      try {
+        // 先停止所有正在运行的任务
+        const stopResponse = await fetch('/api/agent/admin/control', {
+          method: 'POST', 
+          headers: {'Content-Type': 'application/json'}, 
+          body: JSON.stringify({action: 'end_all'})
+        });
+        
+        if (stopResponse.ok) {
+          const result = await stopResponse.json();
+          if (result.success) {
+            setStatus('所有任务已停止，Agent模式已关闭');
+          }
+        }
+        
+        // 设置Agent标志为关闭（包括所有子功能）
+        await fetch('/api/agent/flags', {
+          method: 'POST', 
+          headers: {'Content-Type': 'application/json'}, 
+          body: JSON.stringify({
+            lanlan_name: lanlan_config.lanlan_name, 
+            flags: {agent_enabled: false, computer_use_enabled: false, mcp_enabled: false}
+          })
+        });
+        
+      } catch(e) {
+        setStatus('Agent模式已关闭（部分清理失败）');
+      }
+    }
+  });
+
+  async function checkCapability(kind, showError = true) {
+    try {
+      if (kind === 'computer_use') {
+        const r = await fetch(`/api/agent/computer_use/availability`);
+        if (!r.ok) return false;
+        const j = await r.json();
+        if (!j.ready) {
+          if (showError) {
+            setStatus((j.reasons && j.reasons[0]) || '键鼠控制不可用');
+          }
+          return false;
+        }
+        return true;
+      } else if (kind === 'mcp') {
+        const r = await fetch(`/api/agent/mcp/availability`);
+        if (!r.ok) return false;
+        const j = await r.json();
+        if (!j.ready) {
+          if (showError) {
+            setStatus((j.reasons && j.reasons[0]) || 'MCP不可用');
+          }
+          return false;
+        }
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+  
+  // 检查所有能力并显示错误信息
+  async function checkAllCapabilities() {
+    const cuOk = await checkCapability('computer_use', false);
+    const mcpOk = await checkCapability('mcp', false);
+    
+    if (!cuOk || !mcpOk) {
+      const errors = [];
+      if (!cuOk) {
+        try {
+          const r = await fetch(`/api/agent/computer_use/availability`);
+          const j = await r.json();
+          if (j.reasons && j.reasons.length > 0) {
+            errors.push(`❌ 键鼠控制: ${j.reasons.join('; ')}`);
+          }
+        } catch (e) {}
+      }
+    //   if (!mcpOk) {
+    //     try {
+    //       const r = await fetch(`/api/agent/mcp/availability`);
+    //       const j = await r.json();
+    //       if (j.reasons && j.reasons.length > 0) {
+    //         errors.push(`⚠️ MCP: ${j.reasons.join('; ')}`);
+    //       }
+    //     } catch (e) {}
+    //   }
+      
+      if (errors.length > 0) {
+        setStatus(errors.join(' | '));
+      }
+    }
+  }
+
+  cuToggle.addEventListener('change', async () => {
+    if (cuToggle.checked) {
+      try {
+        const ok = await checkCapability('computer_use');
+        if (!ok) throw new Error('not available');
+      } catch (e) {
+        setStatus('键鼠控制不可用，请检查智谱API秘钥配置');
+        cuToggle.checked = false;
+        return;
+      }
+      try {
+        const r = await fetch('/api/agent/flags', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({lanlan_name: lanlan_config.lanlan_name, flags: {computer_use_enabled:true}})});
+        if (!r.ok) throw new Error('main_server rejected');
+        setStatus('键鼠控制已开启');
+      } catch(e) {
+        cuToggle.checked = false;
+        setStatus('键鼠控制开启失败');
+      }
+    } else {
+      setStatus('键鼠控制已关闭');
+      try { await fetch('/api/agent/flags', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({lanlan_name: lanlan_config.lanlan_name, flags: {computer_use_enabled:false}})});} catch(e){}
+    }
+  });
+
+  mcpToggle.addEventListener('change', async () => {
+    if (mcpToggle.checked) {
+      try {
+        const ok = await checkCapability('mcp');
+        if (!ok) throw new Error('not available');
+      } catch (e) {
+        setStatus('MCP插件不可用，请检查MCP服务器配置');
+        mcpToggle.checked = false;
+        return;
+      }
+      try {
+        const r = await fetch('/api/agent/flags', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({lanlan_name: lanlan_config.lanlan_name, flags: {mcp_enabled:true}})});
+        if (!r.ok) throw new Error('main_server rejected');
+        setStatus('MCP插件已开启');
+      } catch(e) {
+        mcpToggle.checked = false;
+        setStatus('MCP开启失败');
+      }
+    } else {
+      setStatus('MCP插件已关闭');
+      try { await fetch('/api/agent/flags', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({lanlan_name: lanlan_config.lanlan_name, flags: {mcp_enabled:false}})});} catch(e){}
+    }
+  });
+  
+  // Add event listeners
+  agentCollapseBtn.addEventListener('click', toggleAgentPanel);
+  
+  // Initialize task progress display state
+  if (masterToggle.checked) {
+    // Expand master control row
+    const masterControlRow = document.querySelector('.master-control-row');
+    masterControlRow.classList.add('expanded');
+    
+    // Show sub controls row
+    const subControlsRow = document.getElementById('sub-controls-row');
+    subControlsRow.classList.add('show');
+    
+    taskProgressEl.classList.add('show');
+    // 页面加载时如果Agent模式已开启，立即启动持续轮询
+    startTaskPolling();
+  } else {
+    // Ensure master control row is collapsed on page load if master is off
+    const masterControlRow = document.querySelector('.master-control-row');
+    masterControlRow.classList.remove('expanded');
+    
+    // Ensure sub controls are hidden on page load if master is off
+    const subControlsRow = document.getElementById('sub-controls-row');
+    subControlsRow.classList.remove('show');
+  }
+  
+  // 页面加载时检查所有能力并显示错误信息（延迟1秒，确保服务器启动完成）
+  setTimeout(() => {
+    checkAllCapabilities();
+  }, 1000);
+</script>
 </body>
 </html>
