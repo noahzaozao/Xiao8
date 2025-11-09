@@ -775,6 +775,63 @@ function updateAssistApiRecommendation() {
             <strong>💡当前建议：</strong>${recommendation}
         `;
     }
+    
+    // 调用自动填充核心API Key的函数
+    autoFillCoreApiKey();
+}
+
+// 自动填充核心API Key到核心API Key输入框
+function autoFillCoreApiKey() {
+    const coreApiSelect = document.getElementById('coreApiSelect');
+    const assistApiSelect = document.getElementById('assistApiSelect');
+    const apiKeyInput = document.getElementById('apiKeyInput');
+    
+    if (!coreApiSelect || !assistApiSelect || !apiKeyInput) return;
+    
+    const selectedCoreApi = coreApiSelect.value;
+    const selectedAssistApi = assistApiSelect.value;
+    
+    // 如果选择的是免费版，不需要填充
+    if (selectedCoreApi === 'free') {
+        return;
+    }
+    
+    // 获取当前核心API Key输入框的值
+    const currentApiKey = apiKeyInput.value.trim();
+    
+    // 如果核心API Key输入框为空，尝试自动填充
+    if (!currentApiKey) {
+        let sourceApiKey = '';
+        
+        // 策略1：从current-api-key获取
+        const currentApiKeyDiv = document.getElementById('current-api-key');
+        if (currentApiKeyDiv && currentApiKeyDiv.style.display !== 'none') {
+            const currentApiKeyText = currentApiKeyDiv.textContent.trim();
+            // 从current-api-key文本中提取API Key
+            if (currentApiKeyText.includes('当前API Key:')) {
+                // 格式："📋 当前API Key: sk-xxx..."
+                const match = currentApiKeyText.match(/当前API Key:\s*([^\s]+)/);
+                if (match && match[1]) {
+                    sourceApiKey = match[1];
+                }
+            }
+        }
+        
+        // 如果找到了有效的API Key，自动填充到核心API Key输入框
+        if (sourceApiKey) {
+            apiKeyInput.value = sourceApiKey;
+            console.log(`已自动将API Key填充到核心API Key输入框`);
+            
+            // 显示提示信息
+            showStatus(`已自动填充核心API Key`, 'info');
+            setTimeout(() => {
+                const statusDiv = document.getElementById('status');
+                if (statusDiv.textContent.includes('已自动填充核心API Key')) {
+                    statusDiv.style.display = 'none';
+                }
+            }, 2000);
+        }
+    }
 }
 
 // Beacon功能 - 页面关闭时发送信号给服务器（仅在直接打开时发送，iframe中不发送）
@@ -951,6 +1008,9 @@ window.addEventListener('load', function() {
                 
                 // 强制更新辅助API推荐和锁定状态
                 updateAssistApiRecommendation();
+                
+                // 页面加载完成后立即尝试自动填充核心API Key
+                autoFillCoreApiKey();
             }
         }, 300); // 短暂延迟确保所有DOM元素和初始配置都已加载完成
     });
@@ -960,10 +1020,16 @@ window.addEventListener('load', function() {
     const assistApiSelect = document.getElementById('assistApiSelect');
     
     if (coreApiSelect) {
-        coreApiSelect.addEventListener('change', updateAssistApiRecommendation);
+        coreApiSelect.addEventListener('change', function() {
+            updateAssistApiRecommendation();
+            autoFillCoreApiKey();
+        });
     }
     if (assistApiSelect) {
-        assistApiSelect.addEventListener('change', updateAssistApiRecommendation);
+        assistApiSelect.addEventListener('change', function() {
+            updateAssistApiRecommendation();
+            autoFillCoreApiKey();
+        });
     }
     
     // 初始化时也更新一次建议

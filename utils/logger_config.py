@@ -26,7 +26,7 @@ class RobustLoggerConfig:
     DEFAULT_BACKUP_COUNT = 5  # Keep 5 backup files
     DEFAULT_LOG_RETENTION_DAYS = 30  # Keep logs for 30 days
     
-    def __init__(self, app_name="Xiao8", log_level=None, max_bytes=None, 
+    def __init__(self, app_name="N.E.K.O.", log_level=None, max_bytes=None, 
                  backup_count=None, retention_days=None):
         """
         初始化日志配置
@@ -58,7 +58,7 @@ class RobustLoggerConfig:
         """
         获取合适的日志目录
         优先级：
-        1. 用户文档目录/Xiao8/logs（我的文档，默认首选）
+        1. 用户文档目录/N.E.K.O./logs（我的文档，默认首选）
         2. 应用程序所在目录/logs
         3. 用户数据目录（AppData等）
         4. 用户主目录
@@ -70,8 +70,8 @@ class RobustLoggerConfig:
         # 尝试1: 使用用户文档目录（我的文档，默认首选！）
         try:
             docs_dir = self._get_documents_directory()
-            # 统一使用 Xiao8 目录，不带后缀
-            log_dir = docs_dir / "Xiao8" / "logs"
+            # 统一使用 N.E.K.O. 目录，不带后缀
+            log_dir = docs_dir / "N.E.K.O." / "logs"
             if self._test_directory_writable(log_dir):
                 return log_dir
         except Exception as e:
@@ -316,7 +316,7 @@ class RobustLoggerConfig:
         return logger
 
 
-def setup_logging(app_name="Xiao8", log_level=None):
+def setup_logging(app_name="N.E.K.O.", log_level=None):
     """
     便捷函数：设置日志配置
     
