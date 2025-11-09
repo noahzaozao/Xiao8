@@ -52,9 +52,10 @@ function init_app(){
     const PROACTIVE_CHAT_BASE_DELAY = 30000; // 30秒基础延迟
     
     // Focus模式相关（兼容原有的focus_mode）
+    // Focus模式为true时，AI播放语音时会自动静音麦克风（不允许打断）
     let focusModeEnabled = (typeof focus_mode !== 'undefined' && focus_mode === true) ? true : false;
     
-    // 暴露到全局作用域，供 live2d.js 等其他模块访问
+    // 暴露到全局作用域，供 live2d.js 等其他模块访问和修改
     window.proactiveChatEnabled = proactiveChatEnabled;
     window.focusModeEnabled = focusModeEnabled;
     
@@ -1411,9 +1412,9 @@ function init_app(){
             workletNode.port.onmessage = (event) => {
                 const audioData = event.data;
 
-                // 新增逻辑：focusModeEnabled为true且正在播放语音时，不回传麦克风音频
+                // Focus模式：focusModeEnabled为true且AI正在播放语音时，自动静音麦克风（不回传麦克风音频）
                 if (focusModeEnabled === true && isPlaying === true) {
-                    // 处于focus模式且语音播放中，跳过回传
+                    // 处于focus模式且AI语音播放中，跳过回传麦克风音频，实现自动静音
                     return;
                 }
 
@@ -2426,6 +2427,9 @@ function init_app(){
         localStorage.setItem('xiao8_settings', JSON.stringify(settings));
     }
     
+    // 暴露到全局作用域，供 live2d.js 等其他模块调用
+    window.saveXiao8Settings = saveSettings;
+    
     // 从localStorage加载设置
     function loadSettings() {
         try {
@@ -2441,6 +2445,12 @@ function init_app(){
                     focusModeEnabled = settings.focusModeEnabled || false;
                 }
                 window.focusModeEnabled = focusModeEnabled; // 同步到全局
+                
+                console.log('已加载设置:', {
+                    proactiveChatEnabled: proactiveChatEnabled,
+                    focusModeEnabled: focusModeEnabled,
+                    focusModeDesc: focusModeEnabled ? 'AI说话时自动静音麦克风（不允许打断）' : '允许打断AI说话'
+                });
             }
         } catch (error) {
             console.error('加载设置失败:', error);

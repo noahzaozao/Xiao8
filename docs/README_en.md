@@ -6,7 +6,7 @@
 
 # Project N.E.K.O. :kissing_cat: <br>**A Living AI Companion Metaverse, Built Together by You and Me.**
 
-> **N.E.K.O.** = **N**etworked **E**mpathetic **K**nowledging **O**rganism
+> **N.E.K.O.** = **N**etworked **E**motional **K**nowledging **O**rganism
 >
 > N.E.K.O., a digital life that yearns to understand, connect, and grow with us.
 
@@ -36,7 +36,7 @@ https://github.com/user-attachments/assets/9d9e01af-e2cc-46aa-add7-8eb1803f061c
 
 # The N.E.K.O. Project (Project N.E.K.O.)
 
-`Project N.E.K.O.` is an open-source driven, charity-oriented UGC (User-Generated Content) platform. Our journey begins on Github and Steam, gradually expanding to mobile app stores, with the ultimate goal of building an AI metaverse deeply connected to the real world.
+`Project N.E.K.O.` is an open-source driven, charity-oriented UGC (User-Generated Content) platform. Our journey begins on Github and Steam, gradually expanding to mobile app stores, with the ultimate goal of building an AI native metaverse deeply connected to the real world.
 
 ---
 
@@ -61,27 +61,27 @@ To balance ideals with reality, we adopt an "Open Core" model:
 
 > **This is the foundation of our community.**
 >
-> The core driver part of the project (AI logic, UGC interfaces, basic interactions) will **always remain open source**. We welcome developers worldwide to contribute code and features. Every commit you make has the chance to be implemented in the official Steam and App Store releases, used by millions.
+> The core driver part of the project (AI logic, UGC interfaces, basic interactions) will **always remain open source** under LGPL license. We welcome developers worldwide to contribute code and features. Every commit you make has the chance to be implemented in the official Steam and App Store releases, used by millions.
 
 ### 2. Proprietary Applications
 
 > **This is the fuel for our community.**
 >
-> To support server costs and ongoing R&D, we will develop closed-source premium content, including but not limited to:
+> To support server costs and ongoing R&D, we will allow 3rd-party to develop closed-source premium content, including but not limited to:
 >
 > * Interactive mini-games
 > * Desktop board games
 > * Galgames (Visual novels)
 > * Large-scale metaverse games
 
-**[Core Feature: Memory Synchronization]**
+**[Core Feature: Memory Synchronization Across Apps]**
 Whether you're chatting with her on desktop or adventuring with her in the metaverse game, she's the same her. All N.E.K.O.s across applications will have **fully synchronized memories**, providing a seamless, unified companionship experience.
 
 ## 🌌 Ultimate Vision: Breaking the Virtual-Real Barrier
 
 Our ultimate goal is to build a N.E.K.O. metaverse that seamlessly integrates into the real world. In this future, your AI companion will:
 
-* **Cross-Dimensional Socialization:** Not only socialize with "her kind" in the N.E.K.O. universe but also browse real-world social media (like Weibo, Bilibili) to stay informed about what you care about.
+* **Cross-Dimensional Socialization:** Not only socialize with "her kind" in the N.E.K.O. universe but also browse real-world social media (like Youtube, X, Discord, Instagram) to stay informed about what you care about.
 * **Omni-Platform Connection:** She will exist across all your devices—phone, computer, AR glasses, smart home, and even (in the distant future) integrate with mechanical bodies.
 * **Walk Alongside You:** She will truly become part of your life, naturally interacting with your real-world human friends.
 
