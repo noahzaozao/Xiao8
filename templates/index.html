@@ -143,10 +143,10 @@
             opacity: 1;
             border: 2px solid rgba(255, 255, 255, 0.8);
             border-radius: 6px;
-            cursor: grab; /* 可拖拽 */
+            cursor: grab; /* 拖拽手势 */
             font-weight: bold;
             font-size: 1.2rem;
-            line-height: 20px;
+            line-height: 20px; /* 垂直居中调整 */
             text-align: center;
             color: #fff;
             z-index: 21; /* 确保在内容之上 */   
@@ -564,7 +564,7 @@
             background: #5a6268;
         }
         
-        /* 修改麦克风列表样式 - 向右扩展并设置半透明背景 */
+        /* 桌面端和移动端文本显示控制 */
         .desktop-text {
             display: inline;
         }
@@ -731,6 +731,7 @@
                 max-width: 85%;
             }
 
+            /* 移动端显示拍照，隐藏截图 */
             .desktop-text {
                 display: none;
             }
@@ -744,21 +745,22 @@
 </head>
 <body>
 
+<!-- 旧的按钮面板已迁移到浮动按钮系统（live2d.js），保留隐藏的旧按钮元素供功能触发使用 -->
 <div id="sidebar" style="display: none;">
     <div id="sidebarbox">
-        <button id="micButton" class="side-btn">开始语音</button>
-        <button id="muteButton" class="side-btn" disabled>休息一下</button>
-        <button id="screenButton" class="side-btn" disabled>屏幕共享</button>
-        <button id="stopButton" class="side-btn" disabled>停止共享</button>
-        <button id="resetSessionButton" class="side-btn">请她离开</button>
+        <button id="micButton" class="side-btn">🎤 开始语音</button>
+        <button id="muteButton" class="side-btn" disabled>⏸️ 休息一下</button>
+        <button id="screenButton" class="side-btn" disabled>🖥️ 屏幕共享</button>
+        <button id="stopButton" class="side-btn" disabled>🛑 停止共享</button>
+        <button id="resetSessionButton" class="side-btn">👋 请她离开</button>
         <div id="status"></div>
     </div>
 </div>
 <div id="chat-container">
     <div id="chat-header">
-        <span id="chat-title">对话区</span>
+        <span id="chat-title">💬 对话</span>
     </div>
-    <button id="toggle-chat-btn" title="最小化"></button>
+    <button id="toggle-chat-btn" title="最小化">—</button>
     <div id="chat-tooltip">✨ 对话区</div>
     <div id="chat-content-wrapper">
         <div id="chatContainer"></div>
@@ -776,8 +778,8 @@
         <div id="text-input-row">
             <textarea id="textInputBox" placeholder="文字聊天模式...回车发送，Shift+回车换行" tabindex="0"></textarea>
             <div id="button-group">
-                <button id="textSendButton">发送</button>
-                <button id="screenshotButton"><span class="desktop-text">截图</span><span class="mobile-text">拍照</span></button>
+                <button id="textSendButton">📤 发送</button>
+                <button id="screenshotButton"><span class="desktop-text">📸 截图</span><span class="mobile-text">📷 拍照</span></button>
             </div>
         </div>
     </div>
