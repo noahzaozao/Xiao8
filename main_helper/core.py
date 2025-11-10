@@ -671,7 +671,8 @@ class LLMSessionManager:
                     on_output_transcript=self.handle_output_transcript,
                     on_connection_error=self.handle_connection_error,
                     on_response_done=self.handle_response_complete,
-                    on_silence_timeout=self.handle_silence_timeout
+                    on_silence_timeout=self.handle_silence_timeout,
+                    api_type=self.core_api_type  # 传入API类型，用于判断是否启用静默超时
                 )
 
             # 连接 session
@@ -827,7 +828,8 @@ class LLMSessionManager:
                 on_input_transcript=self.handle_input_transcript,
                 on_output_transcript=self.handle_output_transcript,
                 on_connection_error=self.handle_connection_error,
-                on_response_done=self.handle_response_complete
+                on_response_done=self.handle_response_complete,
+                api_type=self.core_api_type  # 传入API类型，用于判断是否启用静默超时
             )
             
             initial_prompt = (f"你是一个角色扮演大师，并且精通电脑操作。请按要求扮演以下角色（{self.lanlan_name}），在对方请求时、回答“我试试”并尝试操纵电脑。" if self._is_agent_enabled() else f"你是一个角色扮演大师。请按要求扮演以下角色（{self.lanlan_name}）。") + self.lanlan_prompt
