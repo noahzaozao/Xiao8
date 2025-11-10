@@ -2186,18 +2186,76 @@ function init_app(){
         }
     }, 1000); // 延迟执行，确保浮动按钮已创建
     
-    // 为浮动弹出框渲染麦克风列表（直接使用麦克风数据，不依赖原列表）
+    // 麦克风权限和设备列表预加载（修复 UI 2.0 中权限请求时机导致的bug）
+    let micPermissionGranted = false;
+    let cachedMicDevices = null;
+    
+    // 预先请求麦克风权限并缓存设备列表
+    async function ensureMicrophonePermission() {
+        if (micPermissionGranted && cachedMicDevices) {
+            return cachedMicDevices;
+        }
+        
+        try {
+            // 方法1：先请求一次短暂的麦克风访问来触发权限请求
+            // 这样后续 enumerateDevices() 才能返回带 label 的设备信息
+            const tempStream = await navigator.mediaDevices.getUserMedia({ 
+                audio: true 
+            });
+            
+            // 立即释放流，我们只是为了触发权限
+            tempStream.getTracks().forEach(track => track.stop());
+            
+            micPermissionGranted = true;
+            console.log('麦克风权限已获取');
+            
+            // 现在可以获取完整的设备列表（带 label）
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            cachedMicDevices = devices.filter(device => device.kind === 'audioinput');
+            
+            return cachedMicDevices;
+        } catch (error) {
+            console.warn('请求麦克风权限失败:', error);
+            // 即使权限失败，也尝试获取设备列表（可能没有 label）
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                cachedMicDevices = devices.filter(device => device.kind === 'audioinput');
+                return cachedMicDevices;
+            } catch (enumError) {
+                console.error('获取设备列表失败:', enumError);
+                return [];
+            }
+        }
+    }
+    
+    // 监听设备变化，更新缓存
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+        navigator.mediaDevices.addEventListener('devicechange', async () => {
+            console.log('检测到设备变化，刷新麦克风列表...');
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                cachedMicDevices = devices.filter(device => device.kind === 'audioinput');
+                // 如果弹出框当前是显示的，刷新它
+                const micPopup = document.getElementById('live2d-mic-popup');
+                if (micPopup && micPopup.style.display === 'flex') {
+                    await window.renderFloatingMicList();
+                }
+            } catch (error) {
+                console.error('设备变化后更新列表失败:', error);
+            }
+        });
+    }
+    
+    // 为浮动弹出框渲染麦克风列表（修复版本：确保有权限后再渲染）
     window.renderFloatingMicList = async () => {
         const micPopup = document.getElementById('live2d-mic-popup');
         if (!micPopup) {
-            console.log('麦克风弹出框未找到');
             return false;
         }
         
         try {
-            // 直接获取麦克风设备
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            const audioInputs = devices.filter(device => device.kind === 'audioinput');
+            // 确保已经有麦克风权限，并获取设备列表
+            const audioInputs = await ensureMicrophonePermission();
             
             micPopup.innerHTML = '';
             
@@ -2214,6 +2272,7 @@ function init_app(){
             // 添加默认麦克风选项
             const defaultOption = document.createElement('button');
             defaultOption.className = 'mic-option';
+            // 不设置 dataset.deviceId，让它保持 undefined（表示默认）
             defaultOption.textContent = '系统默认麦克风';
             if (selectedMicrophoneId === null) {
                 defaultOption.classList.add('selected');
@@ -2243,7 +2302,8 @@ function init_app(){
             });
             defaultOption.addEventListener('click', async () => {
                 await selectMicrophone(null);
-                window.renderFloatingMicList();
+                // 只更新选中状态，不重新渲染整个列表
+                updateMicListSelection();
             });
             micPopup.appendChild(defaultOption);
             
@@ -2258,6 +2318,7 @@ function init_app(){
             audioInputs.forEach(device => {
                 const option = document.createElement('button');
                 option.className = 'mic-option';
+                option.dataset.deviceId = device.deviceId; // 存储设备ID用于更新选中状态
                 option.textContent = device.label || `麦克风 ${audioInputs.indexOf(device) + 1}`;
                 if (selectedMicrophoneId === device.deviceId) {
                     option.classList.add('selected');
@@ -2290,7 +2351,8 @@ function init_app(){
                 
                 option.addEventListener('click', async () => {
                     await selectMicrophone(device.deviceId);
-                    window.renderFloatingMicList();
+                    // 只更新选中状态，不重新渲染整个列表
+                    updateMicListSelection();
                 });
                 
                 micPopup.appendChild(option);
@@ -2298,7 +2360,7 @@ function init_app(){
             
             return true;
         } catch (error) {
-            console.error('获取麦克风列表失败:', error);
+            console.error('渲染麦克风列表失败:', error);
             micPopup.innerHTML = '';
             const errorItem = document.createElement('div');
             errorItem.textContent = '获取麦克风列表失败';
@@ -2310,7 +2372,46 @@ function init_app(){
         }
     };
     
-    // 页面加载后初始化浮动麦克风列表（延迟确保弹出框已创建）
+    // 轻量级更新：仅更新麦克风列表的选中状态（不重新渲染整个列表）
+    function updateMicListSelection() {
+        const micPopup = document.getElementById('live2d-mic-popup');
+        if (!micPopup) return;
+        
+        // 更新所有选项的选中状态
+        const options = micPopup.querySelectorAll('.mic-option');
+        options.forEach(option => {
+            const deviceId = option.dataset.deviceId;
+            const isSelected = (deviceId === undefined && selectedMicrophoneId === null) || 
+                             (deviceId === selectedMicrophoneId);
+            
+            if (isSelected) {
+                option.classList.add('selected');
+                option.style.background = '#e6f0ff';
+                option.style.color = '#4f8cff';
+                option.style.fontWeight = '500';
+            } else {
+                option.classList.remove('selected');
+                option.style.background = 'transparent';
+                option.style.color = '#333';
+                option.style.fontWeight = '400';
+            }
+        });
+    }
+    
+    // 页面加载后预先请求麦克风权限（修复核心bug：确保权限在用户点击前就已获取）
+    setTimeout(async () => {
+        console.log('[麦克风] 页面加载，预先请求麦克风权限...');
+        try {
+            await ensureMicrophonePermission();
+            console.log('[麦克风] 权限预请求完成，设备列表已缓存');
+            // 触发事件通知权限已准备好（兼容可能依赖此事件的其他代码）
+            window.dispatchEvent(new CustomEvent('mic-permission-ready'));
+        } catch (error) {
+            console.warn('[麦克风] 预请求权限失败（用户可能拒绝）:', error);
+        }
+    }, 500); // 页面加载后半秒开始预请求
+    
+    // 延迟渲染麦克风列表到弹出框（确保弹出框DOM已创建）
     setTimeout(() => {
         window.renderFloatingMicList();
     }, 1500);
