@@ -44,11 +44,15 @@ if (toggleBtn) {
         if (!iconImg) {
             // 如果没有图标，创建一个
             iconImg = document.createElement('img');
-            iconImg.style.width = '16px';
-            iconImg.style.height = '16px';
+            iconImg.style.width = '24px';  /* 图标尺寸 */
+            iconImg.style.height = '24px';  /* 图标尺寸 */
             iconImg.style.objectFit = 'contain';
             toggleBtn.innerHTML = '';
             toggleBtn.appendChild(iconImg);
+        } else {
+            // 如果图标已存在，也更新其大小
+            iconImg.style.width = '24px';  /* 图标尺寸 */
+            iconImg.style.height = '24px';  /* 图标尺寸 */
         }
 
         if (isMinimized) {
