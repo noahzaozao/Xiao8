@@ -11,7 +11,7 @@ import logging
 from datetime import datetime
 import webbrowser
 import io
-import uvicorn
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, File, UploadFile, Form, Body
 from fastapi.staticfiles import StaticFiles
 from main_helper import core as core, cross_server as cross_server
