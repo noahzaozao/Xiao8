@@ -823,7 +823,124 @@ class Live2DManager {
             return model;
         } catch (error) {
             console.error('加载模型失败:', error);
-            throw error;
+            
+            // 尝试回退到默认模型
+            if (modelPath !== '/static/mao_pro/mao_pro.model3.json') {
+                console.warn('模型加载失败，尝试回退到默认模型: mao_pro');
+                try {
+                    const defaultModelPath = '/static/mao_pro/mao_pro.model3.json';
+                    const model = await Live2DModel.from(defaultModelPath, { autoInteract: false });
+                    this.currentModel = model;
+
+                    // 解析模型目录名与根路径，供资源解析使用
+                    try {
+                        const cleanPath = defaultModelPath.split('#')[0].split('?')[0];
+                        const lastSlash = cleanPath.lastIndexOf('/');
+                        const rootDir = lastSlash >= 0 ? cleanPath.substring(0, lastSlash) : '/static';
+                        this.modelRootPath = rootDir;
+                        const parts = rootDir.split('/').filter(Boolean);
+                        this.modelName = parts.length > 0 ? parts[parts.length - 1] : null;
+                        console.log('回退模型根路径解析:', { modelUrl: defaultModelPath, modelName: this.modelName, modelRootPath: this.modelRootPath });
+                    } catch (e) {
+                        console.warn('解析回退模型根路径失败，将使用默认值', e);
+                        this.modelRootPath = '/static';
+                        this.modelName = null;
+                    }
+
+                    // 配置渲染纹理数量以支持更多蒙版
+                    if (model.internalModel && model.internalModel.renderer && model.internalModel.renderer._clippingManager) {
+                        model.internalModel.renderer._clippingManager._renderTextureCount = 3;
+                        if (typeof model.internalModel.renderer._clippingManager.initialize === 'function') {
+                            model.internalModel.renderer._clippingManager.initialize(
+                                model.internalModel.coreModel,
+                                model.internalModel.coreModel.getDrawableCount(),
+                                model.internalModel.coreModel.getDrawableMasks(),
+                                model.internalModel.coreModel.getDrawableMaskCounts(),
+                                3
+                            );
+                        }
+                        console.log('回退模型渲染纹理数量已设置为3');
+                    }
+
+                    // 应用位置和缩放设置
+                    this.applyModelSettings(model, options);
+
+                    // 添加到舞台
+                    this.pixi_app.stage.addChild(model);
+
+                    // 设置交互性
+                    if (options.dragEnabled !== false) {
+                        this.setupDragAndDrop(model);
+                    }
+
+                    // 设置滚轮缩放
+                    if (options.wheelEnabled !== false) {
+                        this.setupWheelZoom(model);
+                    }
+                    
+                    // 设置触摸缩放（双指捏合）
+                    if (options.touchZoomEnabled !== false) {
+                        this.setupTouchZoom(model);
+                    }
+
+                    // 启用鼠标跟踪
+                    if (options.mouseTracking !== false) {
+                        this.enableMouseTracking(model);
+                    }
+
+                    // 设置浮动按钮系统（在模型完全就绪后再绑定ticker回调）
+                    this.setupFloatingButtons(model);
+                    
+                    // 设置原来的锁按钮
+                    this.setupHTMLLockIcon(model);
+
+                    // 安装口型覆盖逻辑（屏蔽 motion 对嘴巴的控制）
+                    try {
+                        this.installMouthOverride();
+                        console.log('回退模型已安装口型覆盖');
+                    } catch (e) {
+                        console.warn('回退模型安装口型覆盖失败:', e);
+                    }
+
+                    // 加载 FileReferences 与 EmotionMapping
+                    if (options.loadEmotionMapping !== false) {
+                        const settings = model.internalModel && model.internalModel.settings && model.internalModel.settings.json;
+                        if (settings) {
+                            // 保存原始 FileReferences
+                            this.fileReferences = settings.FileReferences || null;
+
+                            // 优先使用顶层 EmotionMapping，否则从 FileReferences 推导
+                            if (settings.EmotionMapping && (settings.EmotionMapping.expressions || settings.EmotionMapping.motions)) {
+                                this.emotionMapping = settings.EmotionMapping;
+                            } else {
+                                this.emotionMapping = this.deriveEmotionMappingFromFileRefs(this.fileReferences || {});
+                            }
+                            console.log('回退模型已加载情绪映射:', this.emotionMapping);
+                        } else {
+                            console.warn('回退模型配置中未找到 settings.json，无法加载情绪映射');
+                        }
+                    }
+
+                    // 先从服务器同步映射（覆盖"常驻"），再设置常驻表情
+                    try { await this.syncEmotionMappingWithServer({ replacePersistentOnly: true }); } catch(_) {}
+                    // 设置常驻表情（根据 EmotionMapping.expressions.常驻 或 FileReferences 前缀推导）
+                    await this.setupPersistentExpressions();
+
+                    // 调用回调函数
+                    if (this.onModelLoaded) {
+                        this.onModelLoaded(model, defaultModelPath);
+                    }
+
+                    console.log('成功回退到默认模型: mao_pro');
+                    return model;
+                } catch (fallbackError) {
+                    console.error('回退到默认模型也失败:', fallbackError);
+                    throw new Error(`原始模型加载失败: ${error.message}，且回退模型也失败: ${fallbackError.message}`);
+                }
+            } else {
+                // 如果已经是默认模型，直接抛出错误
+                throw error;
+            }
         }
     }
 
