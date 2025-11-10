@@ -72,7 +72,9 @@ function init_app(){
     // 建立WebSocket连接
     function connectWebSocket() {
         const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-        socket = new WebSocket(`${protocol}://${window.location.host}/ws/${lanlan_config.lanlan_name}`);
+        const wsUrl = `${protocol}://${window.location.host}/ws/${lanlan_config.lanlan_name}`;
+        console.log('[WebSocket] 正在连接，猫娘名称:', lanlan_config.lanlan_name, 'URL:', wsUrl);
+        socket = new WebSocket(wsUrl);
 
         socket.onopen = () => {
             console.log('WebSocket连接已建立');
@@ -2410,6 +2412,145 @@ function init_app(){
     if (proactiveChatEnabled) {
         scheduleProactiveChat();
     }
+    
+    // 监听猫娘切换：定期检查当前猫娘是否改变
+    let lastCheckedCatgirl = lanlan_config.lanlan_name;
+    console.log('[猫娘切换监听] 初始化，当前猫娘:', lastCheckedCatgirl);
+    
+    setInterval(async () => {
+        try {
+            const response = await fetch('/api/characters/current_catgirl');
+            const data = await response.json();
+            const currentCatgirl = data.current_catgirl || '';
+            
+            // 调试日志：每次检查都记录
+            if (currentCatgirl !== lastCheckedCatgirl || currentCatgirl !== lanlan_config.lanlan_name) {
+                console.log('[猫娘切换监听] 检查结果 - API返回:', currentCatgirl, '配置中:', lanlan_config.lanlan_name, '上次检查:', lastCheckedCatgirl);
+            }
+            
+            // 如果当前猫娘改变了，重新连接 WebSocket
+            if (currentCatgirl && currentCatgirl !== lanlan_config.lanlan_name) {
+                console.log('[猫娘切换监听] 检测到猫娘已切换，从', lanlan_config.lanlan_name, '切换到', currentCatgirl);
+                
+                // 更新配置
+                lanlan_config.lanlan_name = currentCatgirl;
+                lastCheckedCatgirl = currentCatgirl;
+                
+                // 关闭旧的 WebSocket 连接
+                if (socket) {
+                    console.log('[猫娘切换监听] 关闭旧的 WebSocket 连接');
+                    socket.close();
+                    socket = null;
+                }
+                
+                // 清除心跳定时器
+                if (heartbeatInterval) {
+                    clearInterval(heartbeatInterval);
+                    heartbeatInterval = null;
+                }
+                
+                // 等待一小段时间确保旧连接完全关闭
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                // 重新连接 WebSocket
+                console.log('[猫娘切换监听] 重新连接 WebSocket，新猫娘:', currentCatgirl);
+                connectWebSocket();
+                
+                // 更新页面标题
+                document.title = `${currentCatgirl} Terminal - Project Lanlan`;
+                
+                // 重新加载 Live2D 模型（强制重新加载，因为猫娘已切换）
+                try {
+                    console.log('[猫娘切换监听] 开始重新加载 Live2D 模型...');
+                    const modelResponse = await fetch(`/api/characters/current_live2d_model?catgirl_name=${encodeURIComponent(currentCatgirl)}`);
+                    const modelData = await modelResponse.json();
+                    
+                    console.log('[猫娘切换监听] Live2D 模型 API 响应:', modelData);
+                    
+                    if (modelData.success && modelData.model_name && modelData.model_info) {
+                        console.log('[猫娘切换监听] 检测到新猫娘的 Live2D 模型:', modelData.model_name, '路径:', modelData.model_info.path);
+                        
+                        // 检查 live2dManager 是否存在
+                        if (!window.live2dManager) {
+                            console.error('[猫娘切换监听] live2dManager 不存在，无法重新加载模型');
+                        } else if (!window.live2dManager.getCurrentModel) {
+                            console.error('[猫娘切换监听] live2dManager.getCurrentModel 不存在，无法重新加载模型');
+                        } else {
+                            const currentModel = window.live2dManager.getCurrentModel();
+                            const currentModelPath = currentModel ? (currentModel.url || '') : '';
+                            const newModelPath = modelData.model_info.path;
+                            
+                            console.log('[猫娘切换监听] 当前模型路径:', currentModelPath);
+                            console.log('[猫娘切换监听] 新模型路径:', newModelPath);
+                            
+                            // 强制重新加载模型（即使路径相同，因为猫娘已切换）
+                            if (currentModelPath !== newModelPath || !currentModelPath) {
+                                console.log('[猫娘切换监听] 模型路径不同或当前无模型，重新加载 Live2D 模型');
+                                
+                                // 获取模型配置
+                                const modelConfigRes = await fetch(newModelPath);
+                                if (modelConfigRes.ok) {
+                                    const modelConfig = await modelConfigRes.json();
+                                    modelConfig.url = newModelPath;
+                                    
+                                    console.log('[猫娘切换监听] 开始加载模型配置...');
+                                    
+                                    // 加载新模型
+                                    await window.live2dManager.loadModel(modelConfig, {
+                                        isMobile: window.innerWidth <= 768
+                                    });
+                                    
+                                    // 更新全局引用
+                                    if (window.LanLan1) {
+                                        window.LanLan1.live2dModel = window.live2dManager.getCurrentModel();
+                                        window.LanLan1.currentModel = window.live2dManager.getCurrentModel();
+                                        window.LanLan1.emotionMapping = window.live2dManager.getEmotionMapping();
+                                    }
+                                    
+                                    console.log('[猫娘切换监听] Live2D 模型已重新加载完成');
+                                } else {
+                                    console.error('[猫娘切换监听] 无法获取模型配置，状态:', modelConfigRes.status);
+                                }
+                            } else {
+                                console.log('[猫娘切换监听] 模型路径相同，但猫娘已切换，仍需要重新加载');
+                                // 即使路径相同，也重新加载（因为可能是不同的猫娘使用相同的模型）
+                                const modelConfigRes = await fetch(newModelPath);
+                                if (modelConfigRes.ok) {
+                                    const modelConfig = await modelConfigRes.json();
+                                    modelConfig.url = newModelPath;
+                                    
+                                    await window.live2dManager.loadModel(modelConfig, {
+                                        isMobile: window.innerWidth <= 768
+                                    });
+                                    
+                                    if (window.LanLan1) {
+                                        window.LanLan1.live2dModel = window.live2dManager.getCurrentModel();
+                                        window.LanLan1.currentModel = window.live2dManager.getCurrentModel();
+                                        window.LanLan1.emotionMapping = window.live2dManager.getEmotionMapping();
+                                    }
+                                    
+                                    console.log('[猫娘切换监听] Live2D 模型已重新加载（路径相同但猫娘已切换）');
+                                }
+                            }
+                        }
+                    } else {
+                        console.warn('[猫娘切换监听] 无法获取新猫娘的 Live2D 模型信息:', modelData);
+                    }
+                } catch (error) {
+                    console.error('[猫娘切换监听] 重新加载 Live2D 模型失败:', error);
+                    console.error('[猫娘切换监听] 错误堆栈:', error.stack);
+                }
+                
+                console.log('[猫娘切换监听] 切换完成，已重新连接 WebSocket');
+            } else if (currentCatgirl !== lastCheckedCatgirl) {
+                // 更新记录，但不切换（可能是初始化时的差异）
+                console.log('[猫娘切换监听] 更新记录，当前猫娘:', currentCatgirl, '上次检查:', lastCheckedCatgirl);
+                lastCheckedCatgirl = currentCatgirl;
+            }
+        } catch (error) {
+            console.error('[猫娘切换监听] 检查失败:', error);
+        }
+    }, 2000); // 每2秒检查一次
 } // 兼容老按钮
 
 const ready = () => {
