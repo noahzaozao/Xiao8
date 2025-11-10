@@ -1738,7 +1738,7 @@ class Live2DManager {
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px',
-                    padding: '6px 8px',
+                    padding: '8px 12px',  // 统一padding，与下方菜单项一致
                     cursor: 'pointer',
                     borderRadius: '6px',
                     transition: 'background 0.2s ease',
@@ -1766,8 +1766,8 @@ class Live2DManager {
                 // 创建自定义圆形指示器
                 const indicator = document.createElement('div');
                 Object.assign(indicator.style, {
-                    width: '18px',
-                    height: '18px',
+                    width: '20px',  // 稍微增大，与下方图标更协调
+                    height: '20px',
                     borderRadius: '50%',
                     border: '2px solid #ccc',
                     backgroundColor: 'transparent',
@@ -1785,7 +1785,7 @@ class Live2DManager {
                 checkmark.innerHTML = '✓';
                 Object.assign(checkmark.style, {
                     color: '#fff',
-                    fontSize: '12px',
+                    fontSize: '13px',  // 稍微增大，与指示器大小更协调
                     fontWeight: 'bold',
                     lineHeight: '1',
                     opacity: '0',
@@ -1805,7 +1805,7 @@ class Live2DManager {
                 label.style.display = 'flex';
                 label.style.alignItems = 'center';
                 label.style.lineHeight = '1';
-                label.style.height = '18px';  // 与指示器高度一致，确保垂直居中
+                label.style.height = '20px';  // 与指示器高度一致，确保垂直居中
                 
                 // 根据 checkbox 状态更新指示器颜色（文本颜色保持不变）
                 const updateStyle = () => {
