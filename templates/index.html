@@ -38,6 +38,119 @@
             }
         }
         
+        /* Status 气泡框样式 - 更显眼的样式 */
+        #status-toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 99999;
+            max-width: 500px;
+            min-width: 280px;
+            padding: 18px 24px;
+            padding-left: 50px;  /* 为左上角的猫爪留出空间 */
+            background: linear-gradient(135deg, #fff5f5 0%, #ffe8e8 100%);
+            color: #333;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 500;
+            line-height: 1.6;
+            box-shadow: 0 8px 24px rgba(255, 182, 193, 0.4), 0 4px 12px rgba(0, 0, 0, 0.1);
+            border: 2px solid rgba(255, 182, 193, 0.3);
+            opacity: 0;
+            transform: translateY(-20px) scale(0.95);
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            pointer-events: auto !important;  /* 确保可以显示，不受 body 的 pointer-events 影响 */
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            display: block;  /* 确保元素可见 */
+            visibility: visible;  /* 确保元素可见 */
+            text-align: center;
+        }
+        
+        /* 左上角的小猫爪爪 */
+        #status-toast::before {
+            content: '🐾';
+            position: absolute;
+            top: 8px;
+            left: 12px;
+            font-size: 38px;
+            line-height: 1;
+            opacity: 1;
+            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+            animation: pawBounce 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes pawBounce {
+            0%, 100% {
+                transform: translateY(0) rotate(0deg);
+            }
+            25% {
+                transform: translateY(-3px) rotate(-5deg);
+            }
+            75% {
+                transform: translateY(-3px) rotate(5deg);
+            }
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                box-shadow: 0 8px 24px rgba(255, 182, 193, 0.4), 0 4px 12px rgba(0, 0, 0, 0.1);
+            }
+            50% {
+                box-shadow: 0 8px 32px rgba(255, 182, 193, 0.6), 0 4px 16px rgba(0, 0, 0, 0.15);
+            }
+        }
+        
+        #status-toast.show {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+            animation: slideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards, pulse 2s ease-in-out infinite 0.4s;
+        }
+        
+        @keyframes slideIn {
+            0% {
+                opacity: 0;
+                transform: translateY(-20px) scale(0.8);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+        
+        #status-toast.hide {
+            opacity: 0;
+            transform: translateY(-20px) scale(0.95);
+            animation: none;
+        }
+        
+        @media (max-width: 600px) {
+            #status-toast {
+                top: 10px;
+                right: 10px;
+                left: 10px;
+                max-width: none;
+                font-size: 15px;
+                padding: 16px 20px;
+                padding-left: 45px;  /* 为左上角的猫爪留出空间 */
+            }
+            
+            #status-toast::before {
+                top: 6px;
+                left: 10px;
+                font-size: 30px;
+            }
+            
+            #status-toast.show {
+                transform: translateY(0) scale(1);
+            }
+            
+            #status-toast.hide {
+                transform: translateY(-20px) scale(0.95);
+            }
+        }
+        
         /* 全局按钮样式 - 防止文字被选中 */
         button {
             user-select: none;
@@ -756,6 +869,9 @@
         <div id="status"></div>
     </div>
 </div>
+
+<!-- Status 气泡框 -->
+<div id="status-toast"></div>
 <div id="chat-container">
     <div id="chat-header">
         <span id="chat-title">💬 对话</span>

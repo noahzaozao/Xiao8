@@ -197,6 +197,17 @@ async function loadMemoryFileList() {
         const data = await resp.json();
         ul.innerHTML = '';
         if (data.files && data.files.length) {
+            // 获取当前猫娘名称
+            let currentCatgirl = null;
+            try {
+                const catgirlResp = await fetch('/api/characters/current_catgirl');
+                const catgirlData = await catgirlResp.json();
+                currentCatgirl = catgirlData.current_catgirl || null;
+            } catch (e) {
+                console.error('获取当前猫娘失败:', e);
+            }
+            
+            let foundCurrentCatgirl = false;
             data.files.forEach(f => {
                 // 提取猫娘名
                 let match = f.match(/^recent_(.+)\.json$/);
@@ -206,6 +217,15 @@ async function loadMemoryFileList() {
                 li.innerHTML = `<button class="cat-btn" data-filename="${f}" data-catname="${catName}">${catName}</button>`;
                 li.onclick = () => selectMemoryFile(f, li, catName);
                 ul.appendChild(li);
+                
+                // 如果是当前猫娘，自动选择
+                if (currentCatgirl && catName === currentCatgirl && !foundCurrentCatgirl) {
+                    foundCurrentCatgirl = true;
+                    // 延迟一下确保DOM已渲染
+                    setTimeout(() => {
+                        selectMemoryFile(f, li, catName);
+                    }, 100);
+                }
             });
         } else {
             ul.innerHTML = '<li style="color:#888;">无文件</li>';
