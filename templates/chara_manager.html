@@ -196,12 +196,43 @@ if (!window._charaManagerFoldHandler) {
 let characterData = null;
 
 // 加载角色数据
+// 跟踪当前展开的猫娘名称
+let expandedCatgirlName = null;
+
 async function loadCharacterData() {
     const resp = await fetch('/api/characters');
     characterData = await resp.json();
     renderMaster();
     renderCatgirls();
     updateSwitchButtons();
+    
+    // 如果有之前展开的猫娘，自动展开它
+    if (expandedCatgirlName) {
+        const catgirls = characterData['猫娘'] || {};
+        if (catgirls[expandedCatgirlName]) {
+            // 使用 setTimeout 确保 DOM 已经渲染完成
+            setTimeout(() => {
+                // 遍历所有猫娘块，找到匹配的
+                const blocks = document.querySelectorAll('.catgirl-block');
+                blocks.forEach(block => {
+                    const titleSpan = block.querySelector('.catgirl-title');
+                    if (titleSpan && titleSpan.textContent === expandedCatgirlName) {
+                        const btn = block.querySelector('.catgirl-expand');
+                        const details = block.querySelector('.catgirl-details');
+                        if (btn && details && details.style.display === 'none') {
+                            // 展开这个猫娘
+                            details.style.display = 'block';
+                            btn.textContent = '▼';
+                            showCatgirlForm(expandedCatgirlName, details);
+                        }
+                    }
+                });
+            }, 0);
+        } else {
+            // 如果猫娘不存在了，清除记录
+            expandedCatgirlName = null;
+        }
+    }
 }
 
 // 渲染主人表单
@@ -298,9 +329,15 @@ function renderCatgirls() {
                 detailsDiv.style.display = 'none';
                 expandBtn.textContent = '▶';
                 detailsDiv.innerHTML = '';
+                // 清除展开记录
+                if (expandedCatgirlName === key) {
+                    expandedCatgirlName = null;
+                }
             } else {
                 detailsDiv.style.display = 'block';
                 expandBtn.textContent = '▼';
+                // 记录当前展开的猫娘
+                expandedCatgirlName = key;
                 showCatgirlForm(key, detailsDiv);
             }
         };
@@ -492,6 +529,12 @@ function showCatgirlForm(key, container) {
                 return;
             }
             
+            // 保存当前展开的猫娘名称，以便重新加载后自动展开
+            const formCatgirlName = data['档案名'];
+            if (formCatgirlName) {
+                expandedCatgirlName = formCatgirlName;
+            }
+            
             await loadCharacterData();
         } catch (error) {
             console.error('保存出错:', error);
@@ -546,6 +589,10 @@ window.renameCatgirl = async function(oldName) {
     });
     const result = await res.json();
     if (result.success) {
+        // 如果重命名的是当前展开的猫娘，更新展开记录
+        if (expandedCatgirlName === oldName) {
+            expandedCatgirlName = newName;
+        }
         await loadCharacterData();
     } else {
         alert(result.error || '重命名失败');

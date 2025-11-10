@@ -1738,7 +1738,7 @@ class Live2DManager {
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px',
-                    padding: '6px 8px',
+                    padding: '8px 12px',  // 统一padding，与下方菜单项一致
                     cursor: 'pointer',
                     borderRadius: '6px',
                     transition: 'background 0.2s ease',
@@ -1766,15 +1766,34 @@ class Live2DManager {
                 // 创建自定义圆形指示器
                 const indicator = document.createElement('div');
                 Object.assign(indicator.style, {
-                    width: '16px',
-                    height: '16px',
+                    width: '20px',  // 稍微增大，与下方图标更协调
+                    height: '20px',
                     borderRadius: '50%',
                     border: '2px solid #ccc',
                     backgroundColor: 'transparent',
                     cursor: 'pointer',
                     flexShrink: '0',
-                    transition: 'all 0.2s ease'
+                    transition: 'all 0.2s ease',
+                    position: 'relative',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
                 });
+                
+                // 创建对勾图标（初始隐藏）
+                const checkmark = document.createElement('div');
+                checkmark.innerHTML = '✓';
+                Object.assign(checkmark.style, {
+                    color: '#fff',
+                    fontSize: '13px',  // 稍微增大，与指示器大小更协调
+                    fontWeight: 'bold',
+                    lineHeight: '1',
+                    opacity: '0',
+                    transition: 'opacity 0.2s ease',
+                    pointerEvents: 'none',
+                    userSelect: 'none'
+                });
+                indicator.appendChild(checkmark);
                 
                 const label = document.createElement('label');
                 label.innerText = toggle.label;
@@ -1782,19 +1801,26 @@ class Live2DManager {
                 label.style.cursor = 'pointer';
                 label.style.userSelect = 'none';
                 label.style.fontSize = '13px';
-                label.style.flex = '1';
                 label.style.color = '#333';  // 文本始终为深灰色，不随选中状态改变
+                label.style.display = 'flex';
+                label.style.alignItems = 'center';
+                label.style.lineHeight = '1';
+                label.style.height = '20px';  // 与指示器高度一致，确保垂直居中
                 
                 // 根据 checkbox 状态更新指示器颜色（文本颜色保持不变）
                 const updateStyle = () => {
                     if (checkbox.checked) {
-                        // 选中状态：蓝色填充，蓝色边框
+                        // 选中状态：蓝色填充，蓝色边框，显示对勾，背景颜色突出
                         indicator.style.backgroundColor = '#44b7fe';
                         indicator.style.borderColor = '#44b7fe';
+                        checkmark.style.opacity = '1';
+                        toggleItem.style.background = 'rgba(68, 183, 254, 0.1)';  // 浅蓝色背景
                     } else {
-                        // 未选中状态：灰色边框，透明填充
+                        // 未选中状态：灰色边框，透明填充，隐藏对勾，无背景
                         indicator.style.backgroundColor = 'transparent';
                         indicator.style.borderColor = '#ccc';
+                        checkmark.style.opacity = '0';
+                        toggleItem.style.background = 'transparent';
                     }
                 };
                 
@@ -1807,10 +1833,16 @@ class Live2DManager {
                 popup.appendChild(toggleItem);
                 
                 toggleItem.addEventListener('mouseenter', () => {
-                    toggleItem.style.background = 'rgba(79, 140, 255, 0.1)';
+                    // 如果已选中，使用更深的背景色；如果未选中，使用浅色背景
+                    if (checkbox.checked) {
+                        toggleItem.style.background = 'rgba(68, 183, 254, 0.15)';
+                    } else {
+                        toggleItem.style.background = 'rgba(79, 140, 255, 0.1)';
+                    }
                 });
                 toggleItem.addEventListener('mouseleave', () => {
-                    toggleItem.style.background = 'transparent';
+                    // 恢复选中状态的背景色
+                    updateStyle();
                 });
                 
                 // 点击切换（直接更新全局状态并保存）
@@ -1918,6 +1950,12 @@ class Live2DManager {
                 // 添加文本
                 const labelText = document.createElement('span');
                 labelText.textContent = item.label;
+                Object.assign(labelText.style, {
+                    display: 'flex',
+                    alignItems: 'center',
+                    lineHeight: '1',
+                    height: '24px'  // 与图标高度一致，确保垂直居中
+                });
                 menuItem.appendChild(labelText);
                 
                 menuItem.addEventListener('mouseenter', () => {

@@ -769,20 +769,46 @@ async def get_current_live2d_model(catgirl_name: str = ""):
         # 如果找到了模型名称，获取模型信息
         if live2d_model_name:
             try:
-                # 检查模型是否存在
-                model_dir = os.path.join(os.path.dirname(__file__), 'static', live2d_model_name)
+                # 使用 find_model_directory 和 find_model_config_file 来查找模型
+                # 这样可以同时支持 static 和用户文档目录
+                model_dir, url_prefix = find_model_directory(live2d_model_name)
+                model_path = find_model_config_file(live2d_model_name)
+                
+                # 检查模型目录是否存在
                 if os.path.exists(model_dir):
-                    # 查找模型配置文件
-                    model_files = [f for f in os.listdir(model_dir) if f.endswith('.model3.json')]
-                    if model_files:
-                        model_file = model_files[0]
-                        model_path = f'/static/{live2d_model_name}/{model_file}'
+                    # 检查模型配置文件是否存在
+                    model_config_path = os.path.join(model_dir, os.path.basename(model_path))
+                    # 检查配置文件是否存在，或者检查目录中是否有 .model3.json 文件
+                    config_exists = os.path.exists(model_config_path)
+                    if not config_exists:
+                        # 尝试在目录中查找 .model3.json 文件
+                        for file in os.listdir(model_dir):
+                            if file.endswith('.model3.json'):
+                                config_exists = True
+                                # 更新 model_path 为实际找到的文件
+                                model_path = f"{url_prefix}/{live2d_model_name}/{file}"
+                                break
+                    
+                    if config_exists or os.path.exists(model_dir):
                         model_info = {
                             'name': live2d_model_name,
                             'path': model_path
                         }
+                        logger.info(f"找到角色 {catgirl_name} 的 Live2D 模型: {live2d_model_name}, 路径: {model_path}")
+                    else:
+                        logger.warning(f"模型目录存在但配置文件不存在: {model_config_path}, 模型目录: {model_dir}")
+                else:
+                    logger.warning(f"模型目录不存在: {model_dir}, 模型名称: {live2d_model_name}")
+                    # 即使目录不存在，也返回模型路径（让前端尝试加载）
+                    model_info = {
+                        'name': live2d_model_name,
+                        'path': model_path
+                    }
+                    logger.info(f"模型目录不存在，但返回默认路径: {model_path}")
             except Exception as e:
                 logger.warning(f"获取模型信息失败: {e}")
+                import traceback
+                logger.warning(traceback.format_exc())
         
         return JSONResponse(content={
             'success': True,
@@ -793,6 +819,8 @@ async def get_current_live2d_model(catgirl_name: str = ""):
         
     except Exception as e:
         logger.error(f"获取角色Live2D模型失败: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return JSONResponse(content={
             'success': False,
             'error': str(e)
