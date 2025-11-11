@@ -597,6 +597,7 @@ class LLMSessionManager:
         self.model = core_config['CORE_MODEL']
         self.core_url = core_config['CORE_URL']
         self.core_api_key = core_config['CORE_API_KEY']
+        self.core_api_type = core_config.get('CORE_API_TYPE', 'qwen')  # 获取API类型，用于判断是否启用静默超时
         self.memory_server_port = MEMORY_SERVER_PORT
         self.audio_api_key = core_config['AUDIO_API_KEY']
         self.voice_id = self.lanlan_basic_config[self.lanlan_name].get('voice_id', '')
@@ -638,7 +639,8 @@ class LLMSessionManager:
             on_input_transcript=self.handle_input_transcript,
             on_output_transcript=self.handle_output_transcript,
             on_connection_error=self.handle_connection_error,
-            on_response_done=self.handle_response_complete
+            on_response_done=self.handle_response_complete,
+            api_type=self.core_api_type  # 传入API类型，用于判断是否启用静默超时
         )
 
     async def handle_interrupt(self):
@@ -960,7 +962,8 @@ class LLMSessionManager:
                 on_input_transcript=self.handle_input_transcript,
                 on_output_transcript=self.handle_output_transcript,
                 on_connection_error=self.handle_connection_error,
-                on_response_done=self.handle_response_complete
+                on_response_done=self.handle_response_complete,
+                api_type=self.core_api_type  # 传入API类型，用于判断是否启用静默超时
             )
 
             initial_prompt = ("你是一个角色扮演大师，并且精通电脑操作。请按要求扮演以下角色（self.lanlan_name），不得透露角色扮演相关的信息。并且，在对方请求时、回答“我试试”并尝试操纵电脑。\n" if self._is_agent_enabled() else "你是一个角色扮演大师。请按要求扮演以下角色（self.lanlan_name）。不得透露角色扮演相关的信息。\n") + self.lanlan_prompt

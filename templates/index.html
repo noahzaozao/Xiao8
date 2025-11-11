@@ -38,6 +38,146 @@
             }
         }
         
+        /* Status 气泡框样式 - 更显眼的样式 */
+        #status-toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 99999;
+            max-width: 500px;
+            min-width: 280px;
+            padding: 18px 24px;
+            padding-left: 50px;  /* 为左上角的猫爪留出空间 */
+            /* 自定义背景图片 */
+            background-image: url('/static/icons/toast_background.png');  /* 图片路径 */
+            background-size: 100% 100%;  /* 强制拉伸到100%覆盖，避免边缘露出 */
+            background-position: center;  /* 居中显示 */
+            background-repeat: no-repeat;  /* 不重复 */
+            background-origin: border-box;  /* 背景从边框区域开始 */
+            background-clip: border-box;  /* 背景裁剪到边框区域 */
+            /* 如果图片加载失败，使用备用背景色 */
+            background-color: transparent;  /* 移除备用背景色，避免白色边框 */
+            color: #fff;  /* 纯白色文字 */
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);  /* 柔和的文字阴影 */
+            border-radius: 12px;
+            font-size: 18px;  /* 增大字体 */
+            font-weight: 500;
+            line-height: 1.6;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2);
+            border: none;  /* 移除边框，避免白色边框问题 */
+            overflow: hidden;  /* 确保背景图片不会超出圆角 */
+            opacity: 0;
+            transform: translateY(-20px) scale(0.95);
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            pointer-events: auto !important;  /* 确保可以显示，不受 body 的 pointer-events 影响 */
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            display: flex;  /* 使用flex布局 */
+            align-items: center;  /* 垂直居中对齐 */
+            visibility: visible;  /* 确保元素可见 */
+            text-align: center;
+        }
+        
+        /* 添加遮罩层以确保文字可读性（可选） */
+        #status-toast::after {
+            content: '';
+            position: absolute;
+            top: -1px;  /* 稍微超出，确保完全覆盖 */
+            left: -1px;
+            right: -1px;
+            bottom: -1px;
+            background: rgba(0, 0, 0, 0.1);  /* 半透明黑色遮罩，增强文字对比度 */
+            border-radius: 12px;
+            z-index: 0;  /* 在背景图片之上，文字和猫爪之下 */
+            pointer-events: none;
+        }
+        
+        /* 左上角的小猫爪爪 */
+        #status-toast::before {
+            content: '🐾';
+            position: absolute;
+            top: 50%;  /* 垂直居中 */
+            left: 12px;
+            transform: translateY(-50%);  /* 配合top: 50%实现垂直居中 */
+            font-size: 50px;  /* 增大猫爪图标 */
+            line-height: 1;
+            opacity: 1;
+            filter: brightness(0) invert(1) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5));  /* 将emoji变成纯白色并添加阴影 */
+            animation: pawBounce 1.5s ease-in-out infinite;
+            z-index: 1;  /* 确保猫爪在遮罩层之上 */
+        }
+        
+        @keyframes pawBounce {
+            0%, 100% {
+                transform: translateY(-50%) rotate(0deg);  /* 保持垂直居中 */
+            }
+            25% {
+                transform: translateY(calc(-50% - 3px)) rotate(-5deg);  /* 保持垂直居中并添加动画 */
+            }
+            75% {
+                transform: translateY(calc(-50% - 3px)) rotate(5deg);  /* 保持垂直居中并添加动画 */
+            }
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2);
+            }
+            50% {
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.25);
+            }
+        }
+        
+        #status-toast.show {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+            animation: slideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards, pulse 2s ease-in-out infinite 0.4s;
+        }
+        
+        @keyframes slideIn {
+            0% {
+                opacity: 0;
+                transform: translateY(-20px) scale(0.8);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+        
+        #status-toast.hide {
+            opacity: 0;
+            transform: translateY(-20px) scale(0.95);
+            animation: none;
+        }
+        
+        @media (max-width: 600px) {
+            #status-toast {
+                top: 10px;
+                right: 10px;
+                left: 10px;
+                max-width: none;
+                font-size: 17px;  /* 增大移动端字体 */
+                padding: 16px 20px;
+                padding-left: 45px;  /* 为左上角的猫爪留出空间 */
+            }
+            
+            #status-toast::before {
+                top: 6px;
+                left: 10px;
+                font-size: 40px;  /* 增大移动端猫爪图标 */
+            }
+            
+            #status-toast.show {
+                transform: translateY(0) scale(1);
+            }
+            
+            #status-toast.hide {
+                transform: translateY(-20px) scale(0.95);
+            }
+        }
+        
         /* 全局按钮样式 - 防止文字被选中 */
         button {
             user-select: none;
@@ -137,12 +277,12 @@
             position: absolute; /* 绝对定位于容器内 */
             top: 8px;
             right: 8px;
-            width: 24px;
-            height: 24px;
-            background: linear-gradient(135deg, #4f8cff 0%, #667eea 100%);
+            width: 24px;  /* 按钮尺寸以容纳图标 */
+            height: 24px;  /* 按钮尺寸以容纳图标 */
+            background: transparent; /* 透明背景，去掉深蓝色方框 */
             opacity: 1;
-            border: 2px solid rgba(255, 255, 255, 0.8);
-            border-radius: 6px;
+            border: none; /* 去掉边框 */
+            border-radius: 0; /* 去掉圆角 */
             cursor: grab; /* 拖拽手势 */
             font-weight: bold;
             font-size: 1.2rem;
@@ -152,24 +292,12 @@
             z-index: 21; /* 确保在内容之上 */   
             padding: 0;
             user-select: none;
-            box-shadow: 0 2px 8px rgba(79, 140, 255, 0.4);
+            box-shadow: none; /* 去掉阴影 */
             transition: all 0.3s ease;
-            animation: buttonPulse 2s ease-in-out infinite;
-        }
-        
-        @keyframes buttonPulse {
-            0%, 100% {
-                box-shadow: 0 2px 8px rgba(79, 140, 255, 0.4);
-            }
-            50% {
-                box-shadow: 0 2px 16px rgba(79, 140, 255, 0.8);
-            }
         }
         
         #toggle-chat-btn:hover {
             transform: scale(1.1);
-            box-shadow: 0 4px 16px rgba(79, 140, 255, 0.6);
-            animation: none;
         }
         
         /* 聊天框标题 */
@@ -756,6 +884,9 @@
         <div id="status"></div>
     </div>
 </div>
+
+<!-- Status 气泡框 -->
+<div id="status-toast"></div>
 <div id="chat-container">
     <div id="chat-header">
         <span id="chat-title">💬 对话</span>
