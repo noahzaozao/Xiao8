@@ -244,7 +244,22 @@
 <script src="/static/live2d.js"></script>
 
 <script>
-    document.addEventListener('DOMContentLoaded', async () => {
+    // 用于页面间通信的事件处理
+        function sendMessageToMainPage(action) {
+            try {
+                // 使用localStorage事件机制发送消息给主页面
+                const message = {
+                    action: action,
+                    timestamp: Date.now()
+                };
+                localStorage.setItem('nekopage_message', JSON.stringify(message));
+                localStorage.removeItem('nekopage_message'); // 立即移除以允许重复发送相同消息
+            } catch (e) {
+                console.log('发送消息给主页面失败:', e);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
         const statusDiv = document.getElementById('status');
         const modelSelect = document.getElementById('model-select');
         const motionSelect = document.getElementById('motion-select');
@@ -264,6 +279,9 @@
         const modelUpload = document.getElementById('model-upload');
         const uploadStatus = document.getElementById('upload-status');
         const backToMainBtn = document.getElementById('backToMainBtn');
+        
+        // 页面加载时发送消息隐藏主界面
+        sendMessageToMainPage('hide_main_ui');
 
         let currentModelInfo = null;
         let availableModels = [];
@@ -524,7 +542,12 @@
         
         // 返回主页按钮
         backToMainBtn.addEventListener('click', () => {
-            window.location.href = '/';
+            // 先发送消息恢复主界面显示
+            sendMessageToMainPage('show_main_ui');
+            // 稍微延迟再跳转，确保消息被处理
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 100);
         });
         
         // Fullscreen logic
@@ -856,7 +879,16 @@
             }
         }
     });
-</script>
+// 监听页面卸载事件，确保返回时主界面可见
+        window.addEventListener('beforeunload', () => {
+            sendMessageToMainPage('show_main_ui');
+        });
+        
+        // 确保在页面关闭时也恢复主界面
+        window.addEventListener('unload', () => {
+            sendMessageToMainPage('show_main_ui');
+        });
+        </script>
 
 </body>
 </html>

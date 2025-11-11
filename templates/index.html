@@ -968,19 +968,84 @@
 </script>
 <script src="/static/libs/live2dcubismcore.min.js"></script>  <!-- Cubism 4核心库（支持Cubism 3/4模型） -->
 <script>
-  // 全局菜单跟踪机制 - 必须在所有其他脚本之前定义
-  // 用于跟踪当前是否有活动的菜单（麦克风列表、Agent面板、侧边栏等）
-  window.activeMenuCount = 0;
-  
-  // 辅助函数：标记菜单打开
-  window.markMenuOpen = function() {
-    window.activeMenuCount++;
-  };
-  
-  // 辅助函数：标记菜单关闭
-  window.markMenuClosed = function() {
-    window.activeMenuCount = Math.max(0, window.activeMenuCount - 1);
-  };
+    // 全局菜单跟踪机制 - 必须在所有其他脚本之前定义
+    // 用于跟踪当前是否有活动的菜单（麦克风列表、Agent面板、侧边栏等）
+    window.activeMenuCount = 0;
+    
+    // 辅助函数：标记菜单打开
+    window.markMenuOpen = function() {
+        window.activeMenuCount++;
+    };
+    
+    // 辅助函数：标记菜单关闭
+    window.markMenuClosed = function() {
+        window.activeMenuCount = Math.max(0, window.activeMenuCount - 1);
+    };
+    
+    // 页面间通信：监听来自模型设置页面的消息
+    function handlePageMessage(event) {
+        if (event.key === 'nekopage_message') {
+            try {
+                const message = JSON.parse(event.newValue);
+                if (message && message.action) {
+                    switch (message.action) {
+                        case 'hide_main_ui':
+                            console.log('接收到隐藏主界面命令');
+                            hideMainUI();
+                            break;
+                        case 'show_main_ui':
+                            console.log('接收到显示主界面命令');
+                            showMainUI();
+                            break;
+                    }
+                }
+            } catch (e) {
+                console.log('解析页面消息失败:', e);
+            }
+        }
+    }
+    
+    // 隐藏主界面的函数
+    function hideMainUI() {
+        // 隐藏主要UI元素
+        const live2dContainer = document.getElementById('live2d-container');
+        const chatContainer = document.getElementById('chat-container');
+        
+        if (live2dContainer) {
+            live2dContainer.style.display = 'none';
+        }
+        if (chatContainer) {
+            chatContainer.style.display = 'none';
+        }
+        
+        // 可以添加一个标记，记录当前隐藏状态
+        document.body.setAttribute('data-ui-hidden', 'true');
+    }
+    
+    // 显示主界面的函数
+    function showMainUI() {
+        // 显示主要UI元素
+        const live2dContainer = document.getElementById('live2d-container');
+        const chatContainer = document.getElementById('chat-container');
+        
+        if (live2dContainer) {
+            live2dContainer.style.display = '';
+        }
+        if (chatContainer) {
+            chatContainer.style.display = '';
+        }
+        
+        // 移除隐藏状态标记
+        document.body.removeAttribute('data-ui-hidden');
+    }
+    
+    // 注册localStorage事件监听器
+    window.addEventListener('storage', handlePageMessage);
+    
+    // 页面卸载时清理监听器
+    window.addEventListener('beforeunload', () => {
+        window.removeEventListener('storage', handlePageMessage);
+    });
 </script>
 <script src="/static/libs/live2d.min.js"></script>  <!-- Cubism 2.1核心库（支持旧模型） -->
 <script src="/static/libs/pixi.min.js"></script>  <!-- PixiJS v7 CDN -->
