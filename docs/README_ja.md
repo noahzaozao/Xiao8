@@ -1,6 +1,6 @@
 <div align="center">
 
-![小八ロゴ](../assets/xiaoba_logo.jpg)
+![ロゴ](../assets/neko_logo.jpg)
 
 [中文](../README.MD) | [English](README_en.md)
 

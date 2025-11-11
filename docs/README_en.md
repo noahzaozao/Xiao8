@@ -1,6 +1,6 @@
 <div align="center">
 
-![Xiaoba Logo](../assets/xiaoba_logo.jpg)
+![Logo](../assets/neko_logo.jpg)
 
 [中文](../README.MD) | [日本語](README_ja.md)
 
@@ -61,7 +61,7 @@ To balance ideals with reality, we adopt an "Open Core" model:
 
 > **This is the foundation of our community.**
 >
-> The core driver part of the project (AI logic, UGC interfaces, basic interactions) will **always remain open source** under LGPL license. We welcome developers worldwide to contribute code and features. Every commit you make has the chance to be implemented in the official Steam and App Store releases, used by millions.
+> The core driver part of the project (AI logic, UGC interfaces, basic interactions) will **always remain open source** under MIT license. We welcome developers worldwide to contribute code and features. Every commit you make has the chance to be implemented in the official Steam and App Store releases, used by millions.
 
 ### 2. Proprietary Applications
 

@@ -1,6 +1,6 @@
 <div align="center">
 
-![小八Logo](assets/xiaoba_logo.jpg)
+![Logo](assets/neko_logo.jpg)
 
 [English](docs/README_en.md) | [日本語](docs/README_ja.md)
 # Project N.E.K.O. :kissing_cat: <br>**一个“活”的AI伙伴元宇宙，由你我共同构建。**
@@ -60,7 +60,7 @@ https://github.com/user-attachments/assets/9d9e01af-e2cc-46aa-add7-8eb1803f061c
 
 > **这是社区的基石。**
 >
-> 项目的核心驱动器部分（AI逻辑、UGC接口、基础交互）将基于LGPL许可证 **始终保持开源**。我们欢迎全球的开发者贡献代码和功能。你的每一次提交，都将有机会实装到正式发布的Steam和App商店版本中，被千万人所使用。
+> 项目的核心驱动器部分（AI逻辑、UGC接口、基础交互）将基于MIT许可证 **始终保持开源**。我们欢迎全球的开发者贡献代码和功能。你的每一次提交，都将有机会实装到正式发布的Steam和App商店版本中，被千万人所使用。
 
 ### 2. 闭源应用 (Proprietary Applications)
 
