@@ -1308,7 +1308,7 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
         core_config = _config_manager.get_core_config()
         dashscope.api_key = core_config['AUDIO_API_KEY']
         service = VoiceEnrollmentService()
-        target_model = "cosyvoice-v2"
+        target_model = "cosyvoice-v3-plus"
         
         # 重试配置
         max_retries = 3

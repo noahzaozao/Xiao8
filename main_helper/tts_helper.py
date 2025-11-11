@@ -656,7 +656,7 @@ def cosyvoice_vc_tts_worker(request_queue, response_queue, audio_api_key, voice_
                     except Exception:
                         pass
                 synthesizer = SpeechSynthesizer(
-                    model="cosyvoice-v2",
+                    model="cosyvoice-v3-plus",
                     voice=voice_id,
                     speech_rate=1.1,
                     format=AudioFormat.PCM_24000HZ_MONO_16BIT,
