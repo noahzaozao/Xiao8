@@ -1342,10 +1342,10 @@ function init_app(){
     }
     
     // 清空所有截图
-    clearAllScreenshots.addEventListener('click', () => {
+    clearAllScreenshots.addEventListener('click', async () => {
         if (screenshotsList.children.length === 0) return;
         
-        if (confirm('确定要清空所有待发送的截图吗？')) {
+        if (await showConfirm('确定要清空所有待发送的截图吗？', '清空截图', {danger: true})) {
             screenshotsList.innerHTML = '';
             screenshotThumbnailContainer.classList.remove('show');
             updateScreenshotCount();

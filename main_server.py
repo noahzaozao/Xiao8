@@ -760,7 +760,6 @@ async def get_current_live2d_model(catgirl_name: str = ""):
         # 查找指定角色的Live2D模型
         live2d_model_name = None
         model_info = None
-        fallback_to_default = False
         
         # 在猫娘列表中查找
         if '猫娘' in characters and catgirl_name in characters['猫娘']:
@@ -770,93 +769,30 @@ async def get_current_live2d_model(catgirl_name: str = ""):
         # 如果找到了模型名称，获取模型信息
         if live2d_model_name:
             try:
-                # 使用 find_model_directory 和 find_model_config_file 来查找模型
-                # 这样可以同时支持 static 和用户文档目录
-                model_dir, url_prefix = find_model_directory(live2d_model_name)
-                model_path = find_model_config_file(live2d_model_name)
-                
-                # 检查模型目录是否存在
+                # 检查模型是否存在
+                model_dir = os.path.join(os.path.dirname(__file__), 'static', live2d_model_name)
                 if os.path.exists(model_dir):
-                    # 检查模型配置文件是否存在
-                    model_config_path = os.path.join(model_dir, os.path.basename(model_path))
-                    # 检查配置文件是否存在，或者检查目录中是否有 .model3.json 文件
-                    config_exists = os.path.exists(model_config_path)
-                    if not config_exists:
-                        # 尝试在目录中查找 .model3.json 文件
-                        for file in os.listdir(model_dir):
-                            if file.endswith('.model3.json'):
-                                config_exists = True
-                                # 更新 model_path 为实际找到的文件
-                                model_path = f"{url_prefix}/{live2d_model_name}/{file}"
-                                break
-                    
-                    if config_exists:
+                    # 查找模型配置文件
+                    model_files = [f for f in os.listdir(model_dir) if f.endswith('.model3.json')]
+                    if model_files:
+                        model_file = model_files[0]
+                        model_path = f'/static/{live2d_model_name}/{model_file}'
                         model_info = {
                             'name': live2d_model_name,
-                            'path': model_path,
-                            'valid': True
+                            'path': model_path
                         }
-                        logger.info(f"找到角色 {catgirl_name} 的 Live2D 模型: {live2d_model_name}, 路径: {model_path}")
-                    else:
-                        logger.warning(f"模型目录存在但配置文件不存在: {model_config_path}, 模型目录: {model_dir}")
-                        # 模型文件不存在，回退到默认模型
-                        fallback_to_default = True
-                else:
-                    logger.warning(f"模型目录不存在: {model_dir}, 模型名称: {live2d_model_name}")
-                    # 模型目录不存在，回退到默认模型
-                    fallback_to_default = True
             except Exception as e:
                 logger.warning(f"获取模型信息失败: {e}")
-                import traceback
-                logger.warning(traceback.format_exc())
-                # 获取模型信息失败，回退到默认模型
-                fallback_to_default = True
-        
-        # 如果模型不存在或获取失败，回退到默认模型
-        if fallback_to_default or not model_info:
-            default_model_name = "mao_pro"
-            try:
-                model_dir, url_prefix = find_model_directory(default_model_name)
-                model_path = find_model_config_file(default_model_name)
-                
-                # 检查默认模型是否存在
-                if os.path.exists(model_dir):
-                    model_config_path = os.path.join(model_dir, os.path.basename(model_path))
-                    config_exists = os.path.exists(model_config_path)
-                    if not config_exists:
-                        for file in os.listdir(model_dir):
-                            if file.endswith('.model3.json'):
-                                config_exists = True
-                                model_path = f"{url_prefix}/{default_model_name}/{file}"
-                                break
-                    
-                    if config_exists:
-                        model_info = {
-                            'name': default_model_name,
-                            'path': model_path,
-                            'valid': True,
-                            'fallback': True
-                        }
-                        logger.warning(f"角色 {catgirl_name} 的Live2D模型文件不存在，已回退到默认模型: {default_model_name}")
-                    else:
-                        logger.error(f"默认模型 {default_model_name} 配置文件也不存在")
-                else:
-                    logger.error(f"默认模型 {default_model_name} 目录不存在")
-            except Exception as e:
-                logger.error(f"获取默认模型信息失败: {e}")
         
         return JSONResponse(content={
             'success': True,
             'catgirl_name': catgirl_name,
             'model_name': live2d_model_name,
-            'model_info': model_info,
-            'fallback_to_default': fallback_to_default
+            'model_info': model_info
         })
         
     except Exception as e:
         logger.error(f"获取角色Live2D模型失败: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
         return JSONResponse(content={
             'success': False,
             'error': str(e)
@@ -970,13 +906,12 @@ async def update_catgirl(name: str, request: Request):
     
     # 如果包含voice_id，验证其有效性
     if 'voice_id' in data:
-        # 功能挪到了utils的config_manager里
         voice_id = data['voice_id']
         if not _config_manager.validate_voice_id(voice_id):
             voices = _config_manager.get_voices_for_current_api()
             available_voices = list(voices.keys())
             return JSONResponse({
-                'success': False,
+                'success': False, 
                 'error': f'voice_id "{voice_id}" 在当前API的音色库中不存在',
                 'available_voices': available_voices
             }, status_code=400)
@@ -1262,7 +1197,7 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
         
         logger.info(f"正在上传文件到tfLink，文件名: {file.filename}, 大小: {file_size} bytes, MIME类型: {mime_type}")
         resp = requests.post('http://47.101.214.205:8000/api/upload', files=files, headers=headers, timeout=60)
-        
+
         # 检查响应状态
         if resp.status_code != 200:
             logger.error(f"上传到tfLink失败，状态码: {resp.status_code}, 响应内容: {resp.text}")
@@ -1308,7 +1243,7 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
         core_config = _config_manager.get_core_config()
         dashscope.api_key = core_config['AUDIO_API_KEY']
         service = VoiceEnrollmentService()
-        target_model = "cosyvoice-v3-plus"
+        target_model = "cosyvoice-v2"
         
         # 重试配置
         max_retries = 3
@@ -2366,6 +2301,18 @@ if __name__ == "__main__":
     logger.info(f"Serving index.html from: {os.path.abspath('templates/index.html')}")
     logger.info(f"Access UI at: http://127.0.0.1:{MAIN_SERVER_PORT} (or your network IP:{MAIN_SERVER_PORT})")
     logger.info("-----------------------------")
+
+    # Custom logging filter to suppress specific endpoints
+    class EndpointFilter(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            # Suppress only INFO level logs for specific endpoints
+            # Keep WARNING and ERROR logs
+            if record.levelno > logging.INFO:
+                return True
+            return record.getMessage().find("/api/characters/current_catgirl") == -1
+
+    # Add filter to uvicorn access logger
+    logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
 
     # 1) 配置 UVicorn
     config = uvicorn.Config(

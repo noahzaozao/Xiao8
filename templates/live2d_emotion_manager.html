@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Live2D 情感映射管理器</title>
+    <script src="/static/common_dialogs.js"></script>
     <style>
         * {
             margin: 0;
@@ -797,8 +798,8 @@
         }
 
         // 重置映射
-        function resetMapping() {
-            if (confirm('确定要重置当前配置吗？这将清空所有动作和表情文件。')) {
+        async function resetMapping() {
+            if (await showConfirm('确定要重置当前配置吗？这将清空所有动作和表情文件。', '重置配置', {danger: true})) {
                 if (!emotionMappingConfig[currentModel]) {
                     emotionMappingConfig[currentModel] = { motions: {}, expressions: {} };
                 }

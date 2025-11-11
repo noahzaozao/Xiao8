@@ -156,17 +156,6 @@
     </div>
     
     <div class="control-group">
-        <button id="fullscreenBtn" class="btn btn-secondary btn-icon">
-            <img src="/static/icons/fullscreen_icon.png" alt="全屏">
-            <span>全屏</span>
-        </button>
-        <button id="exitFullscreenBtn" class="btn btn-secondary btn-icon" style="display:none;">
-            <img src="/static/icons/exit_fullscreen_icon.png" alt="退出全屏">
-            <span>退出全屏</span>
-        </button>
-    </div>
-    
-    <div class="control-group">
         <label class="control-label">导入模型:</label>
         <input type="file" id="model-upload" webkitdirectory directory multiple style="display: none;">
         <button id="upload-btn" class="btn btn-primary">📁 选择文件夹</button>
@@ -273,8 +262,6 @@
         const addPersistentBtn = document.getElementById('add-persistent-btn');
         const persistentList = document.getElementById('persistent-list');
         const savePersistentBtn = document.getElementById('save-persistent-btn');
-        const fullscreenBtn = document.getElementById('fullscreenBtn');
-        const exitFullscreenBtn = document.getElementById('exitFullscreenBtn');
         const uploadBtn = document.getElementById('upload-btn');
         const modelUpload = document.getElementById('model-upload');
         const uploadStatus = document.getElementById('upload-status');
@@ -549,17 +536,6 @@
                 window.location.href = '/';
             }, 100);
         });
-        
-        // Fullscreen logic
-        fullscreenBtn.onclick = () => document.documentElement.requestFullscreen?.();
-        exitFullscreenBtn.onclick = () => document.exitFullscreen?.();
-        const updateFullscreenButtons = () => {
-            const isFullscreen = !!document.fullscreenElement;
-            fullscreenBtn.style.display = isFullscreen ? 'none' : '';
-            exitFullscreenBtn.style.display = isFullscreen ? '' : 'none';
-        };
-        document.addEventListener('fullscreenchange', updateFullscreenButtons);
-        updateFullscreenButtons();
 
         // 上传模型功能
         uploadBtn.addEventListener('click', () => {

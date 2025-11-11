@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>角色管理 - Project Lanlan</title>
+    <script src="/static/common_dialogs.js"></script>
     <style>
         *:focus {
             outline: none !important;
@@ -260,10 +261,10 @@ if (!window._addMasterFieldHandler) {
     if (masterFormEl) {
         masterFormEl.insertAdjacentHTML('beforeend', '<div style="text-align:right;margin-top:8px"><button type="button" class="btn sm add" id="add-master-field-btn">新增设定</button><button type="submit" class="btn sm">保存主人设定</button></div>');
     }
-    document.getElementById('add-master-field-btn') && (document.getElementById('add-master-field-btn').onclick = function() {
-        const key = prompt('请输入新设定的名称（键名）');
+    document.getElementById('add-master-field-btn') && (document.getElementById('add-master-field-btn').onclick = async function() {
+        const key = await showPrompt('请输入新设定的名称（键名）', '', '新增主人设定');
         if (!key || ["档案名"].includes(key)) return;
-        if (masterFormEl.querySelector(`[name='${key}']`)) { alert('该设定已存在'); return; }
+        if (masterFormEl.querySelector(`[name='${key}']`)) { await showAlert('该设定已存在'); return; }
         const row = document.createElement('div');
         row.className = 'field-row custom-row';
         row.innerHTML = `<label>${key}</label><input type="text" name="${key}"><button type="button" class="btn sm delete" style="margin-left:8px" onclick="deleteMasterField(this)">删除设定</button>`;
@@ -287,7 +288,7 @@ masterForm.onsubmit = async function(e) {
         if (k && v) data[k] = v;
     }
     if (!data['档案名']) {
-        alert('档案名为必填项');
+        await showAlert('档案名为必填项');
         return;
     }
     await fetch('/api/characters/master', {
@@ -369,10 +370,10 @@ window.editCatgirl = function(key) {
 window.deleteCatgirl = async function(key) {
     const catgirls = characterData['猫娘'] || {};
     if (Object.keys(catgirls).length <= 1) {
-        alert('只剩一只猫娘，无法删除！');
+        await showAlert('只剩一只猫娘，无法删除！');
         return;
     }
-    if (!confirm('确定要删除猫娘"' + key + '"？')) return;
+    if (!await showConfirm('确定要删除猫娘"' + key + '"？', '删除猫娘', {danger: true})) return;
     await fetch('/api/characters/catgirl/' + encodeURIComponent(key), {method: 'DELETE'});
     await loadCharacterData();
 };
@@ -434,10 +435,10 @@ function showCatgirlForm(key, container) {
     // live2d弹窗逻辑
     const live2dLink = form.querySelector('.live2d-link');
     if (live2dLink) {
-        live2dLink.onclick = function() {
+        live2dLink.onclick = async function() {
             const catgirlName = form.querySelector('[name="档案名"]').value;
             if (!catgirlName) {
-                alert('请先填写猫娘档案名，然后再设置Live2D模型');
+                await showAlert('请先填写猫娘档案名，然后再设置Live2D模型');
                 return;
             }
             const popup = window.open(
@@ -445,7 +446,10 @@ function showCatgirlForm(key, container) {
                 '_blank',
                 'toolbar=no,location=no,status=no,menubar=no,scrollbars=yes,resizable=yes,width=' + screen.availWidth + ',height=' + screen.availHeight + ',top=0,left=0'
             );
-            if (!popup) return alert('请允许弹窗！');
+            if (!popup) {
+                await showAlert('请允许弹窗！');
+                return;
+            }
             popup.moveTo(0, 0);
             popup.resizeTo(screen.availWidth, screen.availHeight);
             const timer = setInterval(() => {
@@ -457,10 +461,10 @@ function showCatgirlForm(key, container) {
         };
     }
     // 新增自定义项按钮
-    form.querySelector('#add-catgirl-field-btn').onclick = function() {
-        const key = prompt('请输入新设定的名称（键名）');
+    form.querySelector('#add-catgirl-field-btn').onclick = async function() {
+        const key = await showPrompt('请输入新设定的名称（键名）', '', '新增猫娘设定');
         if (!key || ["档案名", "live2d", "voice_id", "system_prompt"].includes(key)) return;
-        if (form.querySelector(`[name='${key}']`)) { alert('该设定已存在'); return; }
+        if (form.querySelector(`[name='${key}']`)) { await showAlert('该设定已存在'); return; }
         const row = document.createElement('div');
         row.className = 'field-row custom-row';
         row.innerHTML = `<label>${key}</label><input type="text" name="${key}"><button type="button" class="btn sm delete" style="margin-left:8px" onclick="deleteCatgirlField(this)">删除设定</button>`;
@@ -504,7 +508,7 @@ function showCatgirlForm(key, container) {
         for (const [k, v] of fd.entries()) {
             if (k && v) data[k] = v;
         }
-        if (!data['档案名']) { alert('档案名为必填项'); return; }
+        if (!data['档案名']) { await showAlert('档案名为必填项'); return; }
         
         // 验证Live2D模型文件存在性
         if (data['live2d'] && data['live2d'].trim() !== '') {
@@ -513,7 +517,7 @@ function showCatgirlForm(key, container) {
                 const modelInfo = await response.json();
                 
                 if (!modelInfo.valid) {
-                    const confirmFallback = confirm(`猫娘"${data['档案名']}"的Live2D模型文件不存在或已损坏。\n\n当前模型路径: ${data['live2d']}\n\n是否回退到默认模型(mao_pro)？\n\n点击"确定"使用默认模型，点击"取消"保持当前设置。`);
+                    const confirmFallback = await showConfirm(`猫娘"${data['档案名']}"的Live2D模型文件不存在或已损坏。\n\n当前模型路径: ${data['live2d']}\n\n是否回退到默认模型(mao_pro)？\n\n点击"确定"使用默认模型，点击"取消"保持当前设置。`, 'Live2D模型异常');
                     
                     if (confirmFallback) {
                         // 回退到默认模型
@@ -525,11 +529,11 @@ function showCatgirlForm(key, container) {
                         const fallbackResult = await fallbackResponse.json();
                         
                         if (fallbackResult.success) {
-                            alert(`已回退到默认模型: ${fallbackResult.model_path}`);
+                            await showAlert(`已回退到默认模型: ${fallbackResult.model_path}`);
                             // 更新表单中的live2d字段
                             data['live2d'] = fallbackResult.model_path;
                         } else {
-                            alert('回退到默认模型失败，请检查模型设置');
+                            await showAlert('回退到默认模型失败，请检查模型设置');
                         }
                     } else {
                         // 用户选择保持当前设置，继续保存
@@ -538,7 +542,7 @@ function showCatgirlForm(key, container) {
                 }
             } catch (error) {
                 console.error('验证Live2D模型失败:', error);
-                const continueSave = confirm(`无法验证Live2D模型文件存在性。\n\n是否继续保存？\n\n点击"确定"继续保存，点击"取消"中止保存。`);
+                const continueSave = await showConfirm(`无法验证Live2D模型文件存在性。\n\n是否继续保存？\n\n点击"确定"继续保存，点击"取消"中止保存。`, '验证失败');
                 if (!continueSave) {
                     return;
                 }
@@ -556,7 +560,7 @@ function showCatgirlForm(key, container) {
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error('API请求失败:', response.status, errorText);
-                alert('保存失败: ' + errorText);
+                await showAlert('保存失败: ' + errorText);
                 return;
             }
             
@@ -564,7 +568,7 @@ function showCatgirlForm(key, container) {
             console.log('保存结果:', result);
             
             if (result.success === false) {
-                alert(result.error || '保存失败');
+                await showAlert(result.error || '保存失败');
                 return;
             }
             
@@ -577,7 +581,7 @@ function showCatgirlForm(key, container) {
             await loadCharacterData();
         } catch (error) {
             console.error('保存出错:', error);
-            alert('保存时发生错误: ' + error.message);
+            await showAlert('保存时发生错误: ' + error.message);
         }
     };
     // 绑定"修改名称"按钮事件
@@ -617,9 +621,9 @@ window.deleteCatgirlField = function(btn) {
 
 // 猫娘档案名重命名
 window.renameCatgirl = async function(oldName) {
-    const newName = prompt('请输入新的猫娘档案名', oldName);
+    const newName = await showPrompt('请输入新的猫娘档案名', oldName, '重命名猫娘');
     if (!newName || newName === oldName) return;
-    if (characterData['猫娘'][newName]) { alert('该档案名已存在'); return; }
+    if (characterData['猫娘'][newName]) { await showAlert('该档案名已存在'); return; }
     // 调用API重命名
     const res = await fetch('/api/characters/catgirl/' + encodeURIComponent(oldName) + '/rename', {
         method: 'POST',
@@ -634,7 +638,7 @@ window.renameCatgirl = async function(oldName) {
         }
         await loadCharacterData();
     } else {
-        alert(result.error || '重命名失败');
+        await showAlert(result.error || '重命名失败');
     }
 }
 
@@ -705,7 +709,7 @@ function openVoiceClone(lanlanName) {
 
 // 解除声音注册
 window.unregisterVoice = async function(catgirlName) {
-    if (!confirm(`确定要解除猫娘"${catgirlName}"的声音注册吗？`)) {
+    if (!await showConfirm(`确定要解除猫娘"${catgirlName}"的声音注册吗？`, '解除声音注册', {danger: true})) {
         return;
     }
     
@@ -718,14 +722,14 @@ window.unregisterVoice = async function(catgirlName) {
         const result = await response.json();
         
         if (result.success) {
-            alert('声音注册已解除');
+            await showAlert('声音注册已解除');
             await loadCharacterData(); // 刷新数据
         } else {
-            alert(result.error || '解除注册失败');
+            await showAlert(result.error || '解除注册失败');
         }
     } catch (error) {
         console.error('解除注册出错:', error);
-        alert('解除注册时发生错误');
+        await showAlert('解除注册时发生错误');
     }
 }
 
@@ -819,11 +823,11 @@ async function switchCatgirl(catgirlName) {
         if (result.success) {
             await loadCharacterData(); // 重新加载数据以更新按钮状态
         } else {
-            alert(result.error || '切换失败');
+            await showAlert(result.error || '切换失败');
         }
     } catch (error) {
         console.error('切换猫娘失败:', error);
-        alert('切换猫娘时发生错误');
+        await showAlert('切换猫娘时发生错误');
     }
 }
 
