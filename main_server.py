@@ -934,13 +934,13 @@ async def update_catgirl(name: str, request: Request):
     
     # 如果包含voice_id，验证其有效性
     if 'voice_id' in data:
-        from config import validate_voice_id
+        # 功能挪到了utils的config_manager里
         voice_id = data['voice_id']
-        if not validate_voice_id(voice_id):
+        if not _config_manager.validate_voice_id(voice_id):
             voices = _config_manager.get_voices_for_current_api()
             available_voices = list(voices.keys())
             return JSONResponse({
-                'success': False, 
+                'success': False,
                 'error': f'voice_id "{voice_id}" 在当前API的音色库中不存在',
                 'available_voices': available_voices
             }, status_code=400)
@@ -1225,7 +1225,7 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
         }
         
         logger.info(f"正在上传文件到tfLink，文件名: {file.filename}, 大小: {file_size} bytes, MIME类型: {mime_type}")
-        resp = requests.post('https://tmpfile.link/api/upload', files=files, headers=headers, timeout=60)
+        resp = requests.post('http://47.101.214.205:8000/api/upload', files=files, headers=headers, timeout=60)
         
         # 检查响应状态
         if resp.status_code != 200:
@@ -1239,7 +1239,7 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
             
             # 获取下载链接
             tmp_url = None
-            possible_keys = ['downloadLink', 'download_link', 'url', 'direct_link', 'link']
+            possible_keys = ['downloadLink', 'download_link', 'url', 'direct_link', 'link', 'download_url']
             for key in possible_keys:
                 if key in data:
                     tmp_url = data[key]
