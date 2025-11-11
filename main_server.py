@@ -760,6 +760,7 @@ async def get_current_live2d_model(catgirl_name: str = ""):
         # 查找指定角色的Live2D模型
         live2d_model_name = None
         model_info = None
+        fallback_to_default = False
         
         # 在猫娘列表中查找
         if '猫娘' in characters and catgirl_name in characters['猫娘']:
@@ -789,32 +790,67 @@ async def get_current_live2d_model(catgirl_name: str = ""):
                                 model_path = f"{url_prefix}/{live2d_model_name}/{file}"
                                 break
                     
-                    if config_exists or os.path.exists(model_dir):
+                    if config_exists:
                         model_info = {
                             'name': live2d_model_name,
-                            'path': model_path
+                            'path': model_path,
+                            'valid': True
                         }
                         logger.info(f"找到角色 {catgirl_name} 的 Live2D 模型: {live2d_model_name}, 路径: {model_path}")
                     else:
                         logger.warning(f"模型目录存在但配置文件不存在: {model_config_path}, 模型目录: {model_dir}")
+                        # 模型文件不存在，回退到默认模型
+                        fallback_to_default = True
                 else:
                     logger.warning(f"模型目录不存在: {model_dir}, 模型名称: {live2d_model_name}")
-                    # 即使目录不存在，也返回模型路径（让前端尝试加载）
-                    model_info = {
-                        'name': live2d_model_name,
-                        'path': model_path
-                    }
-                    logger.info(f"模型目录不存在，但返回默认路径: {model_path}")
+                    # 模型目录不存在，回退到默认模型
+                    fallback_to_default = True
             except Exception as e:
                 logger.warning(f"获取模型信息失败: {e}")
                 import traceback
                 logger.warning(traceback.format_exc())
+                # 获取模型信息失败，回退到默认模型
+                fallback_to_default = True
+        
+        # 如果模型不存在或获取失败，回退到默认模型
+        if fallback_to_default or not model_info:
+            default_model_name = "mao_pro"
+            try:
+                model_dir, url_prefix = find_model_directory(default_model_name)
+                model_path = find_model_config_file(default_model_name)
+                
+                # 检查默认模型是否存在
+                if os.path.exists(model_dir):
+                    model_config_path = os.path.join(model_dir, os.path.basename(model_path))
+                    config_exists = os.path.exists(model_config_path)
+                    if not config_exists:
+                        for file in os.listdir(model_dir):
+                            if file.endswith('.model3.json'):
+                                config_exists = True
+                                model_path = f"{url_prefix}/{default_model_name}/{file}"
+                                break
+                    
+                    if config_exists:
+                        model_info = {
+                            'name': default_model_name,
+                            'path': model_path,
+                            'valid': True,
+                            'fallback': True
+                        }
+                        logger.warning(f"角色 {catgirl_name} 的Live2D模型文件不存在，已回退到默认模型: {default_model_name}")
+                    else:
+                        logger.error(f"默认模型 {default_model_name} 配置文件也不存在")
+                else:
+                    logger.error(f"默认模型 {default_model_name} 目录不存在")
+            except Exception as e:
+                logger.error(f"获取默认模型信息失败: {e}")
         
         return JSONResponse(content={
             'success': True,
             'catgirl_name': catgirl_name,
             'model_name': live2d_model_name,
-            'model_info': model_info
+            'model_info': model_info,
+            'fallback_to_default': fallback_to_default
         })
         
     except Exception as e:

@@ -1,7 +1,6 @@
 # -- coding: utf-8 --
 
 import asyncio
-from re import T
 import websockets
 import json
 import base64
