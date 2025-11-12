@@ -970,6 +970,7 @@
     const lanlan_config = {
         lanlan_name: "{{lanlan_name}}"
     };
+    window.lanlan_config = lanlan_config;
     const cubism4Model = "{{model_path}}";
     const focus_mode = {{ focus_mode | tojson }};
 </script>
@@ -1093,14 +1094,21 @@
             // 1. 获取当前角色名称
             const currentLanlanName = lanlan_config.lanlan_name;
             
-            // 2. 获取最新的角色配置
-            const charResponse = await fetch(`/api/characters/current_catgirl?lanlan_name=${encodeURIComponent(currentLanlanName)}`);
+            // 2. 获取最新的角色配置（包含所有猫娘的完整配置）
+            const charResponse = await fetch('/api/characters');
             if (!charResponse.ok) {
                 console.warn('获取角色配置失败，跳过模型检查');
                 return;
             }
-            const charData = await charResponse.json();
-            const newModelName = charData.live2d || 'mao_pro';
+            const charactersData = await charResponse.json();
+            
+            // 从猫娘配置中获取当前角色的 live2d 模型名称
+            const catgirlConfig = charactersData['猫娘']?.[currentLanlanName];
+            if (!catgirlConfig) {
+                console.warn(`未找到角色 ${currentLanlanName} 的配置，跳过模型检查`);
+                return;
+            }
+            const newModelName = catgirlConfig.live2d || 'mao_pro';
             
             // 3. 获取所有可用模型列表
             const modelsResponse = await fetch('/api/live2d/models');
