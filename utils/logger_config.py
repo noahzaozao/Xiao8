@@ -16,6 +16,8 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import shutil
 
+from config import APP_NAME
+
 
 class RobustLoggerConfig:
     """鲁棒的日志配置类"""
@@ -26,19 +28,19 @@ class RobustLoggerConfig:
     DEFAULT_BACKUP_COUNT = 5  # Keep 5 backup files
     DEFAULT_LOG_RETENTION_DAYS = 30  # Keep logs for 30 days
     
-    def __init__(self, app_name="N.E.K.O", log_level=None, max_bytes=None, 
+    def __init__(self, app_name=None, log_level=None, max_bytes=None, 
                  backup_count=None, retention_days=None):
         """
         初始化日志配置
         
         Args:
-            app_name: 应用名称，用于创建日志目录
+            app_name: 应用名称，用于创建日志目录，默认使用配置中的 APP_NAME
             log_level: 日志级别
             max_bytes: 单个日志文件的最大大小
             backup_count: 保留的备份文件数量
             retention_days: 日志保留天数
         """
-        self.app_name = app_name
+        self.app_name = app_name if app_name is not None else APP_NAME
         self.log_level = log_level or self.DEFAULT_LOG_LEVEL
         self.max_bytes = max_bytes or self.DEFAULT_MAX_BYTES
         self.backup_count = backup_count or self.DEFAULT_BACKUP_COUNT
@@ -58,7 +60,7 @@ class RobustLoggerConfig:
         """
         获取合适的日志目录
         优先级：
-        1. 用户文档目录/N.E.K.O/logs（我的文档，默认首选）
+        1. 用户文档目录/{APP_NAME}/logs（我的文档，默认首选）
         2. 应用程序所在目录/logs
         3. 用户数据目录（AppData等）
         4. 用户主目录
@@ -70,8 +72,8 @@ class RobustLoggerConfig:
         # 尝试1: 使用用户文档目录（我的文档，默认首选！）
         try:
             docs_dir = self._get_documents_directory()
-            # 统一使用 N.E.K.O 目录，不带后缀
-            log_dir = docs_dir / "N.E.K.O" / "logs"
+            # 使用配置的应用名称目录
+            log_dir = docs_dir / self.app_name / "logs"
             if self._test_directory_writable(log_dir):
                 return log_dir
         except Exception as e:
@@ -316,12 +318,12 @@ class RobustLoggerConfig:
         return logger
 
 
-def setup_logging(app_name="N.E.K.O", log_level=None):
+def setup_logging(app_name=None, log_level=None):
     """
     便捷函数：设置日志配置
     
     Args:
-        app_name: 应用名称
+        app_name: 应用名称，默认使用配置中的 APP_NAME
         log_level: 日志级别
         
     Returns:

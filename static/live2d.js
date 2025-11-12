@@ -2470,38 +2470,6 @@ if (typeof cubism4Model !== 'undefined' && cubism4Model) {
             window.LanLan1.currentModel = window.live2dManager.getCurrentModel();
             window.LanLan1.emotionMapping = window.live2dManager.getEmotionMapping();
 
-            // 等待几帧后根据模型位置动态设置文本框初始位置
-            setTimeout(() => {
-                try {
-                    const model = window.live2dManager.getCurrentModel();
-                    const chatContainer = document.getElementById('chat-container');
-                    
-                    if (model && chatContainer && window.innerWidth > 768) {
-                        // 只在桌面端调整，移动端使用响应式CSS
-                        const bounds = model.getBounds();
-                        const screenWidth = window.innerWidth;
-                        const screenHeight = window.innerHeight;
-                        
-                        // 计算锁按钮的位置（与setupLockIcon中的逻辑一致）
-                        const lockX = bounds.right * 0.7 + bounds.left * 0.3;
-                        const lockY = bounds.top * 0.3 + bounds.bottom * 0.7;
-                        
-                        // 文本框位置：在模型左侧，比锁按钮稍低一些
-                        // left: 在锁按钮左侧偏移一点，但不要太靠左
-                        const chatLeft = Math.max(20, bounds.left - 400);
-                        // bottom: 比锁按钮低60px左右
-                        const chatBottom = Math.max(20, screenHeight - lockY - 200);
-                        
-                        chatContainer.style.left = `${chatLeft}px`;
-                        chatContainer.style.bottom = `${chatBottom}px`;
-                        
-                        console.log('文本框位置已根据模型位置调整:', {chatLeft, chatBottom, lockX, lockY});
-                    }
-                } catch (error) {
-                    console.warn('调整文本框位置失败:', error);
-                }
-            }, 500);
-
             console.log('Live2D 管理器自动初始化完成');
         } catch (error) {
             console.error('Live2D 管理器自动初始化失败:', error);

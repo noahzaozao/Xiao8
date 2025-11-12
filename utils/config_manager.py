@@ -12,6 +12,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from config import (
+    APP_NAME,
     CONFIG_FILES,
     DEFAULT_MASTER_TEMPLATE,
     DEFAULT_LANLAN_TEMPLATE,
@@ -30,16 +31,16 @@ logger = logging.getLogger(__name__)
 class ConfigManager:
     """配置文件管理器"""
     
-    def __init__(self, app_name="Xiao8"):
+    def __init__(self, app_name=None):
         """
         初始化配置管理器
         
         Args:
-            app_name: 应用名称
+            app_name: 应用名称，默认使用配置中的 APP_NAME
         """
-        self.app_name = app_name
+        self.app_name = app_name if app_name is not None else APP_NAME
         self.docs_dir = self._get_documents_directory()
-        self.app_docs_dir = self.docs_dir / app_name
+        self.app_docs_dir = self.docs_dir / self.app_name
         self.config_dir = self.app_docs_dir / "config"
         self.memory_dir = self.app_docs_dir / "memory"
         self.live2d_dir = self.app_docs_dir / "live2d"
@@ -170,7 +171,7 @@ class ConfigManager:
         获取配置文件路径
         
         优先级：
-        1. 我的文档/Xiao8/config/
+        1. 我的文档/{APP_NAME}/config/
         2. 项目目录/config/
         
         Args:
@@ -604,7 +605,7 @@ class ConfigManager:
         获取记忆文件路径
         
         优先级：
-        1. 我的文档/Xiao8/memory/
+        1. 我的文档/{APP_NAME}/memory/
         2. 项目目录/memory/store/
         
         Args:
@@ -647,8 +648,8 @@ class ConfigManager:
 _config_manager = None
 
 
-def get_config_manager(app_name="Xiao8"):
-    """获取配置管理器单例"""
+def get_config_manager(app_name=None):
+    """获取配置管理器单例，默认使用配置中的 APP_NAME"""
     global _config_manager
     if _config_manager is None:
         _config_manager = ConfigManager(app_name)
