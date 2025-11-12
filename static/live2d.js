@@ -2099,6 +2099,27 @@ class Live2DManager {
                             finalUrl = `${item.urlBase}?lanlan_name=${encodeURIComponent(lanlanName)}`;
                             // Live2D设置页直接跳转
                             window.location.href = finalUrl;
+                        } else if (item.id === 'voice-clone' && item.url) {
+                            // 声音克隆页面也需要传递 lanlan_name
+                            const lanlanName = (window.lanlan_config && window.lanlan_config.lanlan_name) || '';
+                            finalUrl = `${item.url}?lanlan_name=${encodeURIComponent(lanlanName)}`;
+                            
+                            // 检查是否已有该URL的窗口打开
+                            if (this._openSettingsWindows[finalUrl]) {
+                                const existingWindow = this._openSettingsWindows[finalUrl];
+                                if (existingWindow && !existingWindow.closed) {
+                                    existingWindow.focus();
+                                    return;
+                                } else {
+                                    delete this._openSettingsWindows[finalUrl];
+                                }
+                            }
+                            
+                            // 打开新窗口并保存引用
+                            const newWindow = window.open(finalUrl, '_blank', 'width=1000,height=800,menubar=no,toolbar=no,location=no,status=no');
+                            if (newWindow) {
+                                this._openSettingsWindows[finalUrl] = newWindow;
+                            }
                         } else {
                             // 其他页面弹出新窗口，但检查是否已打开
                             // 检查是否已有该URL的窗口打开
@@ -2170,10 +2191,17 @@ class Live2DManager {
             popup.style.transform = 'translateX(-10px)';
             setTimeout(() => {
                 popup.style.display = 'none';
-                // 重置位置
+                // 重置位置和样式
                 popup.style.left = '100%';
                 popup.style.right = 'auto';
                 popup.style.top = '0';
+                popup.style.marginLeft = '8px';
+                popup.style.marginRight = '0';
+                // 重置高度限制，确保下次打开时状态一致
+                if (buttonId === 'settings' || buttonId === 'agent') {
+                    popup.style.maxHeight = '200px';
+                    popup.style.overflowY = 'auto';
+                }
             }, 200);
         } else {
             // 如果隐藏，则显示
@@ -2182,52 +2210,73 @@ class Live2DManager {
             popup.style.opacity = '0';
             popup.style.visibility = 'visible';
             
-            // 等待一帧让浏览器计算布局
-            setTimeout(() => {
-                const popupRect = popup.getBoundingClientRect();
-                const screenWidth = window.innerWidth;
-                const screenHeight = window.innerHeight;
-                const rightMargin = 20; // 距离屏幕右侧的安全边距
-                const bottomMargin = 60; // 距离屏幕底部的安全边距（考虑系统任务栏，Windows任务栏约40-48px）
-                
-                // 检查是否超出屏幕右侧
-                const popupRight = popupRect.right;
-                if (popupRight > screenWidth - rightMargin) {
-                    // 超出右边界，改为向左弹出
-                    // 获取按钮的实际宽度来计算正确的偏移
-                    const button = document.getElementById(`live2d-btn-${buttonId}`);
-                    const buttonWidth = button ? button.offsetWidth : 48;
-                    const gap = 8;
-                    
-                    // 让弹出框完全移到按钮左侧，不遮挡按钮
-                    popup.style.left = 'auto';
-                    popup.style.right = '0';
-                    popup.style.marginLeft = '0';
-                    popup.style.marginRight = `${buttonWidth + gap}px`;
-                    popup.style.transform = 'translateX(10px)'; // 反向动画
+            // 关键：在计算位置之前，先移除高度限制，确保获取真实尺寸
+            if (buttonId === 'settings' || buttonId === 'agent') {
+                popup.style.maxHeight = 'none';
+                popup.style.overflowY = 'visible';
+            }
+            
+            // 等待popup内的所有图片加载完成，确保尺寸准确
+            const images = popup.querySelectorAll('img');
+            const imageLoadPromises = Array.from(images).map(img => {
+                if (img.complete) {
+                    return Promise.resolve();
                 }
+                return new Promise(resolve => {
+                    img.onload = resolve;
+                    img.onerror = resolve; // 即使加载失败也继续
+                    // 超时保护：最多等待100ms
+                    setTimeout(resolve, 100);
+                });
+            });
+            
+            Promise.all(imageLoadPromises).then(() => {
+                // 强制触发reflow，确保布局完全更新
+                void popup.offsetHeight;
                 
-                // 检查是否超出屏幕底部（设置弹出框或其他较高的弹出框）
-                if (buttonId === 'settings' || buttonId === 'agent') {
-                    const popupBottom = popupRect.bottom;
-                    if (popupBottom > screenHeight - bottomMargin) {
-                        // 计算需要向上移动的距离
-                        const overflow = popupBottom - (screenHeight - bottomMargin);
-                        const currentTop = parseInt(popup.style.top) || 0;
-                        const newTop = currentTop - overflow;
-                        popup.style.top = `${newTop}px`;
+                // 再次使用RAF确保布局稳定
+                requestAnimationFrame(() => {
+                    const popupRect = popup.getBoundingClientRect();
+                    const screenWidth = window.innerWidth;
+                    const screenHeight = window.innerHeight;
+                    const rightMargin = 20; // 距离屏幕右侧的安全边距
+                    const bottomMargin = 60; // 距离屏幕底部的安全边距（考虑系统任务栏，Windows任务栏约40-48px）
+                    
+                    // 检查是否超出屏幕右侧
+                    const popupRight = popupRect.right;
+                    if (popupRight > screenWidth - rightMargin) {
+                        // 超出右边界，改为向左弹出
+                        // 获取按钮的实际宽度来计算正确的偏移
+                        const button = document.getElementById(`live2d-btn-${buttonId}`);
+                        const buttonWidth = button ? button.offsetWidth : 48;
+                        const gap = 8;
+                        
+                        // 让弹出框完全移到按钮左侧，不遮挡按钮
+                        popup.style.left = 'auto';
+                        popup.style.right = '0';
+                        popup.style.marginLeft = '0';
+                        popup.style.marginRight = `${buttonWidth + gap}px`;
+                        popup.style.transform = 'translateX(10px)'; // 反向动画
                     }
                     
-                    // 取消maxHeight限制，让内容完整显示
-                    popup.style.maxHeight = 'none';
-                    popup.style.overflowY = 'visible';
-                }
-                
-                // 显示弹出框
-                popup.style.visibility = 'visible';
-                popup.style.opacity = '1';
-                popup.style.transform = 'translateX(0)';
-            }, 10);
+                    // 检查是否超出屏幕底部（设置弹出框或其他较高的弹出框）
+                    if (buttonId === 'settings' || buttonId === 'agent') {
+                        const popupBottom = popupRect.bottom;
+                        if (popupBottom > screenHeight - bottomMargin) {
+                            // 计算需要向上移动的距离
+                            const overflow = popupBottom - (screenHeight - bottomMargin);
+                            const currentTop = parseInt(popup.style.top) || 0;
+                            const newTop = currentTop - overflow;
+                            popup.style.top = `${newTop}px`;
+                        }
+                    }
+                    
+                    // 显示弹出框
+                    popup.style.visibility = 'visible';
+                    popup.style.opacity = '1';
+                    popup.style.transform = 'translateX(0)';
+                });
+            });
             
             // 设置、agent、麦克风弹出框不自动隐藏，其他的1秒后隐藏
             if (buttonId !== 'settings' && buttonId !== 'agent' && buttonId !== 'mic') {

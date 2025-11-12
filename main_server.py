@@ -817,6 +817,26 @@ async def get_current_live2d_model(catgirl_name: str = ""):
             except Exception as e:
                 logger.warning(f"获取模型信息失败: {e}")
         
+        # 回退机制：如果没有找到模型，使用默认的mao_pro
+        if not live2d_model_name or not model_info:
+            logger.info(f"猫娘 {catgirl_name} 未设置Live2D模型，回退到默认模型 mao_pro")
+            live2d_model_name = 'mao_pro'
+            try:
+                # 查找mao_pro模型
+                model_dir, url_prefix = find_model_directory('mao_pro')
+                if os.path.exists(model_dir):
+                    model_files = [f for f in os.listdir(model_dir) if f.endswith('.model3.json')]
+                    if model_files:
+                        model_file = model_files[0]
+                        model_path = f'{url_prefix}/mao_pro/{model_file}'
+                        model_info = {
+                            'name': 'mao_pro',
+                            'path': model_path,
+                            'is_fallback': True  # 标记这是回退模型
+                        }
+            except Exception as e:
+                logger.error(f"获取默认模型mao_pro失败: {e}")
+        
         return JSONResponse(content={
             'success': True,
             'catgirl_name': catgirl_name,
@@ -1459,6 +1479,12 @@ async def delete_catgirl(name: str):
     characters = _config_manager.load_characters()
     if name not in characters.get('猫娘', {}):
         return JSONResponse({'success': False, 'error': '猫娘不存在'}, status_code=404)
+    
+    # 检查是否是当前正在使用的猫娘
+    current_catgirl = characters.get('当前猫娘', '')
+    if name == current_catgirl:
+        return JSONResponse({'success': False, 'error': '不能删除当前正在使用的猫娘！请先切换到其他猫娘后再删除。'}, status_code=400)
+    
     del characters['猫娘'][name]
     _config_manager.save_characters(characters)
     # 自动重新加载配置

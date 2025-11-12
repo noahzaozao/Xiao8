@@ -2690,11 +2690,6 @@ function init_app(){
             return;
         }
         
-        if (newCatgirl === lanlan_config.lanlan_name) {
-            console.log('[猫娘切换] ℹ️ 新猫娘与当前相同，无需切换');
-            return;
-        }
-        
         console.log('[猫娘切换] 🚀 开始切换，从', lanlan_config.lanlan_name, '切换到', newCatgirl);
         
         // 显示切换提示
@@ -2758,6 +2753,11 @@ function init_app(){
             if (modelData.success && modelData.model_name && modelData.model_info) {
                 console.log('[猫娘切换] 检测到新猫娘的 Live2D 模型:', modelData.model_name, '路径:', modelData.model_info.path);
                 
+                // 如果是回退模型，显示提示
+                if (modelData.model_info.is_fallback) {
+                    console.log('[猫娘切换] ⚠️ 新猫娘未设置Live2D模型，使用默认模型 mao_pro');
+                }
+                
                 // 检查 live2dManager 是否存在并已初始化
                 if (!window.live2dManager) {
                     console.error('[猫娘切换] live2dManager 不存在，无法重新加载模型');
@@ -2813,7 +2813,56 @@ function init_app(){
                     }
                 }
             } else {
-                console.warn('[猫娘切换] 无法获取新猫娘的 Live2D 模型信息:', modelData);
+                console.warn('[猫娘切换] 无法获取新猫娘的 Live2D 模型信息，尝试加载默认模型 mao_pro:', modelData);
+                
+                // 前端回退机制：如果后端没有返回有效的模型信息，尝试直接加载mao_pro
+                try {
+                    console.log('[猫娘切换] 尝试回退到默认模型 mao_pro');
+                    
+                    if (window.live2dManager && window.live2dManager.pixi_app) {
+                        // 查找mao_pro模型
+                        const modelsResponse = await fetch('/api/live2d/models');
+                        if (modelsResponse.ok) {
+                            const models = await modelsResponse.json();
+                            const maoProModel = models.find(m => m.name === 'mao_pro');
+                            
+                            if (maoProModel) {
+                                console.log('[猫娘切换] 找到默认模型 mao_pro，路径:', maoProModel.path);
+                                
+                                // 获取模型配置
+                                const modelConfigRes = await fetch(maoProModel.path);
+                                if (modelConfigRes.ok) {
+                                    const modelConfig = await modelConfigRes.json();
+                                    modelConfig.url = maoProModel.path;
+                                    
+                                    // 加载默认模型
+                                    await window.live2dManager.loadModel(modelConfig, {
+                                        isMobile: window.innerWidth <= 768
+                                    });
+                                    
+                                    // 更新全局引用
+                                    if (window.LanLan1) {
+                                        window.LanLan1.live2dModel = window.live2dManager.getCurrentModel();
+                                        window.LanLan1.currentModel = window.live2dManager.getCurrentModel();
+                                        window.LanLan1.emotionMapping = window.live2dManager.getEmotionMapping();
+                                    }
+                                    
+                                    console.log('[猫娘切换] 已成功回退到默认模型 mao_pro');
+                                } else {
+                                    console.error('[猫娘切换] 无法获取默认模型配置，状态:', modelConfigRes.status);
+                                }
+                            } else {
+                                console.error('[猫娘切换] 未找到默认模型 mao_pro');
+                            }
+                        } else {
+                            console.error('[猫娘切换] 无法获取模型列表');
+                        }
+                    } else {
+                        console.error('[猫娘切换] live2dManager 未初始化，无法加载默认模型');
+                    }
+                } catch (fallbackError) {
+                    console.error('[猫娘切换] 回退到默认模型失败:', fallbackError);
+                }
             }
             showStatusToast(`已切换到 ${newCatgirl}`, 3000);
         } catch (error) {
@@ -2918,5 +2967,15 @@ window.addEventListener("load", () => {
             window.showStatusToast(`${lanlan_config.lanlan_name}已启动`, 3000);
         }
     }, 1000);
+});
+
+// 监听voice_id更新消息
+window.addEventListener('message', function(event) {
+    if (event.data.type === 'voice_id_updated') {
+        console.log('[Voice Clone] 收到voice_id更新消息:', event.data.voice_id);
+        if (typeof window.showStatusToast === 'function' && typeof lanlan_config !== 'undefined' && lanlan_config.lanlan_name) {
+            window.showStatusToast(`${lanlan_config.lanlan_name}的语音已更新`, 3000);
+        }
+    }
 });
 

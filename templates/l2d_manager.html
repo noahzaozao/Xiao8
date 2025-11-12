@@ -641,11 +641,8 @@
                 // 如果是弹出窗口，直接关闭
                 window.close();
             } else {
-                // 如果是主窗口跳转，发送消息恢复主界面并跳转
-                sendMessageToMainPage('show_main_ui');
-                setTimeout(() => {
-                    window.location.href = '/';
-                }, 100);
+                // 如果是主窗口跳转，直接跳转即可，新页面会自动加载最新配置
+                window.location.href = '/';
             }
         });
 

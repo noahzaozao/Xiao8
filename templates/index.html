@@ -1029,7 +1029,7 @@
     };
     
     // 页面间通信：监听来自模型设置页面的消息
-    function handlePageMessage(event) {
+    async function handlePageMessage(event) {
         if (event.key === 'nekopage_message') {
             try {
                 const message = JSON.parse(event.newValue);
@@ -1041,7 +1041,7 @@
                             break;
                         case 'show_main_ui':
                             console.log('接收到显示主界面命令');
-                            showMainUI();
+                            await showMainUI();
                             break;
                     }
                 }
@@ -1068,9 +1068,9 @@
         document.body.setAttribute('data-ui-hidden', 'true');
     }
     
-    // 显示主界面的函数
+    // 显示主界面的函数（仅用于弹出窗口关闭时恢复UI）
     async function showMainUI() {
-        console.log('正在重新加载主界面和最新模型配置...');
+        console.log('显示主界面（弹出窗口已关闭）');
         
         // 显示主要UI元素
         const live2dContainer = document.getElementById('live2d-container');
@@ -1086,15 +1086,17 @@
         // 移除隐藏状态标记
         document.body.removeAttribute('data-ui-hidden');
         
-        // 重新加载最新的模型配置
+        // 检查模型是否需要重新加载（弹出窗口可能修改了模型配置）
         try {
+            console.log('检查模型配置是否有更新...');
+            
             // 1. 获取当前角色名称
             const currentLanlanName = lanlan_config.lanlan_name;
             
-            // 2. 获取最新的角色配置（包含最新的 live2d 模型名）
+            // 2. 获取最新的角色配置
             const charResponse = await fetch(`/api/characters/current_catgirl?lanlan_name=${encodeURIComponent(currentLanlanName)}`);
             if (!charResponse.ok) {
-                console.warn('获取角色配置失败，将继续使用当前模型');
+                console.warn('获取角色配置失败，跳过模型检查');
                 return;
             }
             const charData = await charResponse.json();
@@ -1103,7 +1105,7 @@
             // 3. 获取所有可用模型列表
             const modelsResponse = await fetch('/api/live2d/models');
             if (!modelsResponse.ok) {
-                console.warn('获取模型列表失败，将继续使用当前模型');
+                console.warn('获取模型列表失败，跳过模型检查');
                 return;
             }
             const models = await modelsResponse.json();
@@ -1111,50 +1113,76 @@
             // 4. 根据模型名称查找对应的模型路径
             const modelInfo = models.find(m => m.name === newModelName);
             if (!modelInfo) {
-                console.warn(`未找到模型 ${newModelName}，将继续使用当前模型`);
+                console.warn(`未找到模型 ${newModelName}，跳过模型检查`);
                 return;
             }
             const newModelPath = modelInfo.path;
             
-            // 5. 检查模型是否已经改变
-            const currentModelPath = window.live2dManager?.modelRootPath || '';
-            if (currentModelPath && newModelPath.includes(currentModelPath.split('/').pop())) {
-                console.log('模型未改变，无需重新加载');
-                return;
+            // 5. 检查当前加载的模型路径
+            const currentModel = window.live2dManager?.getCurrentModel();
+            let currentModelPath = '';
+            if (currentModel && currentModel.url) {
+                currentModelPath = currentModel.url;
+            } else if (window.live2dManager?.modelRootPath) {
+                // 备选方案：从 modelRootPath 推断
+                currentModelPath = window.live2dManager.modelRootPath;
             }
             
-            console.log(`检测到模型变化，正在重新加载: ${newModelPath}`);
-            
-            // 6. 重新加载用户偏好
+            // 6. 总是重新加载用户偏好（位置、缩放等可能被修改）
             const preferences = await window.live2dManager.loadUserPreferences();
-            
-            // 7. 查找新模型的偏好设置
             let modelPreferences = null;
             if (preferences && preferences.length > 0) {
                 modelPreferences = preferences.find(p => p && p.model_path === newModelPath);
-                if (modelPreferences) {
-                    console.log('找到新模型的偏好设置:', modelPreferences);
+            }
+            
+            // 7. 比较模型路径，判断是否需要完全重新加载模型
+            const needReload = !currentModelPath || !newModelPath.includes(currentModelPath.split('/').filter(Boolean).pop() || '___invalid___');
+            
+            if (needReload) {
+                // 模型改变了，需要完全重新加载
+                console.log(`检测到模型变化，重新加载: ${newModelPath}`);
+                console.log(`当前模型: ${currentModelPath}`);
+                console.log(`新模型: ${newModelPath}`);
+                
+                await window.live2dManager.loadModel(newModelPath, {
+                    preferences: modelPreferences,
+                    isMobile: window.innerWidth <= 768
+                });
+                
+                // 更新全局引用
+                window.LanLan1.live2dModel = window.live2dManager.getCurrentModel();
+                window.LanLan1.currentModel = window.live2dManager.getCurrentModel();
+                window.LanLan1.emotionMapping = window.live2dManager.getEmotionMapping();
+                
+                console.log('模型已重新加载');
+            } else {
+                // 模型未变，但需要更新位置和缩放设置
+                console.log('模型未改变，但重新应用用户偏好设置');
+                
+                if (modelPreferences && currentModel) {
+                    // 应用位置设置
+                    if (modelPreferences.position) {
+                        currentModel.x = modelPreferences.position.x || currentModel.x;
+                        currentModel.y = modelPreferences.position.y || currentModel.y;
+                        console.log('已应用位置设置:', modelPreferences.position);
+                    }
+                    
+                    // 应用缩放设置
+                    if (modelPreferences.scale) {
+                        currentModel.scale.set(
+                            modelPreferences.scale.x || currentModel.scale.x,
+                            modelPreferences.scale.y || currentModel.scale.y
+                        );
+                        console.log('已应用缩放设置:', modelPreferences.scale);
+                    }
                 } else {
-                    console.log('未找到新模型的偏好设置，将使用默认设置');
+                    console.log('无需应用偏好设置（未找到或模型未加载）');
                 }
             }
             
-            // 8. 重新加载模型
-            await window.live2dManager.loadModel(newModelPath, {
-                preferences: modelPreferences,
-                isMobile: window.innerWidth <= 768
-            });
-            
-            // 9. 更新全局引用
-            window.LanLan1.live2dModel = window.live2dManager.getCurrentModel();
-            window.LanLan1.currentModel = window.live2dManager.getCurrentModel();
-            window.LanLan1.emotionMapping = window.live2dManager.getEmotionMapping();
-            
-            console.log('模型重新加载完成');
-            
         } catch (error) {
-            console.error('重新加载模型时出错:', error);
-            // 出错时不影响UI显示，继续使用当前模型
+            console.error('检查/重新加载模型时出错:', error);
+            // 出错时不影响UI显示
         }
     }
     

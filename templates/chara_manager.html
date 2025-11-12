@@ -373,6 +373,22 @@ window.deleteCatgirl = async function(key) {
         await showAlert('只剩一只猫娘，无法删除！');
         return;
     }
+    // 检查是否是当前猫娘
+    try {
+        const currentResponse = await fetch('/api/characters/current_catgirl');
+        const currentData = await currentResponse.json();
+        const currentCatgirl = currentData.current_catgirl || '';
+        
+        if (key === currentCatgirl) {
+            await showAlert('不能删除当前正在使用的猫娘！\n\n请先切换到其他猫娘后再删除。');
+            return;
+        }
+    } catch (error) {
+        console.error('获取当前猫娘失败:', error);
+        await showAlert('无法确认当前猫娘状态，删除操作已取消');
+        return;
+    }
+    
     if (!await showConfirm('确定要删除猫娘"' + key + '"？', '删除猫娘', {danger: true})) return;
     await fetch('/api/characters/catgirl/' + encodeURIComponent(key), {method: 'DELETE'});
     await loadCharacterData();
