@@ -271,10 +271,65 @@
         const uploadStatus = document.getElementById('upload-status');
         const backToMainBtn = document.getElementById('backToMainBtn');
         
+        // 全屏控制函数
+        const requestFullscreen = () => {
+            const elem = document.documentElement;
+            if (elem.requestFullscreen) {
+                return elem.requestFullscreen();
+            } else if (elem.webkitRequestFullscreen) {
+                return elem.webkitRequestFullscreen();
+            } else if (elem.mozRequestFullScreen) {
+                return elem.mozRequestFullScreen();
+            } else if (elem.msRequestFullscreen) {
+                return elem.msRequestFullscreen();
+            }
+            return Promise.reject(new Error('Fullscreen not supported'));
+        };
+        
+        const exitFullscreen = () => {
+            if (document.exitFullscreen) {
+                return document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                return document.webkitExitFullscreen();
+            } else if (document.mozCancelFullScreen) {
+                return document.mozCancelFullScreen();
+            } else if (document.msExitFullscreen) {
+                return document.msExitFullscreen();
+            }
+            return Promise.reject(new Error('Exit fullscreen not supported'));
+        };
+        
+        const isFullscreen = () => {
+            return !!(document.fullscreenElement || 
+                     document.webkitFullscreenElement || 
+                     document.mozFullScreenElement || 
+                     document.msFullscreenElement);
+        };
+        
         // 检测页面来源，设置返回按钮文本
         const isPopupWindow = window.opener !== null;
         if (isPopupWindow) {
             backToMainBtn.textContent = '✖ 关闭';
+            
+            // 如果是 popup 窗口，尝试自动全屏
+            try {
+                // 在 Electron 中，可以直接尝试
+                setTimeout(async () => {
+                    try {
+                        await requestFullscreen();
+                    } catch (e) {
+                        console.log('自动全屏失败，用户可以手动点击全屏按钮:', e);
+                    }
+                }, 100);
+                
+                // 方法2: 如果 Fullscreen API 不可用，尝试最大化窗口
+                if (!document.fullscreenEnabled && !document.webkitFullscreenEnabled) {
+                    window.resizeTo(screen.availWidth, screen.availHeight);
+                    window.moveTo(0, 0);
+                }
+            } catch (e) {
+                console.log('自动全屏失败:', e);
+            }
         } else {
             backToMainBtn.textContent = '← 返回主页';
         }
@@ -567,6 +622,17 @@
                 );
                 if (!confirmLeave) {
                     return; // 用户取消，不离开
+                }
+            }
+            
+            // 如果处于全屏状态，先退出全屏
+            if (isFullscreen()) {
+                try {
+                    await exitFullscreen();
+                    // 等待全屏退出完成
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                } catch (e) {
+                    console.log('退出全屏失败:', e);
                 }
             }
             
@@ -908,6 +974,15 @@
     });
 // 监听页面卸载事件，确保返回时主界面可见
         window.addEventListener('beforeunload', (e) => {
+            // 尝试退出全屏
+            if (isFullscreen()) {
+                try {
+                    exitFullscreen();
+                } catch (err) {
+                    console.log('退出全屏失败:', err);
+                }
+            }
+            
             sendMessageToMainPage('show_main_ui');
             
             // 如果有未保存的更改，阻止页面关闭并显示确认对话框
