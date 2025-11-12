@@ -316,36 +316,16 @@ function init_app(){
                         sessionStartedResolver(response.input_mode);
                         sessionStartedResolver = null;
                     }
-                } else if (response.type === 'voice_id_updated') {
-                    console.log('收到voice_id_updated事件：', response.message);
-                    // 语音ID已更新，session已重置
-                    showStatusToast(response.message || '语音已更新，请重新开始对话', 5000);
+                } else if (response.type === 'reload_page') {
+                    console.log('收到reload_page事件：', response.message);
+                    // 显示提示信息
+                    showStatusToast(response.message || '配置已更新，页面即将刷新', 3000);
                     
-                    // 如果正在录音，停止录音
-                    if (isRecording) {
-                        stopRecording();
-                        micButton.disabled = false;
-                        muteButton.disabled = true;
-                        screenButton.disabled = true;
-                    }
-                    
-                    // 清空音频队列
-                    clearAudioQueue();
-                } else if (response.type === 'api_changed') {
-                    console.log('收到api_changed事件：', response.message);
-                    // API配置已更新，session已重置
-                    showStatusToast(response.message || 'API配置已更新，请重新开始对话', 5000);
-                    
-                    // 如果正在录音，停止录音
-                    if (isRecording) {
-                        stopRecording();
-                        micButton.disabled = false;
-                        muteButton.disabled = true;
-                        screenButton.disabled = true;
-                    }
-                    
-                    // 清空音频队列
-                    clearAudioQueue();
+                    // 延迟2.5秒后刷新页面，让后端有足够时间完成session关闭和配置重新加载
+                    setTimeout(() => {
+                        console.log('开始刷新页面...');
+                        window.location.reload();
+                    }, 2500);
                 } else if (response.type === 'auto_close_mic') {
                     console.log('收到auto_close_mic事件，自动关闭麦克风');
                     // 长时间无语音输入，自动关闭麦克风但不关闭live2d

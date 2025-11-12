@@ -5,7 +5,6 @@ TTS部分使用了两个队列，原本只需要一个，但是阿里的TTS API�
 """
 import asyncio
 import json
-import traceback
 import struct  # For packing audio data
 import threading
 import re
@@ -458,7 +457,6 @@ class LLMSessionManager:
                         await self._process_stream_data_internal(message)
                     except Exception as e:
                         logger.error(f"💥 发送缓存的输入数据失败: {e}")
-                        traceback.print_exc()
                         break
             
             # 清空缓存
@@ -747,7 +745,6 @@ class LLMSessionManager:
             
             error_message = f"Error starting session: {e}"
             logger.error(f"💥 {error_message} (失败次数: {self.session_start_failure_count})")
-            traceback.print_exc()
             
             # 如果达到最大失败次数，发送严重警告并通知前端
             if self.session_start_failure_count >= self.session_start_max_failures:
@@ -852,7 +849,6 @@ class LLMSessionManager:
             # Do not set warmed_up_event here if cancelled.
         except Exception as e:
             logger.error(f"💥 BG Prep Stage 1: Error: {e}")
-            traceback.print_exc()
             await self._cleanup_pending_session_resources()
             # Do not set warmed_up_event on error.
         finally:
@@ -988,7 +984,6 @@ class LLMSessionManager:
 
         except Exception as e:
             logger.error(f"💥 Final Swap Sequence: Error: {e}")
-            traceback.print_exc()
             await self.send_status(f"内部更新切换失败: {e}.")
             await self._cleanup_pending_session_resources()
             self._reset_preparation_state(clear_main_cache=False)
@@ -1016,7 +1011,6 @@ class LLMSessionManager:
                     except Exception as e:
                         error_message = f"System timer: Error sending data to session: {e}"
                         logger.error(f"💥 {error_message}")
-                        traceback.print_exc()
                         await self.send_status(error_message)
             await asyncio.sleep(5)
 
@@ -1170,7 +1164,6 @@ class LLMSessionManager:
                     return
                 except Exception as e:
                     logger.error(f"💥 Stream: Error processing audio data: {e}")
-                    traceback.print_exc()
                     return
 
             elif input_type in ['screen', 'camera']:
@@ -1225,7 +1218,6 @@ class LLMSessionManager:
         except Exception as e:
             error_message = f"Stream: Error sending data to session: {e}"
             logger.error(f"💥 {error_message}")
-            traceback.print_exc()
             await self.send_status(error_message)
 
     async def end_session(self, by_server=False):  # 与Core API断开连接

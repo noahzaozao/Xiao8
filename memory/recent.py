@@ -6,9 +6,14 @@ from langchain_core.messages import SystemMessage, messages_to_dict, messages_fr
 import json
 import os
 import asyncio
+import logging
 from openai import RateLimitError
 
 from config.prompts_sys import recent_history_manager_prompt, detailed_recent_history_manager_prompt, further_summarize_prompt, history_review_prompt
+
+# Setup logger
+from utils.logger_config import setup_logging
+logger, log_config = setup_logging(service_name="RecentMemory", log_level=logging.INFO)
 
 class CompressedRecentHistoryManager:
     def __init__(self, max_history_length=10):
@@ -54,9 +59,7 @@ class CompressedRecentHistoryManager:
                 # 只保留最近的max_history_length条消息
                 self.user_histories[lanlan_name] = compressed + self.user_histories[lanlan_name][-self.max_history_length+1:]
         except Exception as e:
-            print("Error when updating history: ", e)
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error when updating history: {e}")
 
         with open(self.log_file_path[lanlan_name], "w", encoding='utf-8') as f:
             json.dump(messages_to_dict(self.user_histories[lanlan_name]), f, indent=2, ensure_ascii=False)
@@ -311,9 +314,7 @@ class CompressedRecentHistoryManager:
                     print(f"⚠️ {lanlan_name} 的记忆审阅在重试等待期间被取消")
                     return False
             except Exception as e:
-                print(f"❌ 历史记录审阅失败：{e}")
-                import traceback
-                traceback.print_exc()
+                logger.error(f"❌ 历史记录审阅失败：{e}")
                 return False
         
         # 如果所有重试都失败

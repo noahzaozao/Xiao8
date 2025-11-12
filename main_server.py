@@ -5,7 +5,6 @@ import mimetypes
 mimetypes.add_type("application/javascript", ".js")
 import asyncio
 import json
-import traceback
 import uuid
 import logging
 from datetime import datetime
@@ -407,8 +406,26 @@ async def update_core_config(request: Request):
         with open(core_config_path, 'w', encoding='utf-8') as f:
             json.dump(core_cfg, f, indent=2, ensure_ascii=False)
         
-        # API配置更新后，需要结束所有活跃的session，然后重新加载配置
-        logger.info("API配置已更新，正在结束所有活跃的session...")
+        # API配置更新后，需要先通知所有客户端，再关闭session，最后重新加载配置
+        logger.info("API配置已更新，准备通知客户端并重置所有session...")
+        
+        # 1. 先通知所有连接的客户端即将刷新（WebSocket还连着）
+        notification_count = 0
+        for lanlan_name, mgr in session_manager.items():
+            if mgr.is_active and mgr.websocket:
+                try:
+                    await mgr.websocket.send_text(json.dumps({
+                        "type": "reload_page",
+                        "message": "API配置已更新，页面即将刷新"
+                    }))
+                    notification_count += 1
+                    logger.info(f"已通知 {lanlan_name} 的前端刷新页面")
+                except Exception as e:
+                    logger.warning(f"通知 {lanlan_name} 的WebSocket失败: {e}")
+        
+        logger.info(f"已通知 {notification_count} 个客户端")
+        
+        # 2. 立刻关闭所有活跃的session（这会断开所有WebSocket）
         sessions_ended = []
         for lanlan_name, mgr in session_manager.items():
             if mgr.is_active:
@@ -419,7 +436,7 @@ async def update_core_config(request: Request):
                 except Exception as e:
                     logger.error(f"结束 {lanlan_name} 的session时出错: {e}")
         
-        # 重新加载配置并重建session manager
+        # 3. 重新加载配置并重建session manager
         logger.info("正在重新加载配置...")
         try:
             await initialize_character_data()
@@ -427,19 +444,6 @@ async def update_core_config(request: Request):
         except Exception as reload_error:
             logger.error(f"重新加载配置失败: {reload_error}")
             return {"success": False, "error": f"配置已保存但重新加载失败: {str(reload_error)}"}
-        
-        # 通知所有连接的客户端API已更新
-        notification_count = 0
-        for lanlan_name, mgr in session_manager.items():
-            if mgr.websocket:
-                try:
-                    await mgr.websocket.send_text(json.dumps({
-                        "type": "api_changed",
-                        "message": "API配置已更新，请重新开始对话"
-                    }))
-                    notification_count += 1
-                except Exception as e:
-                    logger.warning(f"通知 {lanlan_name} 的WebSocket失败: {e}")
         
         logger.info(f"已通知 {notification_count} 个连接的客户端API配置已更新")
         return {"success": True, "message": "API Key已保存并重新加载配置", "sessions_ended": len(sessions_ended)}
@@ -575,7 +579,6 @@ async def websocket_endpoint(websocket: WebSocket, lanlan_name: str):
     except Exception as e:
         error_message = f"WebSocket handler error: {e}"
         logger.error(f"💥 {error_message}")
-        logger.error(traceback.format_exc())
         try:
             await session_manager[lanlan_name].send_status(f"Server error: {e}")
         except:
@@ -790,7 +793,6 @@ async def proactive_chat(request: Request):
             }, status_code=504)
         except Exception as e:
             logger.error(f"[{lanlan_name}] AI处理失败: {e}")
-            logger.error(traceback.format_exc())
             return JSONResponse({
                 "success": False,
                 "error": "AI处理失败",
@@ -799,7 +801,6 @@ async def proactive_chat(request: Request):
         
     except Exception as e:
         logger.error(f"主动搭话接口异常: {e}")
-        logger.error(traceback.format_exc())
         return JSONResponse({
             "success": False,
             "error": "服务器内部错误",
@@ -1027,6 +1028,9 @@ async def update_catgirl(name: str, request: Request):
     if name not in characters.get('猫娘', {}):
         return JSONResponse({'success': False, 'error': '猫娘不存在'}, status_code=404)
     
+    # 记录更新前的voice_id，用于检测是否变更
+    old_voice_id = characters['猫娘'][name].get('voice_id', '')
+    
     # 如果包含voice_id，验证其有效性
     if 'voice_id' in data:
         voice_id = data['voice_id']
@@ -1050,9 +1054,45 @@ async def update_catgirl(name: str, request: Request):
         if k not in ('档案名') and v:
             characters['猫娘'][name][k] = v
     _config_manager.save_characters(characters)
+    
+    # 获取更新后的voice_id
+    new_voice_id = characters['猫娘'][name].get('voice_id', '')
+    voice_id_changed = (old_voice_id != new_voice_id)
+    
+    # 如果是当前活跃的猫娘且voice_id发生了变更，需要先通知前端，再关闭session
+    is_current_catgirl = (name == characters.get('当前猫娘', ''))
+    session_ended = False
+    
+    if voice_id_changed and is_current_catgirl and name in session_manager:
+        # 检查是否有活跃的session
+        if session_manager[name].is_active:
+            logger.info(f"检测到 {name} 的voice_id已变更（{old_voice_id} -> {new_voice_id}），准备刷新...")
+            
+            # 1. 先发送刷新消息（WebSocket还连着）
+            if session_manager[name].websocket:
+                try:
+                    await session_manager[name].websocket.send_text(json.dumps({
+                        "type": "reload_page",
+                        "message": "语音已更新，页面即将刷新"
+                    }))
+                    logger.info(f"已通知 {name} 的前端刷新页面")
+                except Exception as e:
+                    logger.warning(f"通知前端刷新页面失败: {e}")
+            
+            # 2. 立刻关闭session（这会断开WebSocket）
+            try:
+                await session_manager[name].end_session(by_server=True)
+                session_ended = True
+                logger.info(f"{name} 的session已结束")
+            except Exception as e:
+                logger.error(f"结束session时出错: {e}")
+    
     # 自动重新加载配置
     await initialize_character_data()
-    return {"success": True}
+    if voice_id_changed:
+        logger.info(f"配置已重新加载，新的voice_id已生效")
+    
+    return {"success": True, "voice_id_changed": voice_id_changed, "session_restarted": session_ended}
 
 @app.put('/api/characters/catgirl/l2d/{name}')
 async def update_catgirl_l2d(name: str, request: Request):
@@ -1120,33 +1160,37 @@ async def update_catgirl_voice_id(name: str, request: Request):
         characters['猫娘'][name]['voice_id'] = voice_id
     _config_manager.save_characters(characters)
     
-    # 如果是当前活跃的猫娘，需要结束当前session以应用新的voice_id
+    # 如果是当前活跃的猫娘，需要先通知前端，再关闭session
     is_current_catgirl = (name == characters.get('当前猫娘', ''))
     session_ended = False
     
     if is_current_catgirl and name in session_manager:
         # 检查是否有活跃的session
         if session_manager[name].is_active:
-            logger.info(f"检测到 {name} 的voice_id已更新，正在结束当前session...")
+            logger.info(f"检测到 {name} 的voice_id已更新，准备刷新...")
+            
+            # 1. 先发送刷新消息（WebSocket还连着）
+            if session_manager[name].websocket:
+                try:
+                    await session_manager[name].websocket.send_text(json.dumps({
+                        "type": "reload_page",
+                        "message": "语音已更新，页面即将刷新"
+                    }))
+                    logger.info(f"已通知 {name} 的前端刷新页面")
+                except Exception as e:
+                    logger.warning(f"通知前端刷新页面失败: {e}")
+            
+            # 2. 立刻关闭session（这会断开WebSocket）
             try:
                 await session_manager[name].end_session(by_server=True)
                 session_ended = True
-                logger.info(f"{name} 的session已结束，新的voice_id将在下次对话时生效")
+                logger.info(f"{name} 的session已结束")
             except Exception as e:
                 logger.error(f"结束session时出错: {e}")
     
-    # 自动重新加载配置
+    # 3. 重新加载配置，让新的voice_id生效
     await initialize_character_data()
-    
-    # 如果结束了session，通过WebSocket通知前端
-    if session_ended and name in session_manager and session_manager[name].websocket:
-        try:
-            await session_manager[name].websocket.send_text(json.dumps({
-                "type": "voice_id_updated",
-                "message": "语音已更新，请重新开始对话"
-            }))
-        except Exception as e:
-            logger.warning(f"通知前端voice_id更新失败: {e}")
+    logger.info(f"配置已重新加载，新的voice_id已生效")
     
     return {"success": True, "session_restarted": session_ended}
 
@@ -2004,7 +2048,6 @@ async def upload_live2d_model(files: list[UploadFile] = File(...)):
             
     except Exception as e:
         logger.error(f"上传Live2D模型失败: {e}")
-        logger.error(traceback.format_exc())
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
 @app.post('/api/live2d/emotion_mapping/{model_name}')
@@ -2222,8 +2265,6 @@ async def emotion_analysis(request: Request):
             
     except Exception as e:
         logger.error(f"情感分析失败: {e}")
-        import traceback
-        traceback.print_exc()
         return {
             "error": f"情感分析失败: {str(e)}",
             "emotion": "neutral",

@@ -118,8 +118,7 @@ async def process_conversation(request: HistoryRequest, lanlan_name: str):
         
         return {"status": "processed"}
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.error(f"处理对话历史失败: {e}")
         return {"status": "error", "message": str(e)}
 
 @app.post("/renew/{lanlan_name}")

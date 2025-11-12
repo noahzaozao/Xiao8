@@ -75,9 +75,9 @@ function registerVoice() {
                         resultDiv.innerHTML += '<br><span class="error">voice_id自动保存失败: ' + (res.error || '未知错误') + '</span>';
                     } else {
                         resultDiv.innerHTML += '<br>voice_id已自动保存到角色';
-                        // 如果session被重启了，提示用户
+                        // 如果session被结束，页面会自动刷新
                         if (res.session_restarted) {
-                            resultDiv.innerHTML += '<br><span style="color: blue;">当前对话已重置，新语音将立即生效</span>';
+                            resultDiv.innerHTML += '<br><span style="color: blue;">当前页面即将自动刷新以应用新语音</span>';
                         } else {
                             resultDiv.innerHTML += '<br><span style="color: blue;">新语音将在下次对话时生效</span>';
                         }

@@ -330,6 +330,37 @@ class RobustLoggerConfig:
         return logger
 
 
+class EnhancedLogger:
+    """增强的Logger包装器，自动处理traceback"""
+    
+    def __init__(self, logger):
+        self._logger = logger
+    
+    def __getattr__(self, name):
+        """代理所有其他方法到原始logger"""
+        return getattr(self._logger, name)
+    
+    def error(self, msg, *args, exc_info=None, **kwargs):
+        """
+        增强的error方法，自动包含traceback
+        
+        Args:
+            msg: 错误消息
+            exc_info: 是否包含异常信息，默认True（自动检测）
+            *args, **kwargs: 传递给原始logger.error的其他参数
+        """
+        # 如果在异常上下文中且未明确指定exc_info，自动设置为True
+        if exc_info is None:
+            import sys
+            exc_info = sys.exc_info()[0] is not None
+        
+        self._logger.error(msg, *args, exc_info=exc_info, **kwargs)
+    
+    def exception(self, msg, *args, **kwargs):
+        """异常记录方法（始终包含traceback）"""
+        self._logger.exception(msg, *args, **kwargs)
+
+
 def setup_logging(app_name=None, service_name=None, log_level=None):
     """
     便捷函数：设置日志配置
@@ -340,10 +371,17 @@ def setup_logging(app_name=None, service_name=None, log_level=None):
         log_level: 日志级别
         
     Returns:
-        tuple: (logger实例, 日志配置对象)
+        tuple: (增强的logger实例, 日志配置对象)
+        
+    注意：
+        返回的logger会自动在error()调用时包含traceback（如果在异常上下文中）
+        也可以使用logger.exception()来明确记录异常信息
     """
     config = RobustLoggerConfig(app_name=app_name, service_name=service_name, log_level=log_level)
-    logger = config.setup_logger()
+    base_logger = config.setup_logger()
+    
+    # 包装为增强logger
+    logger = EnhancedLogger(base_logger)
     
     # 记录日志配置信息
     service_info = f"{service_name}" if service_name else config.app_name
@@ -356,7 +394,7 @@ def setup_logging(app_name=None, service_name=None, log_level=None):
 
 
 # 导出主要接口
-__all__ = ['RobustLoggerConfig', 'setup_logging']
+__all__ = ['RobustLoggerConfig', 'EnhancedLogger', 'setup_logging']
 
 
 if __name__ == "__main__":

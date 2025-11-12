@@ -156,7 +156,6 @@ TTS部分使用TTSRealtimeClient与阿里云实时TTS API进行WebSocket通信�
 """
 import asyncio
 import json
-import traceback
 import struct  # For packing audio data
 import threading
 import re
@@ -915,7 +914,6 @@ class LLMSessionManager:
         except Exception as e:
             error_message = f"Error starting session: {e}"
             logger.error(f"💥 {error_message}")
-            traceback.print_exc()
             await self.send_status(error_message)
             if 'actively refused it' in str(e):
                 await self.send_status("💥 记忆服务器已崩溃。请检查API Key是否正确。")
@@ -986,7 +984,6 @@ class LLMSessionManager:
             # Do not set warmed_up_event here if cancelled.
         except Exception as e:
             logger.error(f"💥 BG Prep Stage 1: Error: {e}")
-            traceback.print_exc()
             await self._cleanup_pending_session_resources()
             # Do not set warmed_up_event on error.
         finally:
@@ -1132,7 +1129,6 @@ class LLMSessionManager:
 
         except Exception as e:
             logger.error(f"💥 Final Swap Sequence: Error: {e}")
-            traceback.print_exc()
             await self.send_status(f"内部更新切换失败: {e}.")
             await self._cleanup_pending_session_resources()
             self._reset_preparation_state(clear_main_cache=False)
@@ -1160,7 +1156,6 @@ class LLMSessionManager:
                     except Exception as e:
                         error_message = f"System timer: Error sending data to session: {e}"
                         logger.error(f"💥 {error_message}")
-                        traceback.print_exc()
                         await self.send_status(error_message)
             await asyncio.sleep(5)
 
@@ -1197,7 +1192,6 @@ class LLMSessionManager:
                     return
                 except Exception as e:
                     logger.error(f"💥 Stream: Error processing audio data: {e}")
-                    traceback.print_exc()
                     return
 
             elif input_type in ['screen', 'camera']:
@@ -1238,7 +1232,6 @@ class LLMSessionManager:
         except Exception as e:
             error_message = f"Stream: Error sending data to session: {e}"
             logger.error(f"💥 {error_message}")
-            traceback.print_exc()
             await self.send_status(error_message)
 
     async def end_session(self, by_server=False):  # 与Core API断开连接
@@ -1272,7 +1265,6 @@ class LLMSessionManager:
                 logger.info("End Session: Qwen connection closed.")
             except Exception as e:
                 logger.error(f"💥 End Session: Error during cleanup: {e}")
-                traceback.print_exc()
         
         # 关闭TTS客户端
         if self.use_tts and self.tts_client:

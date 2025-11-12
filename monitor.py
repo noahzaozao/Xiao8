@@ -6,6 +6,7 @@ mimetypes.add_type("application/javascript", ".js")
 import asyncio
 import json
 import os
+import logging
 from config import MONITOR_SERVER_PORT
 from utils.config_manager import get_config_manager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
@@ -14,6 +15,11 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 import uvicorn
 from fastapi.templating import Jinja2Templates
 from utils.frontend_utils import find_models, find_model_config_file
+
+# Setup logger
+from utils.logger_config import setup_logging
+logger, log_config = setup_logging(service_name="Monitor", log_level=logging.INFO)
+
 templates = Jinja2Templates(directory="./")
 
 app = FastAPI()
@@ -245,9 +251,7 @@ async def sync_endpoint(websocket: WebSocket, lanlan_name:str):
     except WebSocketDisconnect:
         print(f"❌ [SYNC] 主服务器已断开: {websocket.client}")
     except Exception as e:
-        print(f"❌ [SYNC] 同步端点错误: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"❌ [SYNC] 同步端点错误: {e}")
 
 
 # 二进制数据同步端点
@@ -267,9 +271,7 @@ async def sync_binary_endpoint(websocket: WebSocket, lanlan_name:str):
     except WebSocketDisconnect:
         print(f"❌ [BINARY] 主服务器二进制连接已断开: {websocket.client}")
     except Exception as e:
-        print(f"❌ [BINARY] 二进制同步端点错误: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"❌ [BINARY] 二进制同步端点错误: {e}")
 
 
 # 客户端连接端点
