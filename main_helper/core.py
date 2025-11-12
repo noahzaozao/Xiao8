@@ -722,6 +722,41 @@ class LLMSessionManager:
                 # 启动消息处理任务
                 self.message_handler_task = asyncio.create_task(self.session.handle_messages())
                 
+                # 🔥 预热逻辑：对于语音模式，立即触发一次 skipped response 来 prefill instructions
+                # 这样可以大幅减少首轮对话的延迟（让 API 提前处理并缓存 instructions 的 KV cache）
+                if isinstance(self.session, OmniRealtimeClient):
+                    try:
+                        logger.info(f"🔥 开始预热 Session，prefill instructions...")
+                        warmup_start = time.time()
+                        
+                        # 创建一个事件来等待预热完成
+                        warmup_done_event = asyncio.Event()
+                        original_callback = self.session.on_response_done
+                        
+                        # 临时替换回调，只用于等待预热完成
+                        async def warmup_callback():
+                            warmup_done_event.set()
+                        
+                        self.session.on_response_done = warmup_callback
+                        
+                        # 发送预热请求
+                        warmup_text = f"[系统预热] 请{self.lanlan_name}准备，即将开始与{self.master_name}对话。"
+                        await self.session.create_response(warmup_text, skipped=True)
+                        
+                        # 等待预热完成（最多5秒）
+                        try:
+                            await asyncio.wait_for(warmup_done_event.wait(), timeout=5.0)
+                            warmup_time = time.time() - warmup_start
+                            logger.info(f"✅ Session预热完成 (耗时: {warmup_time:.2f}秒)，首轮对话延迟已优化")
+                        except asyncio.TimeoutError:
+                            logger.warning(f"⚠️ Session预热超时（5秒），继续执行...")
+                        
+                        # 恢复原始回调
+                        self.session.on_response_done = original_callback
+                        
+                    except Exception as e:
+                        logger.warning(f"⚠️ Session预热失败（不影响正常使用）: {e}")
+                
                 # 启动成功，重置失败计数器
                 self.session_start_failure_count = 0
                 self.session_start_last_failure_time = None
