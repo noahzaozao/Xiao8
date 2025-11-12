@@ -45,7 +45,7 @@ templates = Jinja2Templates(directory=template_dir)
 # Configure logging
 from utils.logger_config import setup_logging
 
-logger, log_config = setup_logging(app_name="Main", log_level=logging.INFO)
+logger, log_config = setup_logging(service_name="Main", log_level=logging.INFO)
 
 _config_manager = get_config_manager()
 
@@ -407,7 +407,42 @@ async def update_core_config(request: Request):
         with open(core_config_path, 'w', encoding='utf-8') as f:
             json.dump(core_cfg, f, indent=2, ensure_ascii=False)
         
-        return {"success": True, "message": "API Key已保存"}
+        # API配置更新后，需要结束所有活跃的session，然后重新加载配置
+        logger.info("API配置已更新，正在结束所有活跃的session...")
+        sessions_ended = []
+        for lanlan_name, mgr in session_manager.items():
+            if mgr.is_active:
+                try:
+                    await mgr.end_session(by_server=True)
+                    sessions_ended.append(lanlan_name)
+                    logger.info(f"{lanlan_name} 的session已结束")
+                except Exception as e:
+                    logger.error(f"结束 {lanlan_name} 的session时出错: {e}")
+        
+        # 重新加载配置并重建session manager
+        logger.info("正在重新加载配置...")
+        try:
+            await initialize_character_data()
+            logger.info("配置重新加载完成，新的API配置已生效")
+        except Exception as reload_error:
+            logger.error(f"重新加载配置失败: {reload_error}")
+            return {"success": False, "error": f"配置已保存但重新加载失败: {str(reload_error)}"}
+        
+        # 通知所有连接的客户端API已更新
+        notification_count = 0
+        for lanlan_name, mgr in session_manager.items():
+            if mgr.websocket:
+                try:
+                    await mgr.websocket.send_text(json.dumps({
+                        "type": "api_changed",
+                        "message": "API配置已更新，请重新开始对话"
+                    }))
+                    notification_count += 1
+                except Exception as e:
+                    logger.warning(f"通知 {lanlan_name} 的WebSocket失败: {e}")
+        
+        logger.info(f"已通知 {notification_count} 个连接的客户端API配置已更新")
+        return {"success": True, "message": "API Key已保存并重新加载配置", "sessions_ended": len(sessions_ended)}
     except Exception as e:
         return {"success": False, "error": str(e)}
 

@@ -612,7 +612,13 @@ async function saveApiKey({ apiKey, coreApi, assistApi, assistApiKeyQwen, assist
         if (response.ok) {
             const result = await response.json();
             if (result.success) {
-                showStatus('API Key保存成功！', 'success');
+                let statusMessage = 'API Key保存成功！';
+                if (result.sessions_ended && result.sessions_ended > 0) {
+                    statusMessage += ` 已重置 ${result.sessions_ended} 个活跃对话，新配置已生效。`;
+                } else {
+                    statusMessage += ' 配置已重新加载，新配置将在下次对话时生效。';
+                }
+                showStatus(statusMessage, 'success');
                 document.getElementById('apiKeyInput').value = '';
                 
                 // 清除本地Voice ID记录

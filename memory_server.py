@@ -17,7 +17,7 @@ import argparse
 
 # Setup logger
 from utils.logger_config import setup_logging
-logger, log_config = setup_logging(app_name="Xiao8_Memory", log_level=logging.INFO)
+logger, log_config = setup_logging(service_name="Memory", log_level=logging.INFO)
 
 class HistoryRequest(BaseModel):
     input_history: str
