@@ -1069,7 +1069,9 @@
     }
     
     // 显示主界面的函数
-    function showMainUI() {
+    async function showMainUI() {
+        console.log('正在重新加载主界面和最新模型配置...');
+        
         // 显示主要UI元素
         const live2dContainer = document.getElementById('live2d-container');
         const chatContainer = document.getElementById('chat-container');
@@ -1083,6 +1085,77 @@
         
         // 移除隐藏状态标记
         document.body.removeAttribute('data-ui-hidden');
+        
+        // 重新加载最新的模型配置
+        try {
+            // 1. 获取当前角色名称
+            const currentLanlanName = lanlan_config.lanlan_name;
+            
+            // 2. 获取最新的角色配置（包含最新的 live2d 模型名）
+            const charResponse = await fetch(`/api/characters/current_catgirl?lanlan_name=${encodeURIComponent(currentLanlanName)}`);
+            if (!charResponse.ok) {
+                console.warn('获取角色配置失败，将继续使用当前模型');
+                return;
+            }
+            const charData = await charResponse.json();
+            const newModelName = charData.live2d || 'mao_pro';
+            
+            // 3. 获取所有可用模型列表
+            const modelsResponse = await fetch('/api/live2d/models');
+            if (!modelsResponse.ok) {
+                console.warn('获取模型列表失败，将继续使用当前模型');
+                return;
+            }
+            const models = await modelsResponse.json();
+            
+            // 4. 根据模型名称查找对应的模型路径
+            const modelInfo = models.find(m => m.name === newModelName);
+            if (!modelInfo) {
+                console.warn(`未找到模型 ${newModelName}，将继续使用当前模型`);
+                return;
+            }
+            const newModelPath = modelInfo.path;
+            
+            // 5. 检查模型是否已经改变
+            const currentModelPath = window.live2dManager?.modelRootPath || '';
+            if (currentModelPath && newModelPath.includes(currentModelPath.split('/').pop())) {
+                console.log('模型未改变，无需重新加载');
+                return;
+            }
+            
+            console.log(`检测到模型变化，正在重新加载: ${newModelPath}`);
+            
+            // 6. 重新加载用户偏好
+            const preferences = await window.live2dManager.loadUserPreferences();
+            
+            // 7. 查找新模型的偏好设置
+            let modelPreferences = null;
+            if (preferences && preferences.length > 0) {
+                modelPreferences = preferences.find(p => p && p.model_path === newModelPath);
+                if (modelPreferences) {
+                    console.log('找到新模型的偏好设置:', modelPreferences);
+                } else {
+                    console.log('未找到新模型的偏好设置，将使用默认设置');
+                }
+            }
+            
+            // 8. 重新加载模型
+            await window.live2dManager.loadModel(newModelPath, {
+                preferences: modelPreferences,
+                isMobile: window.innerWidth <= 768
+            });
+            
+            // 9. 更新全局引用
+            window.LanLan1.live2dModel = window.live2dManager.getCurrentModel();
+            window.LanLan1.currentModel = window.live2dManager.getCurrentModel();
+            window.LanLan1.emotionMapping = window.live2dManager.getEmotionMapping();
+            
+            console.log('模型重新加载完成');
+            
+        } catch (error) {
+            console.error('重新加载模型时出错:', error);
+            // 出错时不影响UI显示，继续使用当前模型
+        }
     }
     
     // 注册localStorage事件监听器

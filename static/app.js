@@ -2703,8 +2703,26 @@ function init_app(){
         // 标记正在切换，防止自动重连冲突
         isSwitchingCatgirl = true;
         
+        // 清理活跃的会话状态
+        if (isRecording) {
+            console.log('[猫娘切换] 停止录音');
+            stopRecording();
+        }
+        
+        // 清空音频队列
+        if (typeof clearAudioQueue === 'function') {
+            console.log('[猫娘切换] 清空音频队列');
+            clearAudioQueue();
+        }
+        
+        // 重置文本会话状态
+        if (isTextSessionActive) {
+            console.log('[猫娘切换] 结束文本会话');
+            isTextSessionActive = false;
+        }
+
         // 更新配置
-        lanlan_config.lanlan_name = newCatgirl;
+        const oldCatgirlName = lanlan_config.lanlan_name;
         
         // 关闭旧的 WebSocket 连接
         if (socket) {
@@ -2725,11 +2743,6 @@ function init_app(){
         // 重新连接 WebSocket
         console.log('[猫娘切换] 重新连接 WebSocket，新猫娘:', newCatgirl);
         connectWebSocket();
-        
-        // 重置切换标记，允许自动重连机制正常工作
-        setTimeout(() => {
-            isSwitchingCatgirl = false;
-        }, 1000);
         
         // 更新页面标题
         document.title = `${newCatgirl} Terminal - Project Lanlan`;
@@ -2769,8 +2782,21 @@ function init_app(){
                         
                         console.log('[猫娘切换] 开始加载模型配置...');
                         
+                        // 加载用户偏好设置
+                        const preferences = await window.live2dManager.loadUserPreferences();
+                        let modelPreferences = null;
+                        if (preferences && preferences.length > 0) {
+                            modelPreferences = preferences.find(p => p && p.model_path === newModelPath);
+                            if (modelPreferences) {
+                                console.log('[猫娘切换] 找到模型偏好设置:', modelPreferences);
+                            } else {
+                                console.log('[猫娘切换] 未找到模型偏好设置，将使用默认设置');
+                            }
+                        }
+                        
                         // 加载新模型
                         await window.live2dManager.loadModel(modelConfig, {
+                            preferences: modelPreferences,
                             isMobile: window.innerWidth <= 768
                         });
                         
@@ -2789,15 +2815,18 @@ function init_app(){
             } else {
                 console.warn('[猫娘切换] 无法获取新猫娘的 Live2D 模型信息:', modelData);
             }
+            showStatusToast(`已切换到 ${newCatgirl}`, 3000);
         } catch (error) {
             console.error('[猫娘切换] 重新加载 Live2D 模型失败:', error);
+            showStatusToast(`切换到 ${newCatgirl} 失败`, 4000);
             console.error('[猫娘切换] 错误堆栈:', error.stack);
+        } finally {
+            // 在所有操作完成后重置标记
+            isSwitchingCatgirl = false;
+            console.log('[猫娘切换] 切换流程已完成，重置标记');
         }
         
         console.log('[猫娘切换] 切换完成，已重新连接 WebSocket');
-        
-        // 显示切换完成提示
-        showStatusToast(`已切换到 ${newCatgirl}`, 3000);
     }
     
     // 确保原生按钮和status栏在初始化时就被强制隐藏，永不出现

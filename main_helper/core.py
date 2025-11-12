@@ -52,6 +52,7 @@ class LLMSessionManager:
         self.tts_response_queue = MPQueue() # TTS response (多进程队列)
         self.tts_process = None  # TTS子进程
         self.lock = asyncio.Lock()  # 使用异步锁替代同步锁
+        self.websocket_lock = None  # websocket操作的共享锁，由main_server设置
         self.current_speech_id = None
         self.inflect_parser = inflect.engine()
         self.emoji_pattern = re.compile(r'[^\w\u4e00-\u9fff\s>][^\w\u4e00-\u9fff\s]{2,}[^\w\u4e00-\u9fff\s<]', flags=re.UNICODE)
@@ -1313,7 +1314,13 @@ class LLMSessionManager:
     async def cleanup(self):
         await self.end_session(by_server=True)
         # 清理websocket引用，防止保留失效的连接
-        self.websocket = None
+        # 使用共享锁保护websocket操作，防止与initialize_character_data()中的restore竞争
+        if self.websocket_lock:
+            async with self.websocket_lock:
+                self.websocket = None
+        else:
+            # 如果没有设置websocket_lock（旧代码路径），直接清理
+            self.websocket = None
 
     async def send_status(self, message: str): # 向前端发送status message
         try:

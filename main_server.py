@@ -63,6 +63,8 @@ sync_shutdown_event = {}
 session_manager = {}
 session_id = {}
 sync_process = {}
+# 每个角色的websocket操作锁，用于防止preserve/restore与cleanup()之间的竞争
+websocket_locks = {}
 # Global variables for character data (will be updated on reload)
 master_name = None
 her_name = None
@@ -76,11 +78,11 @@ setting_store = None
 recent_log = None
 catgirl_names = []
 
-def initialize_character_data():
+async def initialize_character_data():
     """初始化或重新加载角色配置数据"""
     global master_name, her_name, master_basic_config, lanlan_basic_config
     global name_mapping, lanlan_prompt, semantic_store, time_store, setting_store, recent_log
-    global catgirl_names, sync_message_queue, sync_shutdown_event, session_manager, session_id, sync_process
+    global catgirl_names, sync_message_queue, sync_shutdown_event, session_manager, session_id, sync_process, websocket_locks
     
     logger.info("正在加载角色配置...")
     
@@ -100,23 +102,32 @@ def initialize_character_data():
             sync_process[k] = None
             logger.info(f"为角色 {k} 初始化新资源")
         
+        # 确保该角色有websocket锁
+        if k not in websocket_locks:
+            websocket_locks[k] = asyncio.Lock()
+        
         # 更新或创建session manager（使用最新的prompt）
-        # 如果已存在且已有websocket连接，保留websocket引用
-        old_websocket = None
-        if k in session_manager and session_manager[k].websocket:
-            old_websocket = session_manager[k].websocket
-            logger.info(f"保留 {k} 的现有WebSocket连接")
-        
-        session_manager[k] = core.LLMSessionManager(
-            sync_message_queue[k],
-            k,
-            lanlan_prompt[k].replace('{LANLAN_NAME}', k).replace('{MASTER_NAME}', master_name)
-        )
-        
-        # 恢复websocket引用（如果存在）
-        if old_websocket:
-            session_manager[k].websocket = old_websocket
-            logger.info(f"已恢复 {k} 的WebSocket连接")
+        # 使用锁保护websocket的preserve/restore操作，防止与cleanup()竞争
+        async with websocket_locks[k]:
+            # 如果已存在且已有websocket连接，保留websocket引用
+            old_websocket = None
+            if k in session_manager and session_manager[k].websocket:
+                old_websocket = session_manager[k].websocket
+                logger.info(f"保留 {k} 的现有WebSocket连接")
+            
+            session_manager[k] = core.LLMSessionManager(
+                sync_message_queue[k],
+                k,
+                lanlan_prompt[k].replace('{LANLAN_NAME}', k).replace('{MASTER_NAME}', master_name)
+            )
+            
+            # 将websocket锁存储到session manager中，供cleanup()使用
+            session_manager[k].websocket_lock = websocket_locks[k]
+            
+            # 恢复websocket引用（如果存在）
+            if old_websocket:
+                session_manager[k].websocket = old_websocket
+                logger.info(f"已恢复 {k} 的WebSocket连接")
     
     # 清理已删除角色的资源
     removed_names = [k for k in session_manager.keys() if k not in catgirl_names]
@@ -145,8 +156,13 @@ def initialize_character_data():
     
     logger.info(f"角色配置加载完成，当前角色: {catgirl_names}，主人: {master_name}")
 
-# 初始化角色数据
-initialize_character_data()
+# 初始化角色数据（使用asyncio.run在模块级别执行async函数）
+import asyncio as _init_asyncio
+try:
+    _init_asyncio.get_event_loop()
+except RuntimeError:
+    _init_asyncio.set_event_loop(_init_asyncio.new_event_loop())
+_init_asyncio.get_event_loop().run_until_complete(initialize_character_data())
 lock = asyncio.Lock()
 
 # --- FastAPI App Setup ---
@@ -859,7 +875,7 @@ async def set_current_catgirl(request: Request):
     characters['当前猫娘'] = catgirl_name
     _config_manager.save_characters(characters)
     # 自动重新加载配置
-    initialize_character_data()
+    await initialize_character_data()
     
     # 通过WebSocket通知所有连接的客户端
     # 使用session_manager中的websocket，但需要确保websocket已设置
@@ -900,7 +916,7 @@ async def set_current_catgirl(request: Request):
 async def reload_character_config():
     """重新加载角色配置（热重载）"""
     try:
-        initialize_character_data()
+        await initialize_character_data()
         return {"success": True, "message": "角色配置已重新加载"}
     except Exception as e:
         logger.error(f"重新加载角色配置失败: {e}")
@@ -918,7 +934,7 @@ async def update_master(request: Request):
     characters['主人'] = {k: v for k, v in data.items() if v}
     _config_manager.save_characters(characters)
     # 自动重新加载配置
-    initialize_character_data()
+    await initialize_character_data()
     return {"success": True}
 
 @app.post('/api/characters/catgirl')
@@ -944,7 +960,7 @@ async def add_catgirl(request: Request):
     characters['猫娘'][key] = catgirl_data
     _config_manager.save_characters(characters)
     # 自动重新加载配置
-    initialize_character_data()
+    await initialize_character_data()
     return {"success": True}
 
 @app.put('/api/characters/catgirl/{name}')
@@ -980,7 +996,7 @@ async def update_catgirl(name: str, request: Request):
             characters['猫娘'][name][k] = v
     _config_manager.save_characters(characters)
     # 自动重新加载配置
-    initialize_character_data()
+    await initialize_character_data()
     return {"success": True}
 
 @app.put('/api/characters/catgirl/l2d/{name}')
@@ -1013,7 +1029,7 @@ async def update_catgirl_l2d(name: str, request: Request):
         # 保存配置
         _config_manager.save_characters(characters)
         # 自动重新加载配置
-        initialize_character_data()
+        await initialize_character_data()
         
         return JSONResponse(content={
             'success': True,
@@ -1049,7 +1065,7 @@ async def update_catgirl_voice_id(name: str, request: Request):
         characters['猫娘'][name]['voice_id'] = voice_id
     _config_manager.save_characters(characters)
     # 自动重新加载配置
-    initialize_character_data()
+    await initialize_character_data()
     return {"success": True}
 
 @app.post('/api/characters/clear_voice_ids')
@@ -1068,7 +1084,7 @@ async def clear_voice_ids():
         
         _config_manager.save_characters(characters)
         # 自动重新加载配置
-        initialize_character_data()
+        await initialize_character_data()
         
         return JSONResponse({
             'success': True, 
@@ -1096,7 +1112,7 @@ async def set_microphone(request: Request):
         # 保存配置
         _config_manager.save_characters(characters_data)
         # 自动重新加载配置
-        initialize_character_data()
+        await initialize_character_data()
         
         return {"success": True}
     except Exception as e:
@@ -1446,7 +1462,7 @@ async def delete_catgirl(name: str):
     del characters['猫娘'][name]
     _config_manager.save_characters(characters)
     # 自动重新加载配置
-    initialize_character_data()
+    await initialize_character_data()
     return {"success": True}
 
 @app.post('/api/beacon/shutdown')
@@ -1510,7 +1526,7 @@ async def rename_catgirl(old_name: str, request: Request):
         characters['当前猫娘'] = new_name
     _config_manager.save_characters(characters)
     # 自动重新加载配置
-    initialize_character_data()
+    await initialize_character_data()
     return {"success": True}
 
 @app.post('/api/characters/catgirl/{name}/unregister_voice')
@@ -1530,7 +1546,7 @@ async def unregister_voice(name: str):
             characters['猫娘'][name].pop('voice_id')
         _config_manager.save_characters(characters)
         # 自动重新加载配置
-        initialize_character_data()
+        await initialize_character_data()
         
         logger.info(f"已解除猫娘 '{name}' 的声音注册")
         return {"success": True, "message": "声音注册已解除"}
