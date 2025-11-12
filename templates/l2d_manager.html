@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Live2D 模型管理器</title>
+    <script src="/static/common_dialogs.js"></script>
     <style>
         *:focus {
             outline: none !important;
@@ -248,6 +249,9 @@
             }
         }
 
+        // 全局变量：跟踪未保存的更改
+        window.hasUnsavedChanges = false;
+
         document.addEventListener('DOMContentLoaded', async () => {
         const statusDiv = document.getElementById('status');
         const modelSelect = document.getElementById('model-select');
@@ -266,6 +270,14 @@
         const modelUpload = document.getElementById('model-upload');
         const uploadStatus = document.getElementById('upload-status');
         const backToMainBtn = document.getElementById('backToMainBtn');
+        
+        // 检测页面来源，设置返回按钮文本
+        const isPopupWindow = window.opener !== null;
+        if (isPopupWindow) {
+            backToMainBtn.textContent = '✖ 关闭';
+        } else {
+            backToMainBtn.textContent = '← 返回主页';
+        }
         
         // 页面加载时发送消息隐藏主界面
         sendMessageToMainPage('hide_main_ui');
@@ -372,7 +384,11 @@
             await loadModel(modelName, currentModelInfo);
             
             // 自动保存模型设置到角色
-            await saveModelToCharacter(modelName);
+            const saveSuccess = await saveModelToCharacter(modelName);
+            if (!saveSuccess) {
+                // 如果自动保存失败，标记为有未保存的更改
+                window.hasUnsavedChanges = true;
+            }
         });
 
         // 加载模型的函数
@@ -431,6 +447,18 @@
                     preferences: modelPreferences
                 });
                 live2dModel = window.live2dManager.getCurrentModel();
+                
+                // 添加模型交互监听器，跟踪位置和缩放变化
+                if (live2dModel && live2dModel.internalModel) {
+                    const canvas = document.getElementById('live2d-canvas');
+                    if (canvas) {
+                        // 监听拖动和滚轮事件
+                        const markChanged = () => { window.hasUnsavedChanges = true; };
+                        canvas.addEventListener('mouseup', markChanged);
+                        canvas.addEventListener('wheel', markChanged);
+                        canvas.addEventListener('touchend', markChanged);
+                    }
+                }
 
                 updateSelectWithOptions(motionSelect, currentModelFiles.motion_files, '选择动作');
                 updateSelectWithOptions(expressionSelect, currentModelFiles.expression_files, '选择表情');
@@ -518,6 +546,7 @@
             
             if (positionSuccess && modelSuccess) {
                 showStatus('位置和模型设置保存成功!', 2000);
+                window.hasUnsavedChanges = false; // 保存成功后重置标志
             } else if (positionSuccess) {
                 showStatus('位置保存成功，模型设置保存失败!', 2000);
             } else if (modelSuccess) {
@@ -527,14 +556,31 @@
             }
         });
         
-        // 返回主页按钮
-        backToMainBtn.addEventListener('click', () => {
-            // 先发送消息恢复主界面显示
-            sendMessageToMainPage('show_main_ui');
-            // 稍微延迟再跳转，确保消息被处理
-            setTimeout(() => {
-                window.location.href = '/';
-            }, 100);
+        // 返回主页/关闭按钮
+        backToMainBtn.addEventListener('click', async () => {
+            // 检查是否有未保存的更改
+            if (window.hasUnsavedChanges) {
+                const confirmLeave = await showConfirm(
+                    '您有未保存的设置，确定要离开吗？',
+                    '确认离开',
+                    { danger: true }
+                );
+                if (!confirmLeave) {
+                    return; // 用户取消，不离开
+                }
+            }
+            
+            // 根据窗口类型执行不同的操作
+            if (isPopupWindow) {
+                // 如果是弹出窗口，直接关闭
+                window.close();
+            } else {
+                // 如果是主窗口跳转，发送消息恢复主界面并跳转
+                sendMessageToMainPage('show_main_ui');
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 100);
+            }
         });
 
         // 上传模型功能
@@ -739,6 +785,7 @@
                         const file = btn.getAttribute('data-file');
                         const idx = currentPersistent.indexOf(file);
                         if (idx > -1) currentPersistent.splice(idx, 1);
+                        window.hasUnsavedChanges = true; // 标记为有未保存的更改
                         renderPersistentUI();
                         // 即时同步到前端并应用
                         try {
@@ -763,7 +810,10 @@
         addPersistentBtn.addEventListener('click', async () => {
             const file = persistentSelect.value;
             if (!file) return;
-            if (!currentPersistent.includes(file)) currentPersistent.push(file);
+            if (!currentPersistent.includes(file)) {
+                currentPersistent.push(file);
+                window.hasUnsavedChanges = true; // 标记为有未保存的更改
+            }
             renderPersistentUI();
             // 即时同步到前端并应用
             try {
@@ -796,6 +846,7 @@
                 const result = await resp.json();
                 if (result && result.success) {
                     showStatus('常驻表情保存成功', 1500);
+                    window.hasUnsavedChanges = false; // 保存成功后重置标志
                     // 通知前端管理器重新应用常驻，无需重载模型
                     if (window.live2dManager && window.live2dManager.setupPersistentExpressions) {
                         await window.live2dManager.setupPersistentExpressions();
@@ -856,8 +907,16 @@
         }
     });
 // 监听页面卸载事件，确保返回时主界面可见
-        window.addEventListener('beforeunload', () => {
+        window.addEventListener('beforeunload', (e) => {
             sendMessageToMainPage('show_main_ui');
+            
+            // 如果有未保存的更改，阻止页面关闭并显示确认对话框
+            // 注意：现代浏览器会忽略自定义消息，显示标准的确认对话框
+            if (window.hasUnsavedChanges) {
+                e.preventDefault();
+                e.returnValue = ''; // Chrome需要这个
+                return ''; // 某些浏览器需要返回值
+            }
         });
         
         // 确保在页面关闭时也恢复主界面
