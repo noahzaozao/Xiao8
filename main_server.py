@@ -101,11 +101,22 @@ def initialize_character_data():
             logger.info(f"为角色 {k} 初始化新资源")
         
         # 更新或创建session manager（使用最新的prompt）
+        # 如果已存在且已有websocket连接，保留websocket引用
+        old_websocket = None
+        if k in session_manager and session_manager[k].websocket:
+            old_websocket = session_manager[k].websocket
+            logger.info(f"保留 {k} 的现有WebSocket连接")
+        
         session_manager[k] = core.LLMSessionManager(
             sync_message_queue[k],
             k,
             lanlan_prompt[k].replace('{LANLAN_NAME}', k).replace('{MASTER_NAME}', master_name)
         )
+        
+        # 恢复websocket引用（如果存在）
+        if old_websocket:
+            session_manager[k].websocket = old_websocket
+            logger.info(f"已恢复 {k} 的WebSocket连接")
     
     # 清理已删除角色的资源
     removed_names = [k for k in session_manager.keys() if k not in catgirl_names]
@@ -460,7 +471,12 @@ async def websocket_endpoint(websocket: WebSocket, lanlan_name: str):
     logger.info(f"⭐websocketWebSocket accepted: {websocket.client}, new session id: {session_id[lanlan_name]}, lanlan_name: {lanlan_name}")
     
     # 立即设置websocket到session manager，以支持主动搭话
-    session_manager[lanlan_name].websocket = websocket
+    # 注意：这里设置后，即使cleanup()被调用，websocket也会在start_session时重新设置
+    if lanlan_name in session_manager:
+        session_manager[lanlan_name].websocket = websocket
+        logger.info(f"✅ 已设置 {lanlan_name} 的WebSocket连接")
+    else:
+        logger.error(f"❌ 错误：{lanlan_name} 不在session_manager中！当前session_manager: {list(session_manager.keys())}")
 
     try:
         while True:
@@ -516,7 +532,8 @@ async def websocket_endpoint(websocket: WebSocket, lanlan_name: str):
     finally:
         logger.info(f"Cleaning up WebSocket resources: {websocket.client}")
         await session_manager[lanlan_name].cleanup()
-        # cleanup() 已经会清理 websocket，但为了确保，再次检查
+        # 注意：cleanup() 会清空 websocket，但只在连接真正断开时调用
+        # 如果连接还在，websocket应该保持设置
         if session_manager[lanlan_name].websocket == websocket:
             session_manager[lanlan_name].websocket = None
 
@@ -838,10 +855,45 @@ async def set_current_catgirl(request: Request):
     if catgirl_name not in characters.get('猫娘', {}):
         return JSONResponse({'success': False, 'error': '指定的猫娘不存在'}, status_code=404)
     
+    old_catgirl = characters.get('当前猫娘', '')
     characters['当前猫娘'] = catgirl_name
     _config_manager.save_characters(characters)
     # 自动重新加载配置
     initialize_character_data()
+    
+    # 通过WebSocket通知所有连接的客户端
+    # 使用session_manager中的websocket，但需要确保websocket已设置
+    notification_count = 0
+    logger.info(f"开始通知WebSocket客户端：猫娘从 {old_catgirl} 切换到 {catgirl_name}")
+    
+    message = json.dumps({
+        "type": "catgirl_switched",
+        "new_catgirl": catgirl_name,
+        "old_catgirl": old_catgirl
+    })
+    
+    # 遍历所有session_manager，尝试发送消息
+    for lanlan_name, mgr in session_manager.items():
+        ws = mgr.websocket
+        logger.info(f"检查 {lanlan_name} 的WebSocket: websocket存在={ws is not None}")
+        
+        if ws:
+            try:
+                await ws.send_text(message)
+                notification_count += 1
+                logger.info(f"✅ 已通过WebSocket通知 {lanlan_name} 的连接：猫娘已从 {old_catgirl} 切换到 {catgirl_name}")
+            except Exception as e:
+                logger.warning(f"❌ 通知 {lanlan_name} 的连接失败: {e}")
+                # 如果发送失败，可能是连接已断开，清空websocket引用
+                if mgr.websocket == ws:
+                    mgr.websocket = None
+    
+    if notification_count > 0:
+        logger.info(f"✅ 已通过WebSocket通知 {notification_count} 个连接的客户端：猫娘已从 {old_catgirl} 切换到 {catgirl_name}")
+    else:
+        logger.warning(f"⚠️ 没有找到任何活跃的WebSocket连接来通知猫娘切换")
+        logger.warning(f"提示：请确保前端页面已打开并建立了WebSocket连接，且已调用start_session")
+    
     return {"success": True}
 
 @app.post('/api/characters/reload')

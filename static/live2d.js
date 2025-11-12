@@ -43,6 +43,9 @@ class Live2DManager {
         this._floatingButtons = {}; // 存储所有按钮元素
         this._popupTimers = {}; // 存储弹出框的定时器
         this._goodbyeClicked = false; // 标记是否点击了"请她离开"
+        
+        // 已打开的设置窗口引用映射（URL -> Window对象）
+        this._openSettingsWindows = {};
 
         // 口型同步控制
         this.mouthValue = 0; // 0~1
@@ -2097,8 +2100,34 @@ class Live2DManager {
                             // Live2D设置页直接跳转
                             window.location.href = finalUrl;
                         } else {
-                            // 其他页面弹出新窗口
-                            window.open(finalUrl, '_blank', 'width=1000,height=800,menubar=no,toolbar=no,location=no,status=no');
+                            // 其他页面弹出新窗口，但检查是否已打开
+                            // 检查是否已有该URL的窗口打开
+                            if (this._openSettingsWindows[finalUrl]) {
+                                const existingWindow = this._openSettingsWindows[finalUrl];
+                                // 检查窗口是否仍然打开
+                                if (existingWindow && !existingWindow.closed) {
+                                    // 聚焦到已存在的窗口
+                                    existingWindow.focus();
+                                    return;
+                                } else {
+                                    // 窗口已关闭，清除引用
+                                    delete this._openSettingsWindows[finalUrl];
+                                }
+                            }
+                            
+                            // 打开新窗口并保存引用
+                            const newWindow = window.open(finalUrl, '_blank', 'width=1000,height=800,menubar=no,toolbar=no,location=no,status=no');
+                            if (newWindow) {
+                                this._openSettingsWindows[finalUrl] = newWindow;
+                                
+                                // 监听窗口关闭事件，清除引用
+                                const checkClosed = setInterval(() => {
+                                    if (newWindow.closed) {
+                                        delete this._openSettingsWindows[finalUrl];
+                                        clearInterval(checkClosed);
+                                    }
+                                }, 500);
+                            }
                         }
                     }
                 });
