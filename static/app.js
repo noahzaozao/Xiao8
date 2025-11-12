@@ -180,7 +180,7 @@ function init_app(){
                     appendMessage(response.text, 'user', true);
                 } else if (response.type === 'user_activity') {
                     clearAudioQueue();
-                } if (response.type === 'cozy_audio') {
+                } else if (response.type === 'cozy_audio') {
                     // 处理音频响应
                     console.log("收到新的音频头")
                     const isNewMessage = response.isNewMessage || false;
