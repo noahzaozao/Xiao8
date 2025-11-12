@@ -22,6 +22,7 @@
             justify-content: center;
             z-index: 10000;
             animation: fadeIn 0.2s ease-out;
+            pointer-events: auto !important;
         }
 
         @keyframes fadeIn {
@@ -43,11 +44,13 @@
             max-height: 80vh;
             overflow: hidden;
             animation: slideIn 0.3s ease-out;
+            pointer-events: auto !important;
         }
 
         .modal-header {
             padding: 20px 24px 16px;
             border-bottom: 1px solid #e0e0e0;
+            pointer-events: auto !important;
         }
 
         .modal-title {
@@ -55,6 +58,7 @@
             font-size: 1.2rem;
             font-weight: 600;
             color: #222;
+            pointer-events: auto !important;
         }
 
         .modal-body {
@@ -65,6 +69,7 @@
             max-height: 60vh;
             overflow-y: auto;
             white-space: pre-wrap;
+            pointer-events: auto !important;
         }
 
         .modal-input {
@@ -76,6 +81,7 @@
             margin-top: 12px;
             box-sizing: border-box;
             font-family: inherit;
+            pointer-events: auto !important;
         }
 
         .modal-input:focus {
@@ -90,6 +96,7 @@
             display: flex;
             justify-content: flex-end;
             gap: 10px;
+            pointer-events: auto !important;
         }
 
         .modal-btn {
@@ -100,6 +107,7 @@
             cursor: pointer;
             transition: all 0.2s;
             font-weight: 500;
+            pointer-events: auto !important;
         }
 
         .modal-btn:focus {
