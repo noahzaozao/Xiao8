@@ -316,6 +316,21 @@ function init_app(){
                         sessionStartedResolver(response.input_mode);
                         sessionStartedResolver = null;
                     }
+                } else if (response.type === 'voice_id_updated') {
+                    console.log('收到voice_id_updated事件：', response.message);
+                    // 语音ID已更新，session已重置
+                    showStatusToast(response.message || '语音已更新，请重新开始对话', 5000);
+                    
+                    // 如果正在录音，停止录音
+                    if (isRecording) {
+                        stopRecording();
+                        micButton.disabled = false;
+                        muteButton.disabled = true;
+                        screenButton.disabled = true;
+                    }
+                    
+                    // 清空音频队列
+                    clearAudioQueue();
                 } else if (response.type === 'auto_close_mic') {
                     console.log('收到auto_close_mic事件，自动关闭麦克风');
                     // 长时间无语音输入，自动关闭麦克风但不关闭live2d

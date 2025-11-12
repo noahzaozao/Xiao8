@@ -1084,9 +1084,36 @@ async def update_catgirl_voice_id(name: str, request: Request):
             }, status_code=400)
         characters['猫娘'][name]['voice_id'] = voice_id
     _config_manager.save_characters(characters)
+    
+    # 如果是当前活跃的猫娘，需要结束当前session以应用新的voice_id
+    is_current_catgirl = (name == characters.get('当前猫娘', ''))
+    session_ended = False
+    
+    if is_current_catgirl and name in session_manager:
+        # 检查是否有活跃的session
+        if session_manager[name].is_active:
+            logger.info(f"检测到 {name} 的voice_id已更新，正在结束当前session...")
+            try:
+                await session_manager[name].end_session(by_server=True)
+                session_ended = True
+                logger.info(f"{name} 的session已结束，新的voice_id将在下次对话时生效")
+            except Exception as e:
+                logger.error(f"结束session时出错: {e}")
+    
     # 自动重新加载配置
     await initialize_character_data()
-    return {"success": True}
+    
+    # 如果结束了session，通过WebSocket通知前端
+    if session_ended and name in session_manager and session_manager[name].websocket:
+        try:
+            await session_manager[name].websocket.send_text(json.dumps({
+                "type": "voice_id_updated",
+                "message": "语音已更新，请重新开始对话"
+            }))
+        except Exception as e:
+            logger.warning(f"通知前端voice_id更新失败: {e}")
+    
+    return {"success": True, "session_restarted": session_ended}
 
 @app.post('/api/characters/clear_voice_ids')
 async def clear_voice_ids():

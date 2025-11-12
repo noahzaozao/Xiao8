@@ -75,9 +75,15 @@ function registerVoice() {
                         resultDiv.innerHTML += '<br><span class="error">voice_id自动保存失败: ' + (res.error || '未知错误') + '</span>';
                     } else {
                         resultDiv.innerHTML += '<br>voice_id已自动保存到角色';
+                        // 如果session被重启了，提示用户
+                        if (res.session_restarted) {
+                            resultDiv.innerHTML += '<br><span style="color: blue;">当前对话已重置，新语音将立即生效</span>';
+                        } else {
+                            resultDiv.innerHTML += '<br><span style="color: blue;">新语音将在下次对话时生效</span>';
+                        }
                         // 通知父页面voice_id已更新
                         if (window.parent !== window) {
-                            window.parent.postMessage({type: 'voice_id_updated', voice_id: data.voice_id}, '*');
+                            window.parent.postMessage({type: 'voice_id_updated', voice_id: data.voice_id, session_restarted: res.session_restarted}, '*');
                         }
                     }
                 }).catch(e => {
