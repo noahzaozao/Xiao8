@@ -769,14 +769,14 @@ async def get_current_live2d_model(catgirl_name: str = ""):
         # 如果找到了模型名称，获取模型信息
         if live2d_model_name:
             try:
-                # 检查模型是否存在
-                model_dir = os.path.join(os.path.dirname(__file__), 'static', live2d_model_name)
+                # 使用 find_model_directory 查找模型目录（支持 static 和用户文档目录）
+                model_dir, url_prefix = find_model_directory(live2d_model_name)
                 if os.path.exists(model_dir):
                     # 查找模型配置文件
                     model_files = [f for f in os.listdir(model_dir) if f.endswith('.model3.json')]
                     if model_files:
                         model_file = model_files[0]
-                        model_path = f'/static/{live2d_model_name}/{model_file}'
+                        model_path = f'{url_prefix}/{live2d_model_name}/{model_file}'
                         model_info = {
                             'name': live2d_model_name,
                             'path': model_path
