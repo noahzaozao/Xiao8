@@ -1825,27 +1825,35 @@ function init_app(){
             lockIcon.style.removeProperty('opacity');
         }
         
+        // 原生按钮和status栏应该永不出现，保持隐藏状态
         const sidebar = document.getElementById('sidebar');
         const sidebarbox = document.getElementById('sidebarbox');
         
         if (sidebar) {
-            sidebar.style.removeProperty('display');
-            sidebar.style.removeProperty('visibility');
-            sidebar.style.removeProperty('opacity');
+            sidebar.style.setProperty('display', 'none', 'important');
+            sidebar.style.setProperty('visibility', 'hidden', 'important');
+            sidebar.style.setProperty('opacity', '0', 'important');
         }
         
         if (sidebarbox) {
-            sidebarbox.style.removeProperty('display');
-            sidebarbox.style.removeProperty('visibility');
-            sidebarbox.style.removeProperty('opacity');
+            sidebarbox.style.setProperty('display', 'none', 'important');
+            sidebarbox.style.setProperty('visibility', 'hidden', 'important');
+            sidebarbox.style.setProperty('opacity', '0', 'important');
         }
         
         const sideButtons = document.querySelectorAll('.side-btn');
         sideButtons.forEach(btn => {
-            btn.style.removeProperty('display');
-            btn.style.removeProperty('visibility');
-            btn.style.removeProperty('opacity');
+            btn.style.setProperty('display', 'none', 'important');
+            btn.style.setProperty('visibility', 'hidden', 'important');
+            btn.style.setProperty('opacity', '0', 'important');
         });
+        
+        const statusElement = document.getElementById('status');
+        if (statusElement) {
+            statusElement.style.setProperty('display', 'none', 'important');
+            statusElement.style.setProperty('visibility', 'hidden', 'important');
+            statusElement.style.setProperty('opacity', '0', 'important');
+        }
 
         // 先恢复容器尺寸和可见性，但保持透明度为0和位置在屏幕外
         // container.style.height = '1080px';
@@ -2791,6 +2799,78 @@ function init_app(){
         // 显示切换完成提示
         showStatusToast(`已切换到 ${newCatgirl}`, 3000);
     }
+    
+    // 确保原生按钮和status栏在初始化时就被强制隐藏，永不出现
+    const ensureHiddenElements = () => {
+        const sidebar = document.getElementById('sidebar');
+        const sidebarbox = document.getElementById('sidebarbox');
+        const statusElement = document.getElementById('status');
+        
+        if (sidebar) {
+            sidebar.style.setProperty('display', 'none', 'important');
+            sidebar.style.setProperty('visibility', 'hidden', 'important');
+            sidebar.style.setProperty('opacity', '0', 'important');
+        }
+        
+        if (sidebarbox) {
+            sidebarbox.style.setProperty('display', 'none', 'important');
+            sidebarbox.style.setProperty('visibility', 'hidden', 'important');
+            sidebarbox.style.setProperty('opacity', '0', 'important');
+        }
+        
+        if (statusElement) {
+            statusElement.style.setProperty('display', 'none', 'important');
+            statusElement.style.setProperty('visibility', 'hidden', 'important');
+            statusElement.style.setProperty('opacity', '0', 'important');
+        }
+        
+        const sideButtons = document.querySelectorAll('.side-btn');
+        sideButtons.forEach(btn => {
+            btn.style.setProperty('display', 'none', 'important');
+            btn.style.setProperty('visibility', 'hidden', 'important');
+            btn.style.setProperty('opacity', '0', 'important');
+        });
+        
+        console.log('[初始化] 原生按钮和status栏已强制隐藏');
+    };
+    
+    // 立即执行一次
+    ensureHiddenElements();
+    
+    // 使用MutationObserver监听特定元素的样式变化，确保这些元素始终保持隐藏
+    const observerCallback = (mutations) => {
+        // 避免递归调用：只在元素变为可见时才强制隐藏
+        let needsHiding = false;
+        mutations.forEach(mutation => {
+            if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                const target = mutation.target;
+                const computedStyle = window.getComputedStyle(target);
+                if (computedStyle.display !== 'none' || computedStyle.visibility !== 'hidden') {
+                    needsHiding = true;
+                }
+            }
+        });
+        
+        if (needsHiding) {
+            ensureHiddenElements();
+        }
+    };
+    
+    const observer = new MutationObserver(observerCallback);
+    
+    // 只监听sidebar、sidebarbox和status元素的样式变化
+    const elementsToObserve = [
+        document.getElementById('sidebar'),
+        document.getElementById('sidebarbox'),
+        document.getElementById('status')
+    ].filter(Boolean);
+    
+    elementsToObserve.forEach(element => {
+        observer.observe(element, {
+            attributes: true,
+            attributeFilter: ['style']
+        });
+    });
 } // 兼容老按钮
 
 const ready = () => {

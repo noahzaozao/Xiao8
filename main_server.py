@@ -45,7 +45,7 @@ templates = Jinja2Templates(directory=template_dir)
 # Configure logging
 from utils.logger_config import setup_logging
 
-logger, log_config = setup_logging(app_name="Xiao8_Main", log_level=logging.INFO)
+logger, log_config = setup_logging(app_name="Main", log_level=logging.INFO)
 
 _config_manager = get_config_manager()
 
@@ -1038,8 +1038,7 @@ async def update_catgirl_voice_id(name: str, request: Request):
     if 'voice_id' in data:
         voice_id = data['voice_id']
         # 验证voice_id是否在voice_storage中
-        from config import validate_voice_id
-        if not validate_voice_id(voice_id):
+        if not _config_manager.validate_voice_id(voice_id):
             voices = _config_manager.get_voices_for_current_api()
             available_voices = list(voices.keys())
             return JSONResponse({
@@ -1341,7 +1340,16 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
                     'file_url': tmp_url,
                     'created_at': datetime.now().isoformat()
                 }
-                _config_manager.save_voice_for_current_api(voice_id, voice_data)
+                try:
+                    _config_manager.save_voice_for_current_api(voice_id, voice_data)
+                    logger.info(f"voice_id已保存到音色库: {voice_id}")
+                except Exception as save_error:
+                    logger.error(f"保存voice_id到音色库失败: {save_error}")
+                    return JSONResponse({
+                        'error': f'音色注册成功但保存到音色库失败: {str(save_error)}',
+                        'voice_id': voice_id,
+                        'file_url': tmp_url
+                    }, status_code=500)
                 return JSONResponse({
                     'voice_id': voice_id,
                     'request_id': service.get_last_request_id(),

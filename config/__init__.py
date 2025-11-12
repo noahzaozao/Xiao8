@@ -19,6 +19,10 @@ from copy import deepcopy
 from config.prompts_chara import lanlan_prompt
 
 
+# 应用程序名称配置
+APP_NAME = "Xiao8"
+
+
 CONFIG_FILES = [
     'characters.json',
     'core_config.json',
@@ -161,6 +165,7 @@ MODELS_WITH_EXTRA_BODY = ["qwen-flash-2025-07-28", "qwen3-vl-plus-2025-09-23"]
 
 
 __all__ = [
+    'APP_NAME',
     'CONFIG_FILES',
     'DEFAULT_MASTER_TEMPLATE',
     'DEFAULT_LANLAN_TEMPLATE',
