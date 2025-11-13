@@ -20,28 +20,35 @@ from utils.frontend_utils import find_models, find_model_config_file
 from utils.logger_config import setup_logging
 logger, log_config = setup_logging(service_name="Monitor", log_level=logging.INFO)
 
-templates = Jinja2Templates(directory="./")
+# 获取资源路径（支持打包后的环境）
+def get_resource_path(relative_path):
+    """获取资源的绝对路径，支持开发环境和打包后的环境"""
+    if getattr(sys, 'frozen', False):
+        # 打包后的环境
+        base_path = sys._MEIPASS
+    else:
+        # 开发环境
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, relative_path)
+
+templates = Jinja2Templates(directory=get_resource_path(""))
 
 app = FastAPI()
 
 # 挂载静态文件
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=get_resource_path("static")), name="static")
 _config_manager = get_config_manager()
-
-@app.get("/streamer")
-async def get_stream():
-    return FileResponse('templates/streamer.html')
 
 @app.get("/subtitle")
 async def get_subtitle():
-    return FileResponse('templates/subtitle.html')
+    return FileResponse(get_resource_path('templates/subtitle.html'))
 
 @app.get('/api/live2d/emotion_mapping/{model_name}')
 async def get_emotion_mapping(model_name: str):
     """获取情绪映射配置"""
     try:
         # 在模型目录中查找.model3.json文件
-        model_dir = os.path.join('static', model_name)
+        model_dir = get_resource_path(os.path.join('static', model_name))
         if not os.path.exists(model_dir):
             return JSONResponse(status_code=404, content={"success": False, "error": "模型目录不存在"})
         
@@ -379,4 +386,5 @@ async def cleanup_disconnected_clients():
 
 
 if __name__ == "__main__":
-    uvicorn.run("monitor:app", host="0.0.0.0", port=MONITOR_SERVER_PORT, reload=True)
+    # 在打包环境中，直接传递 app 对象而不是字符串
+    uvicorn.run(app, host="0.0.0.0", port=MONITOR_SERVER_PORT, reload=False)
