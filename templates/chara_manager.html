@@ -429,7 +429,7 @@ function showCatgirlForm(key, container) {
                 <div class="field-row">
                     <label>voice_id</label>
                     <select name="voice_id" class="form-control" style="flex:1">
-                        <option value="">请选择音色</option>
+                        <option value="">未指定音色</option>
                     </select>
                     <button type="button" class="btn sm" onclick="openVoiceClone('${key || ''}')">注册新声音</button>
                 </div>
@@ -523,7 +523,7 @@ function showCatgirlForm(key, container) {
             const select = form.querySelector('select[name="voice_id"]');
             if (select) {
                 // 清空现有选项
-                select.innerHTML = '<option value="">请选择音色</option>';
+                select.innerHTML = '<option value="">未指定音色</option>';
                 // 添加音色选项
                 Object.entries(data.voices).forEach(([voiceId, voiceData]) => {
                     const option = document.createElement('option');

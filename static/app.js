@@ -587,14 +587,14 @@ function init_app(){
         stopButton.disabled = true;
         resetSessionButton.disabled = false;
         
+        // 显示文本输入区
+        const textInputArea = document.getElementById('text-input-area');
+        textInputArea.classList.remove('hidden');
+        
         // 停止录音后，重置主动搭话退避级别并开始定时
         if (proactiveChatEnabled) {
             resetProactiveChatBackoff();
         }
-        
-        // 显示文本输入区
-        const textInputArea = document.getElementById('text-input-area');
-        textInputArea.classList.remove('hidden');
         
         // 如果是从语音模式切换回来，显示待机状态
         showStatusToast(`${lanlan_config.lanlan_name}待机中...`, 2000);
@@ -1035,13 +1035,12 @@ function init_app(){
         updateScreenshotCount();
         screenshotCounter = 0;
         
-        // 结束会话后，重置主动搭话计时器（如果已开启）
-        if (proactiveChatEnabled) {
-            resetProactiveChatBackoff();
-        }
-        
         // 如果不是"请她离开"模式，才显示文本输入区并启用按钮
         if (!isGoodbyeMode) {
+            // 结束会话后，重置主动搭话计时器（如果已开启）
+            if (proactiveChatEnabled) {
+                resetProactiveChatBackoff();
+            }
             // 显示文本输入区
             const textInputArea = document.getElementById('text-input-area');
             textInputArea.classList.remove('hidden');
@@ -1073,6 +1072,9 @@ function init_app(){
             screenButton.disabled = true;
             stopButton.disabled = true;
             resetSessionButton.disabled = true;
+            
+            // "请她离开"时，停止主动搭话定时器
+            stopProactiveChatSchedule();
             
             showStatusToast('', 0);
         }

@@ -1071,8 +1071,12 @@ async def add_catgirl(request: Request):
     # 创建猫娘数据，只保存非空字段
     catgirl_data = {}
     for k, v in data.items():
-        if k != '档案名' and v:  # 只保存非空字段
-            catgirl_data[k] = v
+        if k != '档案名':
+            # voice_id 特殊处理：空字符串表示删除该字段
+            if k == 'voice_id' and v == '':
+                continue  # 不添加该字段，相当于删除
+            elif v:  # 只保存非空字段
+                catgirl_data[k] = v
     
     characters['猫娘'][key] = catgirl_data
     _config_manager.save_characters(characters)
@@ -1095,7 +1099,8 @@ async def update_catgirl(name: str, request: Request):
     # 如果包含voice_id，验证其有效性
     if 'voice_id' in data:
         voice_id = data['voice_id']
-        if not _config_manager.validate_voice_id(voice_id):
+        # 空字符串表示删除voice_id，跳过验证
+        if voice_id != '' and not _config_manager.validate_voice_id(voice_id):
             voices = _config_manager.get_voices_for_current_api()
             available_voices = list(voices.keys())
             return JSONResponse({
@@ -1111,8 +1116,16 @@ async def update_catgirl(name: str, request: Request):
             removed_fields.append(k)
     for k in removed_fields:
         characters['猫娘'][name].pop(k)
+    
+    # 处理voice_id的特殊逻辑：如果传入空字符串，则删除该字段
+    if 'voice_id' in data and data['voice_id'] == '':
+        characters['猫娘'][name].pop('voice_id', None)
+    
+    # 更新其他字段
     for k, v in data.items():
-        if k not in ('档案名') and v:
+        if k not in ('档案名', 'voice_id') and v:
+            characters['猫娘'][name][k] = v
+        elif k == 'voice_id' and v:  # voice_id非空时才更新
             characters['猫娘'][name][k] = v
     _config_manager.save_characters(characters)
     
