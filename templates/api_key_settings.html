@@ -488,192 +488,184 @@
                 <input type="text" id="assistApiKeyInputSilicon" placeholder="可选，默认为核心API Key" value="" style="max-width: 600px;">
             </div>
             
-            <!-- MCP Router Token设置 -->
+            <!-- MCP Router Token设置（仅保留输入框） -->
             <div class="field-row" style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #6c757d;">
-                <h4 style="color: #6c757d; margin-bottom: 16px;">🔗 MCP Router 设置</h4>
-                <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 16px; margin-bottom: 16px; font-size: 0.9em; color: #495057; line-height: 1.5;">
-                    <strong>💡 MCP Router说明：</strong><br>
-                    MCP Router用于连接和管理多个MCP服务器，提供统一的API接口。此设置与API配置无关，是独立的服务配置项。
+                <label for="mcpTokenInput">
+                    MCP Router Token
+                    <div class="tooltip-container">
+                        <span class="tooltip-icon">?</span>
+                        <div class="tooltip-content">
+                            <strong>MCP Router Token说明：</strong><br>
+                            用于访问MCP Router服务的认证令牌，启用MCP功能时需要填写。如果您的MCP Router不需要认证，可以留空。
+                        </div>
+                    </div>
+                </label>
+                <input type="text" id="mcpTokenInput" placeholder="请输入MCP Router Token（可选）" value="" style="width: 100%; max-width: 600px; padding: 10px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 1rem; font-family: 'Courier New', monospace;">
+            </div>
+            
+            <!-- 用户自定义API配置（位于高级选项内部最下方） -->
+            <div id="custom-api-section" style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #6c757d;">
+                <div style="margin-bottom: 8px; cursor: pointer; user-select: none; display: flex; align-items: center;" onclick="toggleCustomApiSection()">
+                    <span id="custom-api-arrow" style="font-size: 1.2em; margin-right: 6px; transition: transform 0.2s;">▶</span>
+                    <span style="font-weight: bold; color: #6c757d;">自定义API配置</span>
                 </div>
-                
-                <div class="field-row">
-                    <label for="mcpTokenInput">
-                        MCP Router Token
-                        <div class="tooltip-container">
-                            <span class="tooltip-icon">?</span>
-                            <div class="tooltip-content">
-                                <strong>MCP Router Token说明：</strong><br>
-                                用于访问MCP Router服务的认证令牌，启用MCP功能时需要填写。如果您的MCP Router不需要认证，可以留空。
+                <div id="custom-api-options" style="display: none; padding: 12px 0 0 0; border-top: 1px solid #eee;">
+                    <div style="background: #f0f8ff; border: 1px solid #b3d9ff; border-radius: 6px; padding: 16px; margin-bottom: 16px; font-size: 0.9em; color: #0d6efd; line-height: 1.5;">
+                        <strong>💡 自定义API说明：</strong><br>
+                        这些API用于特定的功能模块，如摘要生成、文本纠错、情感分析、视觉识别、全模态对话和语音合成。每个API都需要单独配置供应商、URL和API Key。<br>
+                        <strong>⚠️ 注意：启用自定义API后，核心API和辅助API将被禁用且无法修改。</strong>
+                    </div>
+                    
+                    <!-- 启用自定义API开关 -->
+                    <div class="field-row" style="margin-bottom: 20px;">
+                        <label for="enableCustomApi" style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="enableCustomApi" style="margin-right: 8px; width: 18px; height: 18px;">
+                            <span style="font-weight: bold;">启用自定义API配置</span>
+                        </label>
+                        <div style="color: #666; font-size: 0.9em; margin-top: 4px;">
+                            启用后将使用自定义API配置，禁用核心API和辅助API的修改
+                        </div>
+                    </div>
+                    
+                    <!-- 自定义API折叠容器 -->
+                    <div id="custom-api-container" class="custom-api-container" style="display: none;">
+                        
+                        <!-- 摘要模型配置 -->
+                        <div class="model-config-container">
+                            <div class="model-header" onclick="toggleModelConfig('summary')">
+                                <span class="model-title">📝 摘要模型配置</span>
+                                <span class="toggle-icon">▼</span>
+                            </div>
+                            <div id="summary-model-content" class="model-content">
+                                <div class="field-row">
+                                    <label for="summaryModelProvider">供应商</label>
+                                    <input type="text" id="summaryModelProvider" placeholder="如：openai、azure、custom" value="" style="max-width: 600px;">
+                                </div>
+                                <div class="field-row">
+                                    <label for="summaryModelUrl">API URL</label>
+                                    <input type="text" id="summaryModelUrl" placeholder="如：https://api.openai.com/v1/chat/completions" value="" style="max-width: 600px;">
+                                </div>
+                                <div class="field-row">
+                                    <label for="summaryModelApiKey">API Key</label>
+                                    <input type="text" id="summaryModelApiKey" placeholder="请输入摘要模型的API Key" value="" style="max-width: 600px;">
+                                </div>
                             </div>
                         </div>
-                    </label>
-                    <input type="text" id="mcpTokenInput" placeholder="请输入MCP Router Token（可选）" value="" style="width: 100%; max-width: 600px; padding: 10px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 1rem; font-family: 'Courier New', monospace;">
+                        
+                        <!-- 纠错模型配置 -->
+                        <div class="model-config-container">
+                            <div class="model-header" onclick="toggleModelConfig('correction')">
+                                <span class="model-title">✏️ 纠错模型配置</span>
+                                <span class="toggle-icon">▼</span>
+                            </div>
+                            <div id="correction-model-content" class="model-content">
+                                <div class="field-row">
+                                    <label for="correctionModelProvider">供应商</label>
+                                    <input type="text" id="correctionModelProvider" placeholder="如：openai、azure、custom" value="" style="max-width: 600px;">
+                                </div>
+                                <div class="field-row">
+                                    <label for="correctionModelUrl">API URL</label>
+                                    <input type="text" id="correctionModelUrl" placeholder="如：https://api.openai.com/v1/chat/completions" value="" style="max-width: 600px;">
+                                </div>
+                                <div class="field-row">
+                                    <label for="correctionModelApiKey">API Key</label>
+                                    <input type="text" id="correctionModelApiKey" placeholder="请输入纠错模型的API Key" value="" style="max-width: 600px;">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 情感模型配置 -->
+                        <div class="model-config-container">
+                            <div class="model-header" onclick="toggleModelConfig('emotion')">
+                                <span class="model-title">😊 情感模型配置</span>
+                                <span class="toggle-icon">▼</span>
+                            </div>
+                            <div id="emotion-model-content" class="model-content">
+                                <div class="field-row">
+                                    <label for="emotionModelProvider">供应商</label>
+                                    <input type="text" id="emotionModelProvider" placeholder="如：openai、azure、custom" value="" style="max-width: 600px;">
+                                </div>
+                                <div class="field-row">
+                                    <label for="emotionModelUrl">API URL</label>
+                                    <input type="text" id="emotionModelUrl" placeholder="如：https://api.openai.com/v1/chat/completions" value="" style="max-width: 600px;">
+                                </div>
+                                <div class="field-row">
+                                    <label for="emotionModelApiKey">API Key</label>
+                                    <input type="text" id="emotionModelApiKey" placeholder="请输入情感模型的API Key" value="" style="max-width: 600px;">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 视觉模型配置 -->
+                        <div class="model-config-container">
+                            <div class="model-header" onclick="toggleModelConfig('vision')">
+                                <span class="model-title">👁️ 视觉模型配置</span>
+                                <span class="toggle-icon">▼</span>
+                            </div>
+                            <div id="vision-model-content" class="model-content">
+                                <div class="field-row">
+                                    <label for="visionModelProvider">供应商</label>
+                                    <input type="text" id="visionModelProvider" placeholder="如：openai、azure、custom" value="" style="max-width: 600px;">
+                                </div>
+                                <div class="field-row">
+                                    <label for="visionModelUrl">API URL</label>
+                                    <input type="text" id="visionModelUrl" placeholder="如：https://api.openai.com/v1/chat/completions" value="" style="max-width: 600px;">
+                                </div>
+                                <div class="field-row">
+                                    <label for="visionModelApiKey">API Key</label>
+                                    <input type="text" id="visionModelApiKey" placeholder="请输入视觉模型的API Key" value="" style="max-width: 600px;">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 全模态模型配置 -->
+                        <div class="model-config-container">
+                            <div class="model-header" onclick="toggleModelConfig('omni')">
+                                <span class="model-title">🌐 全模态模型配置</span>
+                                <span class="toggle-icon">▼</span>
+                            </div>
+                            <div id="omni-model-content" class="model-content">
+                                <div class="field-row">
+                                    <label for="omniModelProvider">供应商</label>
+                                    <input type="text" id="omniModelProvider" placeholder="如：aliyun、custom" value="" style="max-width: 600px;">
+                                </div>
+                                <div class="field-row">
+                                    <label for="omniModelUrl">API URL<em>（必须是WebSocket地址，以ws://或wss://开头）</em></label>
+                                    <input type="text" id="omniModelUrl" placeholder="如：wss://dashscope.aliyuncs.com/api-ws/v1/realtime" value="" style="max-width: 600px;">
+                                </div>
+                                <div class="field-row">
+                                    <label for="omniModelApiKey">API Key</label>
+                                    <input type="text" id="omniModelApiKey" placeholder="请输入全模态模型的API Key" value="" style="max-width: 600px;">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- TTS模型配置 -->
+                        <div class="model-config-container">
+                            <div class="model-header" onclick="toggleModelConfig('tts')">
+                                <span class="model-title">🔊 TTS模型配置</span>
+                                <span class="toggle-icon">▼</span>
+                            </div>
+                            <div id="tts-model-content" class="model-content">
+                                <div class="field-row">
+                                    <label for="ttsModelProvider">供应商</label>
+                                    <input type="text" id="ttsModelProvider" placeholder="如：aliyun、azure、custom" value="" style="max-width: 600px;">
+                                </div>
+                                <div class="field-row">
+                                    <label for="ttsModelUrl">API URL</label>
+                                    <input type="text" id="ttsModelUrl" placeholder="如：https://dashscope.aliyuncs.com/api/v1/services/aigc/tts/chat" value="" style="max-width: 600px;">
+                                </div>
+                                <div class="field-row">
+                                    <label for="ttsModelApiKey">API Key</label>
+                                    <input type="text" id="ttsModelApiKey" placeholder="请输入TTS模型的API Key" value="" style="max-width: 600px;">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-
-    <!-- 用户自定义API配置（位于高级选项下方） -->
-    <div id="custom-api-section" class="section" style="margin-top: 0;">
-    <div style="margin-bottom: 8px; cursor: pointer; user-select: none; display: flex; align-items: center;" onclick="toggleCustomApiSection()">
-        <span id="custom-api-arrow" style="font-size: 1.2em; margin-right: 6px; transition: transform 0.2s;">▶</span>
-        <span style="font-weight: bold; color: #4f8cff;">自定义API配置（可选）</span>
-    </div>
-    <div id="custom-api-options" style="display: none; padding: 12px 0 0 0; border-top: 1px solid #eee;">
-        <div style="background: #f0f8ff; border: 1px solid #b3d9ff; border-radius: 6px; padding: 16px; margin-bottom: 16px; font-size: 0.9em; color: #0d6efd; line-height: 1.5;">
-            <strong>💡 自定义API说明：</strong><br>
-            这些API用于特定的功能模块，如摘要生成、文本纠错、情感分析、视觉识别、全模态对话和语音合成。每个API都需要单独配置供应商、URL和API Key。<br>
-            <strong>⚠️ 注意：启用自定义API后，核心API和辅助API将被禁用且无法修改。</strong>
-        </div>
-        
-        <!-- 启用自定义API开关 -->
-        <div class="field-row" style="margin-bottom: 20px;">
-            <label for="enableCustomApi" style="display: flex; align-items: center; cursor: pointer;">
-                <input type="checkbox" id="enableCustomApi" style="margin-right: 8px; width: 18px; height: 18px;">
-                <span style="font-weight: bold;">启用自定义API配置</span>
-            </label>
-            <div style="color: #666; font-size: 0.9em; margin-top: 4px;">
-                启用后将使用自定义API配置，禁用核心API和辅助API的修改
-            </div>
-        </div>
-        
-        <!-- 自定义API折叠容器 -->
-        <div id="custom-api-container" class="custom-api-container" style="display: none;">
-        
-        <!-- 摘要模型配置 -->
-        <div class="model-config-container">
-            <div class="model-header" onclick="toggleModelConfig('summary')">
-                <span class="model-title">📝 摘要模型配置</span>
-                <span class="toggle-icon">▼</span>
-            </div>
-            <div id="summary-model-content" class="model-content">
-                <div class="field-row">
-                    <label for="summaryModelProvider">供应商</label>
-                    <input type="text" id="summaryModelProvider" placeholder="如：openai、azure、custom" value="" style="max-width: 600px;">
-                </div>
-                <div class="field-row">
-                    <label for="summaryModelUrl">API URL</label>
-                    <input type="text" id="summaryModelUrl" placeholder="如：https://api.openai.com/v1/chat/completions" value="" style="max-width: 600px;">
-                </div>
-                <div class="field-row">
-                    <label for="summaryModelApiKey">API Key</label>
-                    <input type="text" id="summaryModelApiKey" placeholder="请输入摘要模型的API Key" value="" style="max-width: 600px;">
-                </div>
-            </div>
-        </div>
-        
-        <!-- 纠错模型配置 -->
-        <div class="model-config-container">
-            <div class="model-header" onclick="toggleModelConfig('correction')">
-                <span class="model-title">✏️ 纠错模型配置</span>
-                <span class="toggle-icon">▼</span>
-            </div>
-            <div id="correction-model-content" class="model-content">
-                <div class="field-row">
-                    <label for="correctionModelProvider">供应商</label>
-                    <input type="text" id="correctionModelProvider" placeholder="如：openai、azure、custom" value="" style="max-width: 600px;">
-                </div>
-                <div class="field-row">
-                    <label for="correctionModelUrl">API URL</label>
-                    <input type="text" id="correctionModelUrl" placeholder="如：https://api.openai.com/v1/chat/completions" value="" style="max-width: 600px;">
-                </div>
-                <div class="field-row">
-                    <label for="correctionModelApiKey">API Key</label>
-                    <input type="text" id="correctionModelApiKey" placeholder="请输入纠错模型的API Key" value="" style="max-width: 600px;">
-                </div>
-            </div>
-        </div>
-        
-        <!-- 情感模型配置 -->
-        <div class="model-config-container">
-            <div class="model-header" onclick="toggleModelConfig('emotion')">
-                <span class="model-title">😊 情感模型配置</span>
-                <span class="toggle-icon">▼</span>
-            </div>
-            <div id="emotion-model-content" class="model-content">
-                <div class="field-row">
-                    <label for="emotionModelProvider">供应商</label>
-                    <input type="text" id="emotionModelProvider" placeholder="如：openai、azure、custom" value="" style="max-width: 600px;">
-                </div>
-                <div class="field-row">
-                    <label for="emotionModelUrl">API URL</label>
-                    <input type="text" id="emotionModelUrl" placeholder="如：https://api.openai.com/v1/chat/completions" value="" style="max-width: 600px;">
-                </div>
-                <div class="field-row">
-                    <label for="emotionModelApiKey">API Key</label>
-                    <input type="text" id="emotionModelApiKey" placeholder="请输入情感模型的API Key" value="" style="max-width: 600px;">
-                </div>
-            </div>
-        </div>
-        
-        <!-- 视觉模型配置 -->
-        <div class="model-config-container">
-            <div class="model-header" onclick="toggleModelConfig('vision')">
-                <span class="model-title">👁️ 视觉模型配置</span>
-                <span class="toggle-icon">▼</span>
-            </div>
-            <div id="vision-model-content" class="model-content">
-                <div class="field-row">
-                    <label for="visionModelProvider">供应商</label>
-                    <input type="text" id="visionModelProvider" placeholder="如：openai、azure、custom" value="" style="max-width: 600px;">
-                </div>
-                <div class="field-row">
-                    <label for="visionModelUrl">API URL</label>
-                    <input type="text" id="visionModelUrl" placeholder="如：https://api.openai.com/v1/chat/completions" value="" style="max-width: 600px;">
-                </div>
-                <div class="field-row">
-                    <label for="visionModelApiKey">API Key</label>
-                    <input type="text" id="visionModelApiKey" placeholder="请输入视觉模型的API Key" value="" style="max-width: 600px;">
-                </div>
-            </div>
-        </div>
-        
-        <!-- 全模态模型配置 -->
-        <div class="model-config-container">
-            <div class="model-header" onclick="toggleModelConfig('omni')">
-                <span class="model-title">🌐 全模态模型配置</span>
-                <span class="toggle-icon">▼</span>
-            </div>
-            <div id="omni-model-content" class="model-content">
-                <div class="field-row">
-                    <label for="omniModelProvider">供应商</label>
-                    <input type="text" id="omniModelProvider" placeholder="如：aliyun、custom" value="" style="max-width: 600px;">
-                </div>
-                <div class="field-row">
-                    <label for="omniModelUrl">API URL<em>（必须是WebSocket地址，以ws://或wss://开头）</em></label>
-                    <input type="text" id="omniModelUrl" placeholder="如：wss://dashscope.aliyuncs.com/api-ws/v1/realtime" value="" style="max-width: 600px;">
-                </div>
-                <div class="field-row">
-                    <label for="omniModelApiKey">API Key</label>
-                    <input type="text" id="omniModelApiKey" placeholder="请输入全模态模型的API Key" value="" style="max-width: 600px;">
-                </div>
-            </div>
-        </div>
-        
-        <!-- TTS模型配置 -->
-        <div class="model-config-container">
-            <div class="model-header" onclick="toggleModelConfig('tts')">
-                <span class="model-title">🔊 TTS模型配置</span>
-                <span class="toggle-icon">▼</span>
-            </div>
-            <div id="tts-model-content" class="model-content">
-                <div class="field-row">
-                    <label for="ttsModelProvider">供应商</label>
-                    <input type="text" id="ttsModelProvider" placeholder="如：aliyun、azure、custom" value="" style="max-width: 600px;">
-                </div>
-                <div class="field-row">
-                    <label for="ttsModelUrl">API URL</label>
-                    <input type="text" id="ttsModelUrl" placeholder="如：https://dashscope.aliyuncs.com/api/v1/services/aigc/tts/chat" value="" style="max-width: 600px;">
-                </div>
-                <div class="field-row">
-                    <label for="ttsModelApiKey">API Key</label>
-                    <input type="text" id="ttsModelApiKey" placeholder="请输入TTS模型的API Key" value="" style="max-width: 600px;">
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-</div>
 
 <!-- 弹出式警告 -->
 <div id="warning-modal" class="modal-overlay" onclick="closeWarningModal()">
