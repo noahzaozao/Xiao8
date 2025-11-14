@@ -1559,6 +1559,17 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
                 try:
                     _config_manager.save_voice_for_current_api(voice_id, voice_data)
                     logger.info(f"voice_id已保存到音色库: {voice_id}")
+                    
+                    # 验证voice_id是否能够被正确读取
+                    if not _config_manager.validate_voice_id(voice_id):
+                        logger.error(f"voice_id保存后验证失败: {voice_id}")
+                        return JSONResponse({
+                            'error': f'音色注册成功但保存验证失败，请重试',
+                            'voice_id': voice_id,
+                            'file_url': tmp_url
+                        }, status_code=500)
+                    logger.info(f"voice_id保存验证成功: {voice_id}")
+                    
                 except Exception as save_error:
                     logger.error(f"保存voice_id到音色库失败: {save_error}")
                     return JSONResponse({
