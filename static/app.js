@@ -113,9 +113,8 @@ function init_app(){
     let proactiveChatBackoffLevel = 0; // 退避级别：0=30s, 1=1min, 2=2min, 3=4min, etc.
     const PROACTIVE_CHAT_BASE_DELAY = 30000; // 30秒基础延迟
     
-    // Focus模式相关（兼容原有的focus_mode）
     // Focus模式为true时，AI播放语音时会自动静音麦克风（不允许打断）
-    let focusModeEnabled = (typeof focus_mode !== 'undefined' && focus_mode === true) ? true : false;
+    let focusModeEnabled = false;
     
     // 暴露到全局作用域，供 live2d.js 等其他模块访问和修改
     window.proactiveChatEnabled = proactiveChatEnabled;
@@ -2659,12 +2658,8 @@ function init_app(){
                 const settings = JSON.parse(saved);
                 proactiveChatEnabled = settings.proactiveChatEnabled || false;
                 window.proactiveChatEnabled = proactiveChatEnabled; // 同步到全局
-                // Focus模式：兼容URL传入的focus_mode或localStorage保存的设置
-                if (typeof focus_mode !== 'undefined' && focus_mode === true) {
-                    focusModeEnabled = true;
-                } else {
-                    focusModeEnabled = settings.focusModeEnabled || false;
-                }
+                // Focus模式：从localStorage加载设置
+                focusModeEnabled = settings.focusModeEnabled || false;
                 window.focusModeEnabled = focusModeEnabled; // 同步到全局
                 
                 console.log('已加载设置:', {

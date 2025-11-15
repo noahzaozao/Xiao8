@@ -208,37 +208,10 @@ def set_start_config(config):
 
 @app.get("/", response_class=HTMLResponse)
 async def get_default_index(request: Request):
-    # 每次动态获取角色数据
-    _, her_name, _, lanlan_basic_config, _, _, _, _, _, _ = _config_manager.get_character_data()
-    # 获取live2d字段
-    live2d = lanlan_basic_config.get(her_name, {}).get('live2d', 'mao_pro')
-    # 查找所有模型
-    models = find_models()
-    # 根据live2d字段查找对应的model path
-    model_path = next((m["path"] for m in models if m["name"] == live2d), find_model_config_file(live2d))
     return templates.TemplateResponse("templates/index.html", {
-        "request": request,
-        "lanlan_name": her_name,
-        "model_path": model_path,
-        "focus_mode": False
+        "request": request
     })
 
-@app.get("/focus", response_class=HTMLResponse)
-async def get_default_focus_index(request: Request):
-    # 每次动态获取角色数据
-    _, her_name, _, lanlan_basic_config, _, _, _, _, _, _ = _config_manager.get_character_data()
-    # 获取live2d字段
-    live2d = lanlan_basic_config.get(her_name, {}).get('live2d', 'mao_pro')
-    # 查找所有模型
-    models = find_models()
-    # 根据live2d字段查找对应的model path
-    model_path = next((m["path"] for m in models if m["name"] == live2d), find_model_config_file(live2d))
-    return templates.TemplateResponse("templates/index.html", {
-        "request": request,
-        "lanlan_name": her_name,
-        "model_path": model_path,
-        "focus_mode": True
-    })
 
 @app.get("/api/preferences")
 async def get_preferences():
@@ -314,6 +287,39 @@ async def set_preferred_model(request: Request):
             
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+@app.get("/api/config/page_config")
+async def get_page_config(lanlan_name: str = ""):
+    """获取页面配置（lanlan_name 和 model_path）"""
+    try:
+        # 获取角色数据
+        _, her_name, _, lanlan_basic_config, _, _, _, _, _, _ = _config_manager.get_character_data()
+        
+        # 如果提供了 lanlan_name 参数，使用它；否则使用当前角色
+        target_name = lanlan_name if lanlan_name else her_name
+        
+        # 获取 live2d 字段
+        live2d = lanlan_basic_config.get(target_name, {}).get('live2d', 'mao_pro')
+        
+        # 查找所有模型
+        models = find_models()
+        
+        # 根据 live2d 字段查找对应的 model path
+        model_path = next((m["path"] for m in models if m["name"] == live2d), find_model_config_file(live2d))
+        
+        return {
+            "success": True,
+            "lanlan_name": target_name,
+            "model_path": model_path
+        }
+    except Exception as e:
+        logger.error(f"获取页面配置失败: {str(e)}")
+        return {
+            "success": False,
+            "error": str(e),
+            "lanlan_name": "",
+            "model_path": ""
+        }
 
 @app.get("/api/config/core_api")
 async def get_core_config_api():
@@ -869,12 +875,10 @@ async def proactive_chat(request: Request):
         }, status_code=500)
 
 @app.get("/l2d", response_class=HTMLResponse)
-async def get_l2d_manager(request: Request, lanlan_name: str = ""):
+async def get_l2d_manager(request: Request):
     """渲染Live2D模型管理器页面"""
-    _, her_name_current, _, _, _, _, _, _, _, _ = _config_manager.get_character_data()
     return templates.TemplateResponse("templates/l2d_manager.html", {
-        "request": request,
-        "lanlan_name": lanlan_name if lanlan_name else her_name_current
+        "request": request
     })
 
 @app.get('/api/characters/current_live2d_model')
@@ -954,8 +958,8 @@ async def chara_manager(request: Request):
     return templates.TemplateResponse('templates/chara_manager.html', {"request": request})
 
 @app.get('/voice_clone', response_class=HTMLResponse)
-async def voice_clone_page(request: Request, lanlan_name: str = ""):
-    return templates.TemplateResponse("templates/voice_clone.html", {"request": request, "lanlan_name": lanlan_name})
+async def voice_clone_page(request: Request):
+    return templates.TemplateResponse("templates/voice_clone.html", {"request": request})
 
 @app.get("/api_key", response_class=HTMLResponse)
 async def api_key_settings(request: Request):
@@ -1783,7 +1787,7 @@ async def get_recent_files():
 
 @app.get('/api/memory/review_config')
 async def get_review_config():
-    """获取记忆审阅配置"""
+    """获取记忆整理配置"""
     try:
         from utils.config_manager import get_config_manager
         config_manager = get_config_manager()
@@ -1797,12 +1801,12 @@ async def get_review_config():
             # 如果配置文件不存在，默认返回True（开启）
             return {"enabled": True}
     except Exception as e:
-        logger.error(f"读取记忆审阅配置失败: {e}")
+        logger.error(f"读取记忆整理配置失败: {e}")
         return {"enabled": True}
 
 @app.post('/api/memory/review_config')
 async def update_review_config(request: Request):
-    """更新记忆审阅配置"""
+    """更新记忆整理配置"""
     try:
         data = await request.json()
         enabled = data.get('enabled', True)
@@ -1824,10 +1828,10 @@ async def update_review_config(request: Request):
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(config_data, f, ensure_ascii=False, indent=2)
         
-        logger.info(f"记忆审阅配置已更新: enabled={enabled}")
+        logger.info(f"记忆整理配置已更新: enabled={enabled}")
         return {"success": True, "enabled": enabled}
     except Exception as e:
-        logger.error(f"更新记忆审阅配置失败: {e}")
+        logger.error(f"更新记忆整理配置失败: {e}")
         return {"success": False, "error": str(e)}
 
 @app.get('/api/memory/recent_file')
@@ -2360,38 +2364,12 @@ async def emotion_analysis(request: Request):
 async def memory_browser(request: Request):
     return templates.TemplateResponse('templates/memory_browser.html', {"request": request})
 
-@app.get("/focus/{lanlan_name}", response_class=HTMLResponse)
-async def get_focus_index(request: Request, lanlan_name: str):
-    # 每次动态获取角色数据
-    _, _, _, lanlan_basic_config, _, _, _, _, _, _ = _config_manager.get_character_data()
-    # 获取live2d字段
-    live2d = lanlan_basic_config.get(lanlan_name, {}).get('live2d', 'mao_pro')
-    # 查找所有模型
-    models = find_models()
-    # 根据live2d字段查找对应的model path
-    model_path = next((m["path"] for m in models if m["name"] == live2d), find_model_config_file(live2d))
-    return templates.TemplateResponse("templates/index.html", {
-        "request": request,
-        "lanlan_name": lanlan_name,
-        "model_path": model_path,
-        "focus_mode": True
-    })
 
 @app.get("/{lanlan_name}", response_class=HTMLResponse)
 async def get_index(request: Request, lanlan_name: str):
-    # 每次动态获取角色数据
-    _, _, _, lanlan_basic_config, _, _, _, _, _, _ = _config_manager.get_character_data()
-    # 获取live2d字段
-    live2d = lanlan_basic_config.get(lanlan_name, {}).get('live2d', 'mao_pro')
-    # 查找所有模型
-    models = find_models()
-    # 根据live2d字段查找对应的model path
-    model_path = next((m["path"] for m in models if m["name"] == live2d), find_model_config_file(live2d))
+    # lanlan_name 将从 URL 中提取，前端会通过 API 获取配置
     return templates.TemplateResponse("templates/index.html", {
-        "request": request,
-        "lanlan_name": lanlan_name,
-        "model_path": model_path,
-        "focus_mode": False
+        "request": request
     })
 
 @app.post('/api/agent/flags')
