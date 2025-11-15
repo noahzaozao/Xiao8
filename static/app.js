@@ -2111,6 +2111,46 @@ function init_app(){
     
     // ========== Agent控制逻辑 ==========
     
+    // Agent 定时检查器
+    let agentCheckInterval = null;
+    
+    // 启动 Agent 可用性定时检查
+    function startAgentAvailabilityCheck() {
+        // 清除之前的定时器
+        if (agentCheckInterval) {
+            clearInterval(agentCheckInterval);
+        }
+        
+        // 每秒检查一次键鼠控制和MCP工具的可用性
+        const checkAgentCapabilities = async () => {
+            const checks = [
+                { id: 'live2d-agent-keyboard', capability: 'computer_use', name: '键鼠控制' },
+                { id: 'live2d-agent-mcp', capability: 'mcp', name: 'MCP工具' }
+            ];
+            for (const {id, capability, name} of checks) {
+                const cb = document.getElementById(id);
+                if (!cb) continue;
+                const available = await checkCapability(capability, false);
+                cb.disabled = !available;
+                cb.title = available ? name : `${name}不可用`;
+            }
+        };
+        
+        // 立即检查一次
+        checkAgentCapabilities();
+        
+        // 每秒检查一次
+        agentCheckInterval = setInterval(checkAgentCapabilities, 1000);
+    }
+    
+    // 停止 Agent 可用性定时检查
+    function stopAgentAvailabilityCheck() {
+        if (agentCheckInterval) {
+            clearInterval(agentCheckInterval);
+            agentCheckInterval = null;
+        }
+    }
+    
     // 浮动Agent status更新函数
     function setFloatingAgentStatus(msg) {
         const statusEl = document.getElementById('live2d-agent-status');
@@ -2132,31 +2172,24 @@ function init_app(){
     
     // 检查Agent能力
     async function checkCapability(kind, showError = true) {
+        const apis = {
+            computer_use: { url: '/api/agent/computer_use/availability', name: '键鼠控制' },
+            mcp: { url: '/api/agent/mcp/availability', name: 'MCP工具' }
+        };
+        const config = apis[kind];
+        if (!config) return false;
+        
         try {
-            if (kind === 'computer_use') {
-                const r = await fetch(`/api/agent/computer_use/availability`);
-                if (!r.ok) return false;
-                const j = await r.json();
-                if (!j.ready) {
-                    if (showError) {
-                        setFloatingAgentStatus((j.reasons && j.reasons[0]) || '键鼠控制不可用');
-                    }
-                    return false;
+            const r = await fetch(config.url);
+            if (!r.ok) return false;
+            const j = await r.json();
+            if (!j.ready) {
+                if (showError) {
+                    setFloatingAgentStatus(j.reasons?.[0] || `${config.name}不可用`);
                 }
-                return true;
-            } else if (kind === 'mcp') {
-                const r = await fetch(`/api/agent/mcp/availability`);
-                if (!r.ok) return false;
-                const j = await r.json();
-                if (!j.ready) {
-                    if (showError) {
-                        setFloatingAgentStatus((j.reasons && j.reasons[0]) || 'MCP不可用');
-                    }
-                    return false;
-                }
-                return true;
+                return false;
             }
-            return false;
+            return true;
         } catch (e) {
             return false;
         }
@@ -2170,6 +2203,19 @@ function init_app(){
         
         if (!agentMasterCheckbox) return;
         
+        // 初始化时，确保键鼠控制和MCP工具默认禁用（除非Agent总开关已开启）
+        const setSubCheckboxes = (disabled, checked = null) => {
+            [agentKeyboardCheckbox, agentMcpCheckbox].forEach(cb => {
+                if (cb) {
+                    cb.disabled = disabled;
+                    if (checked !== null) cb.checked = checked;
+                }
+            });
+        };
+        if (!agentMasterCheckbox.checked) {
+            setSubCheckboxes(true);
+        }
+        
         // Agent总开关逻辑
         agentMasterCheckbox.addEventListener('change', async () => {
             if (agentMasterCheckbox.checked) {
@@ -2182,8 +2228,22 @@ function init_app(){
                     return;
                 }
                 setFloatingAgentStatus('Agent模式已开启');
-                if (agentKeyboardCheckbox) agentKeyboardCheckbox.disabled = false;
-                if (agentMcpCheckbox) agentMcpCheckbox.disabled = false;
+                
+                // 检查键鼠控制和MCP工具的可用性
+                await Promise.all([
+                    (async () => {
+                        if (!agentKeyboardCheckbox) return;
+                        const available = await checkCapability('computer_use', false);
+                        agentKeyboardCheckbox.disabled = !available;
+                        agentKeyboardCheckbox.title = available ? '键鼠控制' : '键鼠控制不可用';
+                    })(),
+                    (async () => {
+                        if (!agentMcpCheckbox) return;
+                        const available = await checkCapability('mcp', false);
+                        agentMcpCheckbox.disabled = !available;
+                        agentMcpCheckbox.title = available ? 'MCP工具' : 'MCP工具不可用';
+                    })()
+                ]);
                 
                 try {
                     const r = await fetch('/api/agent/flags', {
@@ -2195,24 +2255,22 @@ function init_app(){
                         })
                     });
                     if (!r.ok) throw new Error('main_server rejected');
+                    
+                    // 启动定时检查器
+                    startAgentAvailabilityCheck();
                 } catch(e) {
                     agentMasterCheckbox.checked = false;
-                    if (agentKeyboardCheckbox) agentKeyboardCheckbox.disabled = true;
-                    if (agentMcpCheckbox) agentMcpCheckbox.disabled = true;
+                    setSubCheckboxes(true);
                     setFloatingAgentStatus('开启失败');
                 }
             } else {
                 setFloatingAgentStatus('Agent模式已关闭');
                 
+                // 停止定时检查器
+                stopAgentAvailabilityCheck();
+                
                 // 重置子开关
-                if (agentKeyboardCheckbox) {
-                    agentKeyboardCheckbox.checked = false;
-                    agentKeyboardCheckbox.disabled = true;
-                }
-                if (agentMcpCheckbox) {
-                    agentMcpCheckbox.checked = false;
-                    agentMcpCheckbox.disabled = true;
-                }
+                setSubCheckboxes(true, false);
                 
                 // 停止所有任务并重置状态
                 try {
@@ -2236,91 +2294,50 @@ function init_app(){
             }
         });
         
-        // 键鼠控制开关逻辑
-        if (agentKeyboardCheckbox) {
-            agentKeyboardCheckbox.addEventListener('change', async () => {
-                if (agentKeyboardCheckbox.checked) {
-                    try {
-                        const ok = await checkCapability('computer_use');
-                        if (!ok) throw new Error('not available');
-                    } catch (e) {
-                        setFloatingAgentStatus('键鼠控制不可用');
-                        agentKeyboardCheckbox.checked = false;
+        // 子开关通用处理函数
+        const setupSubCheckbox = (checkbox, capability, flagKey, name) => {
+            if (!checkbox) return;
+            checkbox.addEventListener('change', async () => {
+                if (!agentMasterCheckbox?.checked) {
+                    checkbox.checked = false;
+                    return;
+                }
+                
+                const enabled = checkbox.checked;
+                if (enabled) {
+                    const ok = await checkCapability(capability);
+                    if (!ok) {
+                        setFloatingAgentStatus(`${name}不可用`);
+                        checkbox.checked = false;
                         return;
                     }
-                    try {
-                        const r = await fetch('/api/agent/flags', {
-                            method:'POST', 
-                            headers:{'Content-Type':'application/json'}, 
-                            body: JSON.stringify({
-                                lanlan_name: lanlan_config.lanlan_name, 
-                                flags: {computer_use_enabled:true}
-                            })
-                        });
-                        if (!r.ok) throw new Error('main_server rejected');
-                        setFloatingAgentStatus('键鼠控制已开启');
-                    } catch(e) {
-                        agentKeyboardCheckbox.checked = false;
-                        setFloatingAgentStatus('键鼠控制开启失败');
+                }
+                
+                try {
+                    const r = await fetch('/api/agent/flags', {
+                        method:'POST', 
+                        headers:{'Content-Type':'application/json'}, 
+                        body: JSON.stringify({
+                            lanlan_name: lanlan_config.lanlan_name, 
+                            flags: {[flagKey]: enabled}
+                        })
+                    });
+                    if (!r.ok) throw new Error('main_server rejected');
+                    setFloatingAgentStatus(enabled ? `${name}已开启` : `${name}已关闭`);
+                } catch(e) {
+                    if (enabled) {
+                        checkbox.checked = false;
+                        setFloatingAgentStatus(`${name}开启失败`);
                     }
-                } else {
-                    setFloatingAgentStatus('键鼠控制已关闭');
-                    try { 
-                        await fetch('/api/agent/flags', {
-                            method:'POST', 
-                            headers:{'Content-Type':'application/json'}, 
-                            body: JSON.stringify({
-                                lanlan_name: lanlan_config.lanlan_name, 
-                                flags: {computer_use_enabled:false}
-                            })
-                        }); 
-                    } catch(e){}
                 }
             });
-        }
+        };
+        
+        // 键鼠控制开关逻辑
+        setupSubCheckbox(agentKeyboardCheckbox, 'computer_use', 'computer_use_enabled', '键鼠控制');
         
         // MCP工具开关逻辑
-        if (agentMcpCheckbox) {
-            agentMcpCheckbox.addEventListener('change', async () => {
-                if (agentMcpCheckbox.checked) {
-                    try {
-                        const ok = await checkCapability('mcp');
-                        if (!ok) throw new Error('not available');
-                    } catch (e) {
-                        setFloatingAgentStatus('MCP插件不可用');
-                        agentMcpCheckbox.checked = false;
-                        return;
-                    }
-                    try {
-                        const r = await fetch('/api/agent/flags', {
-                            method:'POST', 
-                            headers:{'Content-Type':'application/json'}, 
-                            body: JSON.stringify({
-                                lanlan_name: lanlan_config.lanlan_name, 
-                                flags: {mcp_enabled:true}
-                            })
-                        });
-                        if (!r.ok) throw new Error('main_server rejected');
-                        setFloatingAgentStatus('MCP插件已开启');
-                    } catch(e) {
-                        agentMcpCheckbox.checked = false;
-                        setFloatingAgentStatus('MCP开启失败');
-                    }
-                } else {
-                    setFloatingAgentStatus('MCP插件已关闭');
-                    try { 
-                        await fetch('/api/agent/flags', {
-                            method:'POST', 
-                            headers:{'Content-Type':'application/json'}, 
-                            body: JSON.stringify({
-                                lanlan_name: lanlan_config.lanlan_name, 
-                                flags: {mcp_enabled:false}
-                            })
-                        }); 
-                    } catch(e){}
-                }
-            });
-        }
+        setupSubCheckbox(agentMcpCheckbox, 'mcp', 'mcp_enabled', 'MCP工具');
     }, 1000); // 延迟执行，确保浮动按钮已创建
     
     // 麦克风权限和设备列表预加载（修复 UI 2.0 中权限请求时机导致的bug）
