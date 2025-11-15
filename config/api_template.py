@@ -7,13 +7,18 @@ AUDIO_API_KEY和OPENROUTER_API_KEY的如果留空，则会默认使用CORE_API_K
 # Constant for servers
 OPENROUTER_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"#"https://openrouter.ai/api/v1"
 CORE_URL = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"#wss://api.openai.com/v1/realtime
-CORE_MODEL = "qwen-omni-turbo-realtime"#gpt-4o-realtime-preview
+CORE_MODEL = "qwen3-omni-flash-realtime" #gpt-4o-realtime-preview
+VISION_MODEL = "qwen3-vl-plus-2025-09-23" #gpt-5-chat-latest
 MAIN_SERVER_PORT = 48911
 MEMORY_SERVER_PORT = 48912
 MONITOR_SERVER_PORT = 48913
 COMMENTER_SERVER_PORT = 48914
 CORE_API_KEY = ''
 AUDIO_API_KEY = OPENROUTER_API_KEY = ''
+TOOL_SERVER_PORT = 48915
+MCP_ROUTER_URL = 'http://localhost:3283'
+MCP_ROUTER_API_KEY = 'Copy from MCP Router if needed'
+
 
 # Variable for models
 ROUTER_MODEL = 'openai/gpt-4.1'
@@ -23,3 +28,33 @@ SETTING_VERIFIER_MODEL = "qwen-max"#'openai/o4-mini'
 SEMANTIC_MODEL = 'text-embedding-v4'#'text-embedding-3-small'
 RERANKER_MODEL = 'qwen-plus'#'openai/gpt-4.1'
 CORRECTION_MODEL = 'qwen-max'
+EMOTION_MODEL = 'qwen-turbo'
+
+# User custom API configurations
+OMNI_MODEL = "" # 全模态模型(语音+文字+图片)
+TTS_MODEL = "" # TTS模型(Native TTS)
+
+# User custom API URLs and providers
+SUMMARY_MODEL_PROVIDER = ""
+SUMMARY_MODEL_URL = ""
+SUMMARY_MODEL_API_KEY = ""
+
+CORRECTION_MODEL_PROVIDER = ""
+CORRECTION_MODEL_URL = ""
+CORRECTION_MODEL_API_KEY = ""
+
+EMOTION_MODEL_PROVIDER = ""
+EMOTION_MODEL_URL = ""
+EMOTION_MODEL_API_KEY = ""
+
+VISION_MODEL_PROVIDER = ""
+VISION_MODEL_URL = ""
+VISION_MODEL_API_KEY = ""
+
+OMNI_MODEL_PROVIDER = ""
+OMNI_MODEL_URL = ""
+OMNI_MODEL_API_KEY = ""
+
+TTS_MODEL_PROVIDER = ""
+TTS_MODEL_URL = ""
+TTS_MODEL_API_KEY = ""

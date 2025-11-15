@@ -7,7 +7,8 @@ import json
 import uvicorn
 from langchain_core.messages import convert_to_messages
 from uuid import uuid4
-from config import get_character_data, MEMORY_SERVER_PORT
+from config import MEMORY_SERVER_PORT
+from utils.config_manager import get_config_manager
 from pydantic import BaseModel
 import re
 import asyncio
@@ -15,7 +16,8 @@ import logging
 import argparse
 
 # Setup logger
-logger = logging.getLogger(__name__)
+from utils.logger_config import setup_logging
+logger, log_config = setup_logging(service_name="Memory", log_level=logging.INFO)
 
 class HistoryRequest(BaseModel):
     input_history: str
@@ -23,6 +25,7 @@ class HistoryRequest(BaseModel):
 app = FastAPI()
 
 # 初始化组件
+_config_manager = get_config_manager()
 recent_history_manager = CompressedRecentHistoryManager()
 semantic_manager = SemanticMemory(recent_history_manager)
 settings_manager = ImportantSettingsManager()
@@ -32,6 +35,9 @@ time_manager = TimeIndexedMemory(recent_history_manager)
 shutdown_event = asyncio.Event()
 # 全局变量控制是否响应退出请求
 enable_shutdown = False
+# 全局变量用于管理correction任务
+correction_tasks = {}  # {lanlan_name: asyncio.Task}
+correction_cancel_flags = {}  # {lanlan_name: asyncio.Event}
 
 @app.post("/shutdown")
 async def shutdown_memory_server():
@@ -57,35 +63,88 @@ async def shutdown_event_handler():
     logger.info("Memory server已关闭")
 
 
+async def _run_review_in_background(lanlan_name: str):
+    """在后台运行review_history，支持取消"""
+    global correction_tasks, correction_cancel_flags
+    
+    # 获取该角色的取消标志
+    cancel_event = correction_cancel_flags.get(lanlan_name)
+    if not cancel_event:
+        cancel_event = asyncio.Event()
+        correction_cancel_flags[lanlan_name] = cancel_event
+    
+    try:
+        # 直接异步调用review_history方法
+        await recent_history_manager.review_history(lanlan_name, cancel_event)
+        logger.info(f"✅ {lanlan_name} 的记忆整理任务完成")
+    except asyncio.CancelledError:
+        logger.info(f"⚠️ {lanlan_name} 的记忆整理任务被取消")
+    except Exception as e:
+        logger.error(f"❌ {lanlan_name} 的记忆整理任务出错: {e}")
+    finally:
+        # 清理任务记录
+        if lanlan_name in correction_tasks:
+            del correction_tasks[lanlan_name]
+        # 重置取消标志
+        if lanlan_name in correction_cancel_flags:
+            correction_cancel_flags[lanlan_name].clear()
+
 @app.post("/process/{lanlan_name}")
-def process_conversation(request: HistoryRequest, lanlan_name: str):
+async def process_conversation(request: HistoryRequest, lanlan_name: str):
+    global correction_tasks
     try:
         uid = str(uuid4())
         input_history = convert_to_messages(json.loads(request.input_history))
-        recent_history_manager.update_history(input_history, lanlan_name)
+        await recent_history_manager.update_history(input_history, lanlan_name)
         """
         下面屏蔽了两个模块，因为这两个模块需要消耗token，但当前版本实用性近乎于0。尤其是，Qwen与GPT等旗舰模型相比性能差距过大。
         """
-        # settings_manager.extract_and_update_settings(input_history, lanlan_name)
-        # semantic_manager.store_conversation(uid, input_history, lanlan_name)
-        time_manager.store_conversation(uid, input_history, lanlan_name)
-        recent_history_manager.review_history(lanlan_name)
+        # await settings_manager.extract_and_update_settings(input_history, lanlan_name)
+        # await semantic_manager.store_conversation(uid, input_history, lanlan_name)
+        await time_manager.store_conversation(uid, input_history, lanlan_name)
+        
+        # 在后台启动review_history任务
+        if lanlan_name in correction_tasks and not correction_tasks[lanlan_name].done():
+            # 如果已有任务在运行，取消它
+            correction_tasks[lanlan_name].cancel()
+            try:
+                await correction_tasks[lanlan_name]
+            except asyncio.CancelledError:
+                pass
+        
+        # 启动新的review任务
+        task = asyncio.create_task(_run_review_in_background(lanlan_name))
+        correction_tasks[lanlan_name] = task
+        
         return {"status": "processed"}
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.error(f"处理对话历史失败: {e}")
         return {"status": "error", "message": str(e)}
 
 @app.post("/renew/{lanlan_name}")
-def process_conversation_for_renew(request: HistoryRequest, lanlan_name: str):
+async def process_conversation_for_renew(request: HistoryRequest, lanlan_name: str):
+    global correction_tasks
     try:
         uid = str(uuid4())
         input_history = convert_to_messages(json.loads(request.input_history))
-        recent_history_manager.update_history(input_history, lanlan_name, detailed=True)
-        # settings_manager.extract_and_update_settings(input_history, lanlan_name)
-        # semantic_manager.store_conversation(uid, input_history, lanlan_name)
-        time_manager.store_conversation(uid, input_history, lanlan_name)
-        # recent_history_manager.review_history(lanlan_name)
+        await recent_history_manager.update_history(input_history, lanlan_name, detailed=True)
+        # await settings_manager.extract_and_update_settings(input_history, lanlan_name)
+        # await semantic_manager.store_conversation(uid, input_history, lanlan_name)
+        await time_manager.store_conversation(uid, input_history, lanlan_name)
+        
+        # 在后台启动review_history任务
+        if lanlan_name in correction_tasks and not correction_tasks[lanlan_name].done():
+            # 如果已有任务在运行，取消它
+            correction_tasks[lanlan_name].cancel()
+            try:
+                await correction_tasks[lanlan_name]
+            except asyncio.CancelledError:
+                pass
+        
+        # 启动新的review任务
+        task = asyncio.create_task(_run_review_in_background(lanlan_name))
+        correction_tasks[lanlan_name] = task
+        
         return {"status": "processed"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -93,19 +152,21 @@ def process_conversation_for_renew(request: HistoryRequest, lanlan_name: str):
 @app.get("/get_recent_history/{lanlan_name}")
 def get_recent_history(lanlan_name: str):
     history = recent_history_manager.get_recent_history(lanlan_name)
-    _, _, _, _, name_mapping, _, _, _, _, _ = get_character_data()
+    _, _, _, _, name_mapping, _, _, _, _, _ = _config_manager.get_character_data()
     name_mapping['ai'] = lanlan_name
     result = f"开始聊天前，{lanlan_name}又在脑海内整理了近期发生的事情。\n"
     for i in history:
         if i.type == 'system':
             result += i.content + "\n"
         else:
-            result += f"{name_mapping[i.type]} | {'\n'.join([j['text'] for j in i.content if j['type']=='text'])}\n"
+            texts = [j['text'] for j in i.content if j['type']=='text']
+            joined = "\n".join(texts)
+            result += f"{name_mapping[i.type]} | {joined}\n"
     return result
 
 @app.get("/search_for_memory/{lanlan_name}/{query}")
-def get_memory(query: str, lanlan_name:str):
-    return semantic_manager.query(query, lanlan_name)
+async def get_memory(query: str, lanlan_name:str):
+    return await semantic_manager.query(query, lanlan_name)
 
 @app.get("/get_settings/{lanlan_name}")
 def get_settings(lanlan_name: str):
@@ -113,17 +174,39 @@ def get_settings(lanlan_name: str):
     return result
 
 @app.get("/new_dialog/{lanlan_name}")
-def new_dialog(lanlan_name: str):
-    m1 = re.compile('$$.*?$$')
-    master_name, _, _, _, name_mapping, _, _, _, _, _ = get_character_data()
+async def new_dialog(lanlan_name: str):
+    global correction_tasks, correction_cancel_flags
+    
+    # 中断正在进行的correction任务
+    if lanlan_name in correction_tasks and not correction_tasks[lanlan_name].done():
+        logger.info(f"🛑 收到new_dialog请求，中断 {lanlan_name} 的correction任务")
+        
+        # 设置取消标志
+        if lanlan_name in correction_cancel_flags:
+            correction_cancel_flags[lanlan_name].set()
+        
+        # 取消任务
+        correction_tasks[lanlan_name].cancel()
+        try:
+            await correction_tasks[lanlan_name]
+        except asyncio.CancelledError:
+            logger.info(f"✅ {lanlan_name} 的correction任务已成功中断")
+        except Exception as e:
+            logger.warning(f"⚠️ 中断 {lanlan_name} 的correction任务时出现异常: {e}")
+    
+    # 正则表达式：删除所有类型括号及其内容（包括[]、()、{}、<>、【】、（）等）
+    brackets_pattern = re.compile(r'(\[.*?\]|\(.*?\)|（.*?）|【.*?】|\{.*?\}|<.*?>)')
+    master_name, _, _, _, name_mapping, _, _, _, _, _ = _config_manager.get_character_data()
     name_mapping['ai'] = lanlan_name
     result = f"\n========{lanlan_name}的内心活动========\n{lanlan_name}的脑海里经常想着自己和{master_name}的事情，她记得{json.dumps(settings_manager.get_settings(lanlan_name), ensure_ascii=False)}\n\n"
     result += f"开始聊天前，{lanlan_name}又在脑海内整理了近期发生的事情。\n"
     for i in recent_history_manager.get_recent_history(lanlan_name):
         if type(i.content) == str:
-            result += f"{name_mapping[i.type]} | {i.content}\n"
+            cleaned_content = brackets_pattern.sub('', i.content).strip()
+            result += f"{name_mapping[i.type]} | {cleaned_content}\n"
         else:
-            result += f"{name_mapping[i.type]} | {'\n'.join([m1.sub(j['text'], '') for j in i.content if j['type'] == 'text'])}\n"
+            texts = [brackets_pattern.sub('', j['text']).strip() for j in i.content if j['type'] == 'text']
+            result += f"{name_mapping[i.type]} | " + "\n".join(texts) + "\n"
     return result
 
 if __name__ == "__main__":

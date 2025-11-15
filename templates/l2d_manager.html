@@ -1,17 +1,23 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live2D 模型管理器</title>
+    <title>Live2D 模型管理器 - Project N.E.K.O.</title>
+    <script src="/static/common_dialogs.js"></script>
     <style>
+        *:focus {
+            outline: none !important;
+            box-shadow: none !important; 
+        }
         html, body {
             height: 100%; margin: 0; padding: 0; background: #eee; color: #222;
             font-family: 'Segoe UI', Arial, sans-serif; overflow: hidden;
         }
         #live2d-container {
             position: fixed; right: 0px; bottom: 0px; width: 100%; height: 100%;
-            z-index: 10; pointer-events: none;
+            z-index: 10; pointer-events: auto;
         }
         #live2d-canvas {
             display: block; width: 100%; height: 100%; background: transparent;
@@ -29,10 +35,9 @@
             z-index: 20;
             min-width: 280px;
             padding: 20px;
-            background: rgba(255, 255, 255, 0.85);
+            background: #fff;
             border-radius: 12px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            backdrop-filter: blur(10px);
         }
         .control-group {
             display: flex;
@@ -44,17 +49,30 @@
             color: #333;
             font-size: 14px;
         }
-        .control-select, .btn {
+        .control-select {
             padding: 10px 15px;
             border-radius: 8px;
-            border: 1px solid #ccc;
+            border: 1px solid #ddd;
             font-size: 14px;
             cursor: pointer;
             background: #fff;
+            color: #333;
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23d5f1ff' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 35px;
         }
+        
         .btn {
-            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
             border: none;
+            font-size: 14px;
+            cursor: pointer;
+            color: white;
             transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
             text-align: center;
         }
@@ -67,14 +85,42 @@
             cursor: not-allowed;
             opacity: 0.7;
         }
-        .btn-primary { background: #667eea; }
-        .btn-primary:hover:not(:disabled) { background: #5a6fd8; }
+        .btn-primary { background: #44b7fe; }
+        .btn-primary:hover:not(:disabled) { background: #2662c8; }
         
-        .btn-secondary { background: #6c757d; }
-        .btn-secondary:hover:not(:disabled) { background: #5a6268; }
+        .btn-secondary { 
+            background: #d5f1ff; 
+            color: #333;
+        }
+        .btn-secondary:hover:not(:disabled) { 
+            background: #b8e5ff; 
+            color: #333;
+        }
 
-        .btn-success { background: #28a745; }
-        .btn-success:hover:not(:disabled) { background: #218838; }
+        .btn-success { background: #44b7fe; }
+        .btn-success:hover:not(:disabled) { background: #2662c8; }
+        
+        #save-position-btn {
+            background: #d5f1ff !important;
+            color: #333 !important;
+        }
+        #save-position-btn:hover:not(:disabled) {
+            background: #b8e5ff !important;
+            color: #333 !important;
+        }
+        
+        .btn-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        
+        .btn-icon img {
+            width: 16px;
+            height: 16px;
+            object-fit: contain;
+        }
 
         .action-group {
             display: flex;
@@ -83,6 +129,16 @@
         .action-group .control-select {
             flex-grow: 1;
         }
+        #persistent-list {
+            margin-top: 6px;
+            max-height: 120px;
+            overflow: auto;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 6px;
+            background: #fff;
+        }
+        
         #status {
             margin-top: 10px;
             color: #4f8cff;
@@ -91,38 +147,22 @@
             max-width: 280px;
             word-break: break-all;
         }
-        #chat-container-placeholder { 
-            pointer-events: auto; 
-            position: fixed; 
-            left: 20px; 
-            bottom: 20px; 
-            width: 340px;
-            height: 300px; 
-            background: rgba(247, 248, 250, 0.7);
-            border-radius: 12px; 
-            padding: 16px;
-            box-sizing: border-box; 
-            z-index: 20; 
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-            display: flex; 
-            flex-direction: column; 
-            backdrop-filter: blur(10px);
-        }
-        #chat-content-wrapper { 
-            flex-grow: 1; 
-            padding-left: 8px; 
-            overflow-y: auto; 
-            opacity: 0.7; 
-        }
     </style>
 </head>
 <body>
 
 <div id="sidebar">
     <div class="control-group">
-        <button id="fullscreenBtn" class="btn btn-secondary">🖥️ 全屏</button>
-        <button id="exitFullscreenBtn" class="btn btn-secondary" style="display:none;">❌ 退出全屏</button>
+        <button id="backToMainBtn" class="btn btn-primary">← 返回主页</button>
     </div>
+    
+    <div class="control-group">
+        <label class="control-label">导入模型:</label>
+        <input type="file" id="model-upload" webkitdirectory directory multiple style="display: none;">
+        <button id="upload-btn" class="btn btn-primary">📁 选择文件夹</button>
+        <div id="upload-status" style="font-size:12px; color:#666; margin-top:4px;"></div>
+    </div>
+    
     <div class="control-group">
         <label for="model-select" class="control-label">选择模型:</label>
         <select id="model-select" class="control-select">
@@ -136,7 +176,10 @@
             <select id="motion-select" class="control-select" disabled>
                 <option>请先加载模型</option>
             </select>
-            <button id="play-motion-btn" class="btn btn-primary" disabled>播放</button>
+            <button id="play-motion-btn" class="btn btn-primary btn-icon" disabled>
+                <img src="/static/icons/play_icon.png" alt="播放">
+                <span>播放</span>
+            </button>
         </div>
     </div>
     
@@ -146,22 +189,40 @@
             <select id="expression-select" class="control-select" disabled>
                 <option>请先加载模型</option>
             </select>
-            <button id="play-expression-btn" class="btn btn-primary" disabled>播放</button>
+            <button id="play-expression-btn" class="btn btn-primary btn-icon" disabled>
+                <img src="/static/icons/play_icon.png" alt="播放">
+                <span>播放</span>
+            </button>
         </div>
     </div>
 
     <div class="control-group">
         <div style="display:flex; gap: 10px;">
-            <button id="emotion-manager-btn" class="btn btn-secondary" disabled style="flex:1;">⚙️ 情感配置</button>
-            <button id="save-position-btn" class="btn btn-success" disabled style="flex:1;">💾 保存设置</button>
+            <button id="emotion-manager-btn" class="btn btn-primary btn-icon" disabled style="flex:1;">
+                <img src="/static/icons/emotion_config_icon.png" alt="情感配置">
+                <span>情感配置</span>
+            </button>
+            <button id="save-position-btn" class="btn btn-success btn-icon" disabled style="flex:1;">
+                <img src="/static/icons/save_settings.png" alt="保存设置">
+                <span>保存设置</span>
+            </button>
         </div>
+    </div>
+
+    <div class="control-group" id="persistent-box" style="display:none;">
+        <label class="control-label">常驻表情（仅expression）:</label>
+        <div class="action-group">
+            <select id="persistent-expression-select" class="control-select" disabled>
+                <option>请先加载模型</option>
+            </select>
+            <button id="add-persistent-btn" class="btn btn-primary" disabled>添加</button>
+        </div>
+        <div id="persistent-list"></div>
+        <button id="save-persistent-btn" class="btn btn-success" disabled style="margin-top:6px;">保存常驻表情</button>
+        <div style="font-size:12px; color:#666;">常驻表情会一直生效，不会被清除或覆盖；此处仅能选择 .exp3.json。</div>
     </div>
     
     <div id="status">正在初始化...</div>
-</div>
-
-<div id="chat-container-placeholder">
-    <div id="chat-content-wrapper"><p style="color: #888">对话历史界面<br><br>...现在是一片空白...</p></div>
 </div>
 
 <div id="live2d-container"><canvas id="live2d-canvas"></canvas></div>
@@ -173,7 +234,25 @@
 <script src="/static/live2d.js"></script>
 
 <script>
-    document.addEventListener('DOMContentLoaded', async () => {
+    // 用于页面间通信的事件处理
+        function sendMessageToMainPage(action) {
+            try {
+                // 使用localStorage事件机制发送消息给主页面
+                const message = {
+                    action: action,
+                    timestamp: Date.now()
+                };
+                localStorage.setItem('nekopage_message', JSON.stringify(message));
+                localStorage.removeItem('nekopage_message'); // 立即移除以允许重复发送相同消息
+            } catch (e) {
+                console.log('发送消息给主页面失败:', e);
+            }
+        }
+
+        // 全局变量：跟踪未保存的更改
+        window.hasUnsavedChanges = false;
+
+        document.addEventListener('DOMContentLoaded', async () => {
         const statusDiv = document.getElementById('status');
         const modelSelect = document.getElementById('model-select');
         const motionSelect = document.getElementById('motion-select');
@@ -182,13 +261,88 @@
         const playExpressionBtn = document.getElementById('play-expression-btn');
         const emotionManagerBtn = document.getElementById('emotion-manager-btn');
         const savePositionBtn = document.getElementById('save-position-btn');
-        const fullscreenBtn = document.getElementById('fullscreenBtn');
-        const exitFullscreenBtn = document.getElementById('exitFullscreenBtn');
+        const persistentBox = document.getElementById('persistent-box');
+        const persistentSelect = document.getElementById('persistent-expression-select');
+        const addPersistentBtn = document.getElementById('add-persistent-btn');
+        const persistentList = document.getElementById('persistent-list');
+        const savePersistentBtn = document.getElementById('save-persistent-btn');
+        const uploadBtn = document.getElementById('upload-btn');
+        const modelUpload = document.getElementById('model-upload');
+        const uploadStatus = document.getElementById('upload-status');
+        const backToMainBtn = document.getElementById('backToMainBtn');
+        
+        // 全屏控制函数
+        const requestFullscreen = () => {
+            const elem = document.documentElement;
+            if (elem.requestFullscreen) {
+                return elem.requestFullscreen();
+            } else if (elem.webkitRequestFullscreen) {
+                return elem.webkitRequestFullscreen();
+            } else if (elem.mozRequestFullScreen) {
+                return elem.mozRequestFullScreen();
+            } else if (elem.msRequestFullscreen) {
+                return elem.msRequestFullscreen();
+            }
+            return Promise.reject(new Error('Fullscreen not supported'));
+        };
+        
+        const exitFullscreen = () => {
+            if (document.exitFullscreen) {
+                return document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                return document.webkitExitFullscreen();
+            } else if (document.mozCancelFullScreen) {
+                return document.mozCancelFullScreen();
+            } else if (document.msExitFullscreen) {
+                return document.msExitFullscreen();
+            }
+            return Promise.reject(new Error('Exit fullscreen not supported'));
+        };
+        
+        const isFullscreen = () => {
+            return !!(document.fullscreenElement || 
+                     document.webkitFullscreenElement || 
+                     document.mozFullScreenElement || 
+                     document.msFullscreenElement);
+        };
+        
+        // 检测页面来源，设置返回按钮文本
+        const isPopupWindow = window.opener !== null;
+        if (isPopupWindow) {
+            backToMainBtn.textContent = '✖ 关闭';
+            
+            // 如果是 popup 窗口，尝试自动全屏
+            try {
+                // 在 Electron 中，可以直接尝试
+                setTimeout(async () => {
+                    try {
+                        await requestFullscreen();
+                    } catch (e) {
+                        console.log('自动全屏失败，用户可以手动点击全屏按钮:', e);
+                    }
+                }, 100);
+                
+                // 方法2: 如果 Fullscreen API 不可用，尝试最大化窗口
+                if (!document.fullscreenEnabled && !document.webkitFullscreenEnabled) {
+                    window.resizeTo(screen.availWidth, screen.availHeight);
+                    window.moveTo(0, 0);
+                }
+            } catch (e) {
+                console.log('自动全屏失败:', e);
+            }
+        } else {
+            backToMainBtn.textContent = '← 返回主页';
+        }
+        
+        // 页面加载时发送消息隐藏主界面
+        sendMessageToMainPage('hide_main_ui');
 
         let currentModelInfo = null;
         let availableModels = [];
         let currentModelFiles = { motion_files: [], expression_files: [] };
         let live2dModel = null;
+        let currentEmotionMapping = null; // { motions: {...}, expressions: {...} }
+        let currentPersistent = []; // expressions.常驻
 
         const showStatus = (msg, duration = 0) => {
             statusDiv.textContent = msg;
@@ -204,9 +358,7 @@
         await window.live2dManager.initPIXI('live2d-canvas', 'live2d-container');
         showStatus('PIXI 初始化完成');
 
-        // 加载当前角色的模型
-        await loadCurrentCharacterModel();
-
+        // 先加载模型列表
         try {
             const response = await fetch('/api/live2d/models');
             availableModels = await response.json();
@@ -218,6 +370,7 @@
                     option.textContent = model.name;
                     modelSelect.appendChild(option);
                 });
+
                 showStatus('模型列表加载成功');
             } else {
                 showStatus('未找到可用模型');
@@ -226,12 +379,46 @@
             showStatus('加载模型列表失败');
         }
 
+        // 然后加载当前角色的模型（此时下拉框已经有选项了）
+        await loadCurrentCharacterModel();
+
+        // 如果已自动加载了一个模型，确保在下拉框中选中它
+        // 这是双重保险：防止 loadCurrentCharacterModel() 内部设置失败
+        if (currentModelInfo && currentModelInfo.name) {
+            const exists = availableModels.some(m => m.name === currentModelInfo.name);
+            if (exists && modelSelect.value !== currentModelInfo.name) {
+                console.log('下拉框值未正确设置，执行补救:', currentModelInfo.name);
+                modelSelect.value = currentModelInfo.name;
+            }
+        }
+
+        // 获取 lanlan_name 的辅助函数
+        async function getLanlanName() {
+            // 优先从 URL 获取
+            const urlParams = new URLSearchParams(window.location.search);
+            let lanlanName = urlParams.get('lanlan_name') || '';
+            
+            // 如果 URL 中没有，从 API 获取
+            if (!lanlanName) {
+                try {
+                    const response = await fetch('/api/config/page_config');
+                    const data = await response.json();
+                    if (data.success) {
+                        lanlanName = data.lanlan_name || '';
+                    }
+                } catch (error) {
+                    console.error('获取 lanlan_name 失败:', error);
+                }
+            }
+            
+            return lanlanName;
+        }
+        
         // 保存模型设置到角色的函数
         async function saveModelToCharacter(modelName) {
             try {
-                // 从URL参数中获取角色名称
-                const urlParams = new URLSearchParams(window.location.search);
-                const lanlanName = urlParams.get('lanlan_name') || '';
+                // 获取角色名称
+                const lanlanName = await getLanlanName();
                 
                 if (!lanlanName) {
                     showStatus('无法保存：未指定角色名称');
@@ -273,7 +460,11 @@
             await loadModel(modelName, currentModelInfo);
             
             // 自动保存模型设置到角色
-            await saveModelToCharacter(modelName);
+            const saveSuccess = await saveModelToCharacter(modelName);
+            if (!saveSuccess) {
+                // 如果自动保存失败，标记为有未保存的更改
+                window.hasUnsavedChanges = true;
+            }
         });
 
         // 加载模型的函数
@@ -332,9 +523,25 @@
                     preferences: modelPreferences
                 });
                 live2dModel = window.live2dManager.getCurrentModel();
+                
+                // 添加模型交互监听器，跟踪位置和缩放变化
+                if (live2dModel && live2dModel.internalModel) {
+                    const canvas = document.getElementById('live2d-canvas');
+                    if (canvas) {
+                        // 监听拖动和滚轮事件
+                        const markChanged = () => { window.hasUnsavedChanges = true; };
+                        canvas.addEventListener('mouseup', markChanged);
+                        canvas.addEventListener('wheel', markChanged);
+                        canvas.addEventListener('touchend', markChanged);
+                    }
+                }
 
                 updateSelectWithOptions(motionSelect, currentModelFiles.motion_files, '选择动作');
                 updateSelectWithOptions(expressionSelect, currentModelFiles.expression_files, '选择表情');
+
+                // 7. Load current emotion mapping for this model
+                await loadEmotionMappingForModel(modelName);
+                renderPersistentUI();
                 
                 // 如果没有动作文件，禁用动作相关控件
                 if (currentModelFiles.motion_files.length === 0) {
@@ -415,6 +622,7 @@
             
             if (positionSuccess && modelSuccess) {
                 showStatus('位置和模型设置保存成功!', 2000);
+                window.hasUnsavedChanges = false; // 保存成功后重置标志
             } else if (positionSuccess) {
                 showStatus('位置保存成功，模型设置保存失败!', 2000);
             } else if (modelSuccess) {
@@ -424,16 +632,118 @@
             }
         });
         
-        // Fullscreen logic
-        fullscreenBtn.onclick = () => document.documentElement.requestFullscreen?.();
-        exitFullscreenBtn.onclick = () => document.exitFullscreen?.();
-        const updateFullscreenButtons = () => {
-            const isFullscreen = !!document.fullscreenElement;
-            fullscreenBtn.style.display = isFullscreen ? 'none' : '';
-            exitFullscreenBtn.style.display = isFullscreen ? '' : 'none';
-        };
-        document.addEventListener('fullscreenchange', updateFullscreenButtons);
-        updateFullscreenButtons();
+        // 返回主页/关闭按钮
+        backToMainBtn.addEventListener('click', async () => {
+            // 检查是否有未保存的更改
+            if (window.hasUnsavedChanges) {
+                const confirmLeave = await showConfirm(
+                    '您有未保存的设置，确定要离开吗？',
+                    '确认离开',
+                    { danger: true }
+                );
+                if (!confirmLeave) {
+                    return; // 用户取消，不离开
+                }
+            }
+            
+            // 如果处于全屏状态，先退出全屏
+            if (isFullscreen()) {
+                try {
+                    await exitFullscreen();
+                    // 等待全屏退出完成
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                } catch (e) {
+                    console.log('退出全屏失败:', e);
+                }
+            }
+            
+            // 根据窗口类型执行不同的操作
+            if (isPopupWindow) {
+                // 如果是弹出窗口，直接关闭
+                window.close();
+            } else {
+                // 如果是主窗口跳转，直接跳转即可，新页面会自动加载最新配置
+                window.location.href = '/';
+            }
+        });
+
+        // 上传模型功能
+        uploadBtn.addEventListener('click', () => {
+            modelUpload.click();
+        });
+
+        modelUpload.addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files);
+            if (files.length === 0) return;
+
+            uploadStatus.textContent = '正在上传模型...';
+            uploadStatus.style.color = '#4f8cff';
+            uploadBtn.disabled = true;
+
+            try {
+                const formData = new FormData();
+                
+                // 添加所有文件到FormData
+                for (const file of files) {
+                    // 保留文件的相对路径
+                    formData.append('files', file, file.webkitRelativePath || file.name);
+                }
+
+                const response = await fetch('/api/live2d/upload_model', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    uploadStatus.textContent = `✓ ${result.message}`;
+                    uploadStatus.style.color = '#28a745';
+                    
+                    // 重新加载模型列表
+                    setTimeout(async () => {
+                        try {
+                            const modelsResponse = await fetch('/api/live2d/models');
+                            availableModels = await modelsResponse.json();
+                            modelSelect.innerHTML = '<option value="">请选择一个模型</option>';
+                            availableModels.forEach(model => {
+                                const option = document.createElement('option');
+                                option.value = model.name;
+                                option.textContent = model.name;
+                                modelSelect.appendChild(option);
+                            });
+                            
+                            // 自动选择新上传的模型
+                            if (result.model_name) {
+                                modelSelect.value = result.model_name;
+                                modelSelect.dispatchEvent(new Event('change'));
+                            }
+                            
+                            uploadStatus.textContent = '';
+                        } catch (e) {
+                            console.error('重新加载模型列表失败:', e);
+                        }
+                    }, 1500);
+                } else {
+                    uploadStatus.textContent = `✗ ${result.error}`;
+                    uploadStatus.style.color = '#dc3545';
+                    setTimeout(() => {
+                        uploadStatus.textContent = '';
+                    }, 5000);
+                }
+            } catch (error) {
+                console.error('上传失败:', error);
+                uploadStatus.textContent = `✗ 上传失败: ${error.message}`;
+                uploadStatus.style.color = '#dc3545';
+                setTimeout(() => {
+                    uploadStatus.textContent = '';
+                }, 5000);
+            } finally {
+                uploadBtn.disabled = false;
+                // 重置file input以允许重新选择同一个文件夹
+                modelUpload.value = '';
+            }
+        });
 
         // Helper functions
         function setControlsDisabled(disabled) {
@@ -443,6 +753,9 @@
             playExpressionBtn.disabled = disabled;
             emotionManagerBtn.disabled = disabled;
             savePositionBtn.disabled = disabled;
+            persistentSelect.disabled = disabled;
+            addPersistentBtn.disabled = disabled;
+            savePersistentBtn.disabled = disabled;
         }
 
         function updateSelectWithOptions(select, options, defaultText) {
@@ -504,12 +817,138 @@
             document.body.appendChild(modal);
         }
 
+        // ===== 常驻表情 管理 =====
+        async function loadEmotionMappingForModel(modelName) {
+            currentEmotionMapping = null;
+            currentPersistent = [];
+            try {
+                const res = await fetch(`/api/live2d/emotion_mapping/${encodeURIComponent(modelName)}`);
+                const data = await res.json();
+                if (data && data.success && data.config) {
+                    currentEmotionMapping = data.config;
+                } else {
+                    currentEmotionMapping = { motions: {}, expressions: {} };
+                }
+            } catch (e) {
+                currentEmotionMapping = { motions: {}, expressions: {} };
+            }
+            const expr = (currentEmotionMapping.expressions || {});
+            currentPersistent = Array.isArray(expr['常驻']) ? [...expr['常驻']] : [];
+            // 将后端映射应用到前端 Live2D 管理器并启用常驻
+            try {
+                if (window.live2dManager) {
+                    const mgr = window.live2dManager;
+                    if (!mgr.emotionMapping) mgr.emotionMapping = { motions: {}, expressions: {} };
+                    if (!mgr.emotionMapping.expressions) mgr.emotionMapping.expressions = {};
+                    mgr.emotionMapping.expressions['常驻'] = [...currentPersistent];
+                    await mgr.setupPersistentExpressions();
+                }
+            } catch (e) { console.warn('应用常驻表情失败:', e); }
+        }
+
+        function renderPersistentUI() {
+            persistentBox.style.display = '';
+            // 可选：所有表达式 - 已选（常驻）
+            const unused = (currentModelFiles.expression_files || []).filter(f => !currentPersistent.includes(f));
+            updateSelectWithOptions(persistentSelect, unused, '选择常驻表情');
+
+            // 列表
+            if (!currentPersistent.length) {
+                persistentList.innerHTML = '<div style="color:#999;">尚未添加常驻表情</div>';
+            } else {
+                persistentList.innerHTML = currentPersistent.map(f => {
+                    const name = f.split('/').pop().replace('.exp3.json','');
+                    return `<div style="display:flex; align-items:center; justify-content:space-between; padding:4px 6px; border-bottom:1px dashed #eee;">
+                        <span>${name}</span>
+                        <button data-file="${f}" class="btn btn-secondary" style="padding:4px 8px; font-size:12px;">移除</button>
+                    </div>`;
+                }).join('');
+                // 绑定移除
+                Array.from(persistentList.querySelectorAll('button[data-file]')).forEach(btn => {
+                    btn.onclick = async () => {
+                        const file = btn.getAttribute('data-file');
+                        const idx = currentPersistent.indexOf(file);
+                        if (idx > -1) currentPersistent.splice(idx, 1);
+                        window.hasUnsavedChanges = true; // 标记为有未保存的更改
+                        renderPersistentUI();
+                        // 即时同步到前端并应用
+                        try {
+                            if (window.live2dManager) {
+                                const mgr = window.live2dManager;
+                                if (!mgr.emotionMapping) mgr.emotionMapping = { motions: {}, expressions: {} };
+                                if (!mgr.emotionMapping.expressions) mgr.emotionMapping.expressions = {};
+                                mgr.emotionMapping.expressions['常驻'] = [...currentPersistent];
+                                await mgr.setupPersistentExpressions();
+                                showStatus('已更新常驻表情', 1200);
+                            }
+                        } catch (e) { console.warn('应用常驻表情失败:', e); }
+                    };
+                });
+            }
+            // 启用相关控件
+            persistentSelect.disabled = false;
+            addPersistentBtn.disabled = false;
+            savePersistentBtn.disabled = false;
+        }
+
+        addPersistentBtn.addEventListener('click', async () => {
+            const file = persistentSelect.value;
+            if (!file) return;
+            if (!currentPersistent.includes(file)) {
+                currentPersistent.push(file);
+                window.hasUnsavedChanges = true; // 标记为有未保存的更改
+            }
+            renderPersistentUI();
+            // 即时同步到前端并应用
+            try {
+                if (window.live2dManager) {
+                    const mgr = window.live2dManager;
+                    if (!mgr.emotionMapping) mgr.emotionMapping = { motions: {}, expressions: {} };
+                    if (!mgr.emotionMapping.expressions) mgr.emotionMapping.expressions = {};
+                    mgr.emotionMapping.expressions['常驻'] = [...currentPersistent];
+                    await mgr.setupPersistentExpressions();
+                    showStatus('常驻表情已应用', 1200);
+                }
+            } catch (e) { console.warn('应用常驻表情失败:', e); }
+        });
+
+        savePersistentBtn.addEventListener('click', async () => {
+            if (!currentModelInfo) return;
+            showStatus('正在保存常驻表情...');
+            try {
+                // 合并旧映射：保留 motions，保留 expressions 其他组，仅替换 常驻 组
+                const motions = (currentEmotionMapping && currentEmotionMapping.motions) ? currentEmotionMapping.motions : {};
+                const expressions = Object.assign({}, (currentEmotionMapping && currentEmotionMapping.expressions) ? currentEmotionMapping.expressions : {});
+                expressions['常驻'] = [...currentPersistent];
+
+                const body = { motions, expressions };
+                const resp = await fetch(`/api/live2d/emotion_mapping/${encodeURIComponent(currentModelInfo.name)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const result = await resp.json();
+                if (result && result.success) {
+                    showStatus('常驻表情保存成功', 1500);
+                    window.hasUnsavedChanges = false; // 保存成功后重置标志
+                    // 通知前端管理器重新应用常驻，无需重载模型
+                    if (window.live2dManager && window.live2dManager.setupPersistentExpressions) {
+                        await window.live2dManager.setupPersistentExpressions();
+                    }
+                } else {
+                    showStatus('保存常驻表情失败', 2000);
+                }
+            } catch (e) {
+                console.error(e);
+                showStatus('保存常驻表情失败', 2000);
+            }
+        });
+
         // 加载当前角色模型的函数
         async function loadCurrentCharacterModel() {
             try {
-                // 从URL参数中获取角色名称
-                const urlParams = new URLSearchParams(window.location.search);
-                const lanlanName = urlParams.get('lanlan_name') || '';
+                // 获取角色名称
+                const lanlanName = await getLanlanName();
                 
                 let apiUrl = '/api/characters/current_live2d_model';
                 if (lanlanName) {
@@ -550,7 +989,33 @@
             }
         }
     });
-</script>
+// 监听页面卸载事件，确保返回时主界面可见
+        window.addEventListener('beforeunload', (e) => {
+            // 尝试退出全屏
+            if (isFullscreen()) {
+                try {
+                    exitFullscreen();
+                } catch (err) {
+                    console.log('退出全屏失败:', err);
+                }
+            }
+            
+            sendMessageToMainPage('show_main_ui');
+            
+            // 如果有未保存的更改，阻止页面关闭并显示确认对话框
+            // 注意：现代浏览器会忽略自定义消息，显示标准的确认对话框
+            if (window.hasUnsavedChanges) {
+                e.preventDefault();
+                e.returnValue = ''; // Chrome需要这个
+                return ''; // 某些浏览器需要返回值
+            }
+        });
+        
+        // 确保在页面关闭时也恢复主界面
+        window.addEventListener('unload', () => {
+            sendMessageToMainPage('show_main_ui');
+        });
+        </script>
 
 </body>
 </html>

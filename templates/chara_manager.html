@@ -1,10 +1,16 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>角色管理 - Project Lanlan</title>
+    <title>角色管理 - Project N.E.K.O.</title>
+    <script src="/static/common_dialogs.js"></script>
     <style>
+        *:focus {
+            outline: none !important;
+            box-shadow: none !important; 
+        }
         html, body {
             height: 100%;
             margin: 0;
@@ -191,12 +197,43 @@ if (!window._charaManagerFoldHandler) {
 let characterData = null;
 
 // 加载角色数据
+// 跟踪当前展开的猫娘名称
+let expandedCatgirlName = null;
+
 async function loadCharacterData() {
     const resp = await fetch('/api/characters');
     characterData = await resp.json();
     renderMaster();
     renderCatgirls();
     updateSwitchButtons();
+    
+    // 如果有之前展开的猫娘，自动展开它
+    if (expandedCatgirlName) {
+        const catgirls = characterData['猫娘'] || {};
+        if (catgirls[expandedCatgirlName]) {
+            // 使用 setTimeout 确保 DOM 已经渲染完成
+            setTimeout(() => {
+                // 遍历所有猫娘块，找到匹配的
+                const blocks = document.querySelectorAll('.catgirl-block');
+                blocks.forEach(block => {
+                    const titleSpan = block.querySelector('.catgirl-title');
+                    if (titleSpan && titleSpan.textContent === expandedCatgirlName) {
+                        const btn = block.querySelector('.catgirl-expand');
+                        const details = block.querySelector('.catgirl-details');
+                        if (btn && details && details.style.display === 'none') {
+                            // 展开这个猫娘
+                            details.style.display = 'block';
+                            btn.textContent = '▼';
+                            showCatgirlForm(expandedCatgirlName, details);
+                        }
+                    }
+                });
+            }, 0);
+        } else {
+            // 如果猫娘不存在了，清除记录
+            expandedCatgirlName = null;
+        }
+    }
 }
 
 // 渲染主人表单
@@ -224,10 +261,10 @@ if (!window._addMasterFieldHandler) {
     if (masterFormEl) {
         masterFormEl.insertAdjacentHTML('beforeend', '<div style="text-align:right;margin-top:8px"><button type="button" class="btn sm add" id="add-master-field-btn">新增设定</button><button type="submit" class="btn sm">保存主人设定</button></div>');
     }
-    document.getElementById('add-master-field-btn') && (document.getElementById('add-master-field-btn').onclick = function() {
-        const key = prompt('请输入新设定的名称（键名）');
+    document.getElementById('add-master-field-btn') && (document.getElementById('add-master-field-btn').onclick = async function() {
+        const key = await showPrompt('请输入新设定的名称（键名）', '', '新增主人设定');
         if (!key || ["档案名"].includes(key)) return;
-        if (masterFormEl.querySelector(`[name='${key}']`)) { alert('该设定已存在'); return; }
+        if (masterFormEl.querySelector(`[name='${key}']`)) { await showAlert('该设定已存在'); return; }
         const row = document.createElement('div');
         row.className = 'field-row custom-row';
         row.innerHTML = `<label>${key}</label><input type="text" name="${key}"><button type="button" class="btn sm delete" style="margin-left:8px" onclick="deleteMasterField(this)">删除设定</button>`;
@@ -251,7 +288,7 @@ masterForm.onsubmit = async function(e) {
         if (k && v) data[k] = v;
     }
     if (!data['档案名']) {
-        alert('档案名为必填项');
+        await showAlert('档案名为必填项');
         return;
     }
     await fetch('/api/characters/master', {
@@ -287,15 +324,41 @@ function renderCatgirls() {
         // 展开按钮逻辑
         const expandBtn = block.querySelector('.catgirl-expand');
         const detailsDiv = block.querySelector('.catgirl-details');
+        
+        // 从 localStorage 读取展开状态
+        const storageKey = `catgirl_expand_${key}`;
+        const savedState = localStorage.getItem(storageKey);
+        const shouldBeOpen = savedState === 'true';
+        
+        if (shouldBeOpen) {
+            detailsDiv.style.display = 'block';
+            expandBtn.textContent = '▼';
+            expandedCatgirlName = key;
+            // 延迟加载表单，确保 DOM 已渲染
+            setTimeout(() => {
+                showCatgirlForm(key, detailsDiv);
+            }, 0);
+        }
+        
         expandBtn.onclick = function() {
             const isOpen = detailsDiv.style.display === '' || detailsDiv.style.display === 'block';
             if (isOpen) {
                 detailsDiv.style.display = 'none';
                 expandBtn.textContent = '▶';
                 detailsDiv.innerHTML = '';
+                // 保存状态到 localStorage
+                localStorage.setItem(storageKey, 'false');
+                // 清除展开记录
+                if (expandedCatgirlName === key) {
+                    expandedCatgirlName = null;
+                }
             } else {
                 detailsDiv.style.display = 'block';
                 expandBtn.textContent = '▼';
+                // 保存状态到 localStorage
+                localStorage.setItem(storageKey, 'true');
+                // 记录当前展开的猫娘
+                expandedCatgirlName = key;
                 showCatgirlForm(key, detailsDiv);
             }
         };
@@ -327,11 +390,29 @@ window.editCatgirl = function(key) {
 window.deleteCatgirl = async function(key) {
     const catgirls = characterData['猫娘'] || {};
     if (Object.keys(catgirls).length <= 1) {
-        alert('只剩一只猫娘，无法删除！');
+        await showAlert('只剩一只猫娘，无法删除！');
         return;
     }
-    if (!confirm('确定要删除猫娘"' + key + '"？')) return;
+    // 检查是否是当前猫娘
+    try {
+        const currentResponse = await fetch('/api/characters/current_catgirl');
+        const currentData = await currentResponse.json();
+        const currentCatgirl = currentData.current_catgirl || '';
+        
+        if (key === currentCatgirl) {
+            await showAlert('不能删除当前正在使用的猫娘！\n\n请先切换到其他猫娘后再删除。');
+            return;
+        }
+    } catch (error) {
+        console.error('获取当前猫娘失败:', error);
+        await showAlert('无法确认当前猫娘状态，删除操作已取消');
+        return;
+    }
+    
+    if (!await showConfirm('确定要删除猫娘"' + key + '"？', '删除猫娘', {danger: true})) return;
     await fetch('/api/characters/catgirl/' + encodeURIComponent(key), {method: 'DELETE'});
+    // 清除 localStorage 中的展开状态记录
+    localStorage.removeItem(`catgirl_expand_${key}`);
     await loadCharacterData();
 };
 
@@ -369,9 +450,10 @@ function showCatgirlForm(key, container) {
                 </div>
                 <div class="field-row">
                     <label>voice_id</label>
-                    <span>${cat['voice_id'] ? cat['voice_id'] : '未注册'}</span>
-                    <button type="button" class="btn sm" onclick="openVoiceClone('${key || ''}')">注册声音</button>
-                    ${cat['voice_id'] ? `<button type="button" class="btn sm delete" onclick="unregisterVoice('${key || ''}')">解除注册</button>` : ''}
+                    <select name="voice_id" class="form-control" style="flex:1">
+                        <option value="">未指定音色</option>
+                    </select>
+                    <button type="button" class="btn sm" onclick="openVoiceClone('${key || ''}')">注册新声音</button>
                 </div>
                 <div class="fold">
                     <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 8px 0;">
@@ -384,53 +466,159 @@ function showCatgirlForm(key, container) {
         </div>
         <div style="text-align:right;margin-top:10px;">
             <button type="button" class="btn sm add" id="add-catgirl-field-btn">新增设定</button>
-            <button type="submit" class="btn sm">${isNew ? '新增猫娘' : '保存修改'}</button>
+            <button type="submit" class="btn sm">${isNew ? '确认新猫娘' : '保存修改'}</button>
             <button type="button" class="btn sm" onclick="loadCharacterData()">取消</button>
         </div>
     `;
     // live2d弹窗逻辑
     const live2dLink = form.querySelector('.live2d-link');
     if (live2dLink) {
-        live2dLink.onclick = function() {
+        live2dLink.onclick = async function() {
             const catgirlName = form.querySelector('[name="档案名"]').value;
             if (!catgirlName) {
-                alert('请先填写猫娘档案名，然后再设置Live2D模型');
+                await showAlert('请先填写猫娘档案名，然后再设置Live2D模型');
                 return;
             }
+            const url = `/l2d?lanlan_name=${encodeURIComponent(catgirlName)}`;
+            
+            // 检查是否已有该URL的窗口打开
+            if (!window._openSettingsWindows) {
+                window._openSettingsWindows = {};
+            }
+            
+            if (window._openSettingsWindows[url]) {
+                const existingWindow = window._openSettingsWindows[url];
+                // 检查窗口是否仍然打开
+                if (existingWindow && !existingWindow.closed) {
+                    // 聚焦到已存在的窗口
+                    existingWindow.focus();
+                    return;
+                } else {
+                    // 窗口已关闭，清除引用
+                    delete window._openSettingsWindows[url];
+                }
+            }
+            
             const popup = window.open(
-                `/l2d?lanlan_name=${encodeURIComponent(catgirlName)}`,
+                url,
                 '_blank',
                 'toolbar=no,location=no,status=no,menubar=no,scrollbars=yes,resizable=yes,width=' + screen.availWidth + ',height=' + screen.availHeight + ',top=0,left=0'
             );
-            if (!popup) return alert('请允许弹窗！');
+            if (!popup) {
+                await showAlert('请允许弹窗！');
+                return;
+            }
+            
+            // 保存窗口引用
+            window._openSettingsWindows[url] = popup;
+            
             popup.moveTo(0, 0);
             popup.resizeTo(screen.availWidth, screen.availHeight);
             const timer = setInterval(() => {
                 if (popup.closed) {
                     clearInterval(timer);
+                    // 清除窗口引用
+                    if (window._openSettingsWindows[url] === popup) {
+                        delete window._openSettingsWindows[url];
+                    }
                     loadCharacterData();
                 }
             }, 500);
         };
     }
     // 新增自定义项按钮
-    form.querySelector('#add-catgirl-field-btn').onclick = function() {
-        const key = prompt('请输入新设定的名称（键名）');
+    form.querySelector('#add-catgirl-field-btn').onclick = async function() {
+        const key = await showPrompt('请输入新设定的名称（键名）', '', '新增猫娘设定');
         if (!key || ["档案名", "live2d", "voice_id", "system_prompt"].includes(key)) return;
-        if (form.querySelector(`[name='${key}']`)) { alert('该设定已存在'); return; }
+        if (form.querySelector(`[name='${key}']`)) { await showAlert('该设定已存在'); return; }
         const row = document.createElement('div');
         row.className = 'field-row custom-row';
         row.innerHTML = `<label>${key}</label><input type="text" name="${key}"><button type="button" class="btn sm delete" style="margin-left:8px" onclick="deleteCatgirlField(this)">删除设定</button>`;
         form.insertBefore(row, form.querySelector('.fold'));
     };
+
+    // 在 form.onsubmit 之前添加
+    async function loadVoices() {
+        try {
+            const response = await fetch('/api/voices');
+            const data = await response.json();
+            const select = form.querySelector('select[name="voice_id"]');
+            if (select) {
+                // 清空现有选项
+                select.innerHTML = '<option value="">未指定音色</option>';
+                // 添加音色选项
+                Object.entries(data.voices).forEach(([voiceId, voiceData]) => {
+                    const option = document.createElement('option');
+                    option.value = voiceId;
+                    option.textContent = voiceData.prefix || voiceId;
+                    option.selected = voiceId === (cat['voice_id'] || '');
+                    select.appendChild(option);
+                });
+            }
+        } catch (error) {
+            console.error('加载音色列表失败:', error);
+        }
+    }
+
+    // 立即调用加载音色
+    loadVoices();
+
+
+
+
+
     form.onsubmit = async function(e) {
         e.preventDefault();
         const fd = new FormData(form);
         const data = {};
         for (const [k, v] of fd.entries()) {
-            if (k && v) data[k] = v;
+            // 特殊处理voice_id字段，即使为空也要包含
+            if (k === 'voice_id') {
+                data[k] = v;
+            } else if (k && v) {
+                data[k] = v;
+            }
         }
-        if (!data['档案名']) { alert('档案名为必填项'); return; }
+        if (!data['档案名']) { await showAlert('档案名为必填项'); return; }
+        
+        // 验证Live2D模型文件存在性
+        if (data['live2d'] && data['live2d'].trim() !== '') {
+            try {
+                const response = await fetch(`/api/characters/catgirl/l2d/${encodeURIComponent(data['档案名'])}`);
+                const modelInfo = await response.json();
+                
+                if (!modelInfo.valid) {
+                    const confirmFallback = await showConfirm(`猫娘"${data['档案名']}"的Live2D模型文件不存在或已损坏。\n\n当前模型路径: ${data['live2d']}\n\n是否回退到默认模型(mao_pro)？\n\n点击"确定"使用默认模型，点击"取消"保持当前设置。`, 'Live2D模型异常');
+                    
+                    if (confirmFallback) {
+                        // 回退到默认模型
+                        const fallbackResponse = await fetch(`/api/characters/catgirl/l2d/${encodeURIComponent(data['档案名'])}`, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ fallback_to_default: true })
+                        });
+                        const fallbackResult = await fallbackResponse.json();
+                        
+                        if (fallbackResult.success) {
+                            await showAlert(`已回退到默认模型: ${fallbackResult.model_path}`);
+                            // 更新表单中的live2d字段
+                            data['live2d'] = fallbackResult.model_path;
+                        } else {
+                            await showAlert('回退到默认模型失败，请检查模型设置');
+                        }
+                    } else {
+                        // 用户选择保持当前设置，继续保存
+                        console.warn(`用户选择保持无效的Live2D模型设置: ${data['live2d']}`);
+                    }
+                }
+            } catch (error) {
+                console.error('验证Live2D模型失败:', error);
+                const continueSave = await showConfirm(`无法验证Live2D模型文件存在性。\n\n是否继续保存？\n\n点击"确定"继续保存，点击"取消"中止保存。`, '验证失败');
+                if (!continueSave) {
+                    return;
+                }
+            }
+        }
         
         try {
             console.log('提交数据:', data);
@@ -443,7 +631,7 @@ function showCatgirlForm(key, container) {
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error('API请求失败:', response.status, errorText);
-                alert('保存失败: ' + errorText);
+                await showAlert('保存失败: ' + errorText);
                 return;
             }
             
@@ -451,14 +639,20 @@ function showCatgirlForm(key, container) {
             console.log('保存结果:', result);
             
             if (result.success === false) {
-                alert(result.error || '保存失败');
+                await showAlert(result.error || '保存失败');
                 return;
+            }
+            
+            // 保存当前展开的猫娘名称，以便重新加载后自动展开
+            const formCatgirlName = data['档案名'];
+            if (formCatgirlName) {
+                expandedCatgirlName = formCatgirlName;
             }
             
             await loadCharacterData();
         } catch (error) {
             console.error('保存出错:', error);
-            alert('保存时发生错误: ' + error.message);
+            await showAlert('保存时发生错误: ' + error.message);
         }
     };
     // 绑定"修改名称"按钮事件
@@ -498,9 +692,9 @@ window.deleteCatgirlField = function(btn) {
 
 // 猫娘档案名重命名
 window.renameCatgirl = async function(oldName) {
-    const newName = prompt('请输入新的猫娘档案名', oldName);
+    const newName = await showPrompt('请输入新的猫娘档案名', oldName, '重命名猫娘');
     if (!newName || newName === oldName) return;
-    if (characterData['猫娘'][newName]) { alert('该档案名已存在'); return; }
+    if (characterData['猫娘'][newName]) { await showAlert('该档案名已存在'); return; }
     // 调用API重命名
     const res = await fetch('/api/characters/catgirl/' + encodeURIComponent(oldName) + '/rename', {
         method: 'POST',
@@ -509,15 +703,36 @@ window.renameCatgirl = async function(oldName) {
     });
     const result = await res.json();
     if (result.success) {
+        // 如果重命名的是当前展开的猫娘，更新展开记录
+        if (expandedCatgirlName === oldName) {
+            expandedCatgirlName = newName;
+        }
+        // 迁移 localStorage 中的展开状态记录
+        const oldStorageKey = `catgirl_expand_${oldName}`;
+        const newStorageKey = `catgirl_expand_${newName}`;
+        const savedState = localStorage.getItem(oldStorageKey);
+        if (savedState !== null) {
+            localStorage.setItem(newStorageKey, savedState);
+            localStorage.removeItem(oldStorageKey);
+        }
         await loadCharacterData();
     } else {
-        alert(result.error || '重命名失败');
+        await showAlert(result.error || '重命名失败');
     }
 }
 
 function openApiKeySettings() {
+    // 检查是否已有弹窗存在
+    const existingModal = document.getElementById('api-key-settings-modal');
+    if (existingModal) {
+        // 如果已存在，聚焦到该弹窗（通过点击背景区域）
+        existingModal.style.display = 'block';
+        return;
+    }
+    
     // 创建弹窗容器
     let modal = document.createElement('div');
+    modal.id = 'api-key-settings-modal';
     modal.style.position = 'fixed';
     modal.style.left = '0';
     modal.style.top = '0';
@@ -525,7 +740,11 @@ function openApiKeySettings() {
     modal.style.height = '100vh';
     modal.style.background = 'rgba(0,0,0,0.4)';
     modal.style.zIndex = '9999';
-    modal.onclick = function(e) { if (e.target === modal) document.body.removeChild(modal); };
+    modal.onclick = function(e) { 
+        if (e.target === modal) {
+            document.body.removeChild(modal);
+        }
+    };
     // 创建iframe
     let iframe = document.createElement('iframe');
     iframe.src = '/api_key';
@@ -539,7 +758,10 @@ function openApiKeySettings() {
     // 监听关闭消息
     window.addEventListener('message', function handler(e) {
         if (e.data && e.data.type === 'close_api_key_settings') {
-            document.body.removeChild(modal);
+            const modalToRemove = document.getElementById('api-key-settings-modal');
+            if (modalToRemove) {
+                document.body.removeChild(modalToRemove);
+            }
             window.removeEventListener('message', handler);
         }
     });
@@ -548,8 +770,18 @@ function openApiKeySettings() {
 }
 
 function openVoiceClone(lanlanName) {
+    // 检查是否已有弹窗存在（根据lanlanName区分）
+    const modalId = 'voice-clone-modal-' + encodeURIComponent(lanlanName);
+    const existingModal = document.getElementById(modalId);
+    if (existingModal) {
+        // 如果已存在，聚焦到该弹窗
+        existingModal.style.display = 'block';
+        return;
+    }
+    
     // 创建弹窗容器
     let modal = document.createElement('div');
+    modal.id = modalId;
     modal.style.position = 'fixed';
     modal.style.left = '0';
     modal.style.top = '0';
@@ -557,7 +789,11 @@ function openVoiceClone(lanlanName) {
     modal.style.height = '100vh';
     modal.style.background = 'rgba(0,0,0,0.4)';
     modal.style.zIndex = '9999';
-    modal.onclick = function(e) { if (e.target === modal) document.body.removeChild(modal); };
+    modal.onclick = function(e) { 
+        if (e.target === modal) {
+            document.body.removeChild(modal);
+        }
+    };
     // 创建iframe
     let iframe = document.createElement('iframe');
     iframe.src = '/voice_clone?lanlan_name=' + encodeURIComponent(lanlanName);
@@ -571,7 +807,10 @@ function openVoiceClone(lanlanName) {
     // 监听voice_id变更，注册页面可在window.parent.postMessage通知
     window.addEventListener('message', function handler(e) {
         if (e.data && e.data.type === 'voice_id_updated') {
-            document.body.removeChild(modal);
+            const modalToRemove = document.getElementById(modalId);
+            if (modalToRemove) {
+                document.body.removeChild(modalToRemove);
+            }
             window.removeEventListener('message', handler);
             loadCharacterData();
         }
@@ -582,7 +821,7 @@ function openVoiceClone(lanlanName) {
 
 // 解除声音注册
 window.unregisterVoice = async function(catgirlName) {
-    if (!confirm(`确定要解除猫娘"${catgirlName}"的声音注册吗？`)) {
+    if (!await showConfirm(`确定要解除猫娘"${catgirlName}"的声音注册吗？`, '解除声音注册', {danger: true})) {
         return;
     }
     
@@ -595,14 +834,14 @@ window.unregisterVoice = async function(catgirlName) {
         const result = await response.json();
         
         if (result.success) {
-            alert('声音注册已解除');
+            await showAlert('声音注册已解除');
             await loadCharacterData(); // 刷新数据
         } else {
-            alert(result.error || '解除注册失败');
+            await showAlert(result.error || '解除注册失败');
         }
     } catch (error) {
         console.error('解除注册出错:', error);
-        alert('解除注册时发生错误');
+        await showAlert('解除注册时发生错误');
     }
 }
 
@@ -696,11 +935,11 @@ async function switchCatgirl(catgirlName) {
         if (result.success) {
             await loadCharacterData(); // 重新加载数据以更新按钮状态
         } else {
-            alert(result.error || '切换失败');
+            await showAlert(result.error || '切换失败');
         }
     } catch (error) {
         console.error('切换猫娘失败:', error);
-        alert('切换猫娘时发生错误');
+        await showAlert('切换猫娘时发生错误');
     }
 }
 
@@ -714,4 +953,4 @@ const masterSaveBtn = document.querySelector('#master-form button[type="submit"]
 if (masterSaveBtn) masterSaveBtn.classList.add('sm');
 </script>
 </body>
-</html> 
+</html>

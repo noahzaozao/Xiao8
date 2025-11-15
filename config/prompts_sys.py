@@ -1,5 +1,5 @@
-from config import get_character_data
-MASTER_NAME, _, _, _, _, _, _, _, _, _ = get_character_data()
+from utils.config_manager import get_config_manager
+MASTER_NAME, _, _, _, _, _, _, _, _, _ = get_config_manager().get_character_data()
 
 gpt4_1_system = """## PERSISTENCE
 You are an agent - please keep going until the user's query is completely 
@@ -35,7 +35,7 @@ recent_history_manager_prompt = """请总结以下对话内容，生成简洁但
 %s
 ======以上为对话======
 
-你的摘要应该保留关键信息、重要事实和主要讨论点，且不能具有误导性或产生歧义。请以key为"对话摘要"的json字典格式返回。"""
+你的摘要应该保留关键信息、重要事实和主要讨论点，且不能具有误导性或产生歧义。请以key为"对话摘要"、value为字符串的json字典格式返回。"""
 
 
 detailed_recent_history_manager_prompt = """请总结以下对话内容，生成简洁但信息丰富的摘要：
@@ -44,7 +44,7 @@ detailed_recent_history_manager_prompt = """请总结以下对话内容，生成
 %s
 ======以上为对话======
 
-你的摘要应该尽可能多地保留有效且清晰的信息。请以key为"对话摘要"的json字典格式返回。
+你的摘要应该尽可能多地保留有效且清晰的信息。请以key为"对话摘要"、value为字符串的json字典格式返回。
 """
 
 further_summarize_prompt = """请总结以下内容，生成简洁但信息丰富的摘要：
@@ -53,7 +53,7 @@ further_summarize_prompt = """请总结以下内容，生成简洁但信息丰�
 %s
 ======以上为内容======
 
-你的摘要应该保留关键信息、重要事实和主要讨论点，且不能具有误导性或产生歧义，不得超过500字。请以key为"对话摘要"的json字典格式返回。"""
+你的摘要应该保留关键信息、重要事实和主要讨论点，且不能具有误导性或产生歧义，不得超过500字。请以key为"对话摘要"、value为字符串的json字典格式返回。"""
 
 settings_extractor_prompt = f"""从以下对话中提取关于{{LANLAN_NAME}}和{MASTER_NAME}的重要个人信息，用于个人备忘录以及未来的角色扮演，以json格式返回。
 请以JSON格式返回，格式为:
@@ -82,6 +82,7 @@ history_review_prompt = """请审阅%s和%s之间的对话历史记录，识别�
 <要点1> 这是一段情景对话，双方的回答应该是口语化的、自然的、拟人化的。</要点1>
 <要点2> 请以删除为主，除非不得已、不要直接修改内容。</要点2>
 <要点3> 如果对话历史中包含“先前对话的备忘录”，你可以修改它，但不允许删除它。你必须保留这一项。</要点3>
+<要点4> 请保留时间戳。 </要点4>
 
 ======以下为对话历史======
 %s
@@ -105,3 +106,26 @@ history_review_prompt = """请审阅%s和%s之间的对话历史记录，识别�
 - 保持对话的自然流畅性"""
 
 emotion_analysis_prompt = """你是一个情感分析专家。请分析用户输入的文本情感，并返回以下格式的JSON：{"emotion": "情感类型", "confidence": 置信度(0-1), "reason": "分析原因"}。情感类型包括：happy(开心), sad(悲伤), angry(愤怒), neutral(中性),surprised(惊讶)。"""
+
+proactive_chat_prompt = """你是{lanlan_name}，现在看到了一些热门话题和视频。请根据与{master_name}的对话历史和{master_name}的兴趣，判断是否要主动和{master_name}聊聊这些热门内容。
+
+======以下为对话历史======
+{memory_context}
+======以上为对话历史======
+
+======以下是当前热门内容======
+{trending_content}
+======以上为当前热门内容======
+
+请根据以下原则决定是否主动搭话：
+1. 如果内容很有趣、热门或值得讨论，可以主动提起
+2. 如果内容与你们之前的对话或{master_name}的兴趣相关，更应该提起
+3. 如果内容比较无聊或不适合讨论，或者{master_name}明确表示不想聊，可以选择不说话
+4. 说话时要自然、简短，像是无意中看到了有趣内容想分享给对方
+5. 尽量选一个最有意思的主题进行分享和搭话，但不要和对话历史中已经有的内容重复。
+
+请回复：
+- 如果选择主动搭话，直接说出你想说的话（简短自然即可）
+- 如果选择不搭话，只回复"[PASS]"
+
+"""

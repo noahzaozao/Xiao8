@@ -1,9 +1,13 @@
 import json
 import os
 from typing import Dict, Any, Optional, List
+from utils.config_manager import get_config_manager
 
-# 用户偏好文件路径
-PREFERENCES_FILE = 'config/user_preferences.json'
+# 初始化配置管理器
+_config_manager = get_config_manager()
+
+# 用户偏好文件路径（从配置管理器获取）
+PREFERENCES_FILE = str(_config_manager.get_config_path('user_preferences.json'))
 
 def load_user_preferences() -> List[Dict[str, Any]]:
     """
@@ -41,8 +45,12 @@ def save_user_preferences(preferences: List[Dict[str, Any]]) -> bool:
         bool: 保存成功返回True，失败返回False
     """
     try:
-        # 确保目录存在
-        os.makedirs(os.path.dirname(PREFERENCES_FILE), exist_ok=True)
+        # 确保配置目录存在
+        _config_manager.ensure_config_directory()
+        # 更新路径（可能已迁移）
+        global PREFERENCES_FILE
+        PREFERENCES_FILE = str(_config_manager.get_config_path('user_preferences.json'))
+        
         with open(PREFERENCES_FILE, 'w', encoding='utf-8') as f:
             json.dump(preferences, f, ensure_ascii=False, indent=2)
         return True

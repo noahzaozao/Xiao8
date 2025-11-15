@@ -1,14 +1,15 @@
 from langchain_community.chat_message_histories import SQLChatMessageHistory
 from langchain_core.messages import SystemMessage
 from sqlalchemy import create_engine, text
-from config import TIME_ORIGINAL_TABLE_NAME, TIME_COMPRESSED_TABLE_NAME, get_character_data
+from config import TIME_ORIGINAL_TABLE_NAME, TIME_COMPRESSED_TABLE_NAME
+from utils.config_manager import get_config_manager
 from datetime import datetime
 
 class TimeIndexedMemory:
     def __init__(self, recent_history_manager):
         self.engine = {}
         self.recent_history_manager = recent_history_manager
-        _, _, _, _, _, _, _, time_store, _, _ = get_character_data()
+        _, _, _, _, _, _, _, time_store, _, _ = get_config_manager().get_character_data()
         for i in time_store:
             self.engine[i] = create_engine(f"sqlite:///{time_store[i]}")
 
@@ -40,7 +41,7 @@ class TimeIndexedMemory:
                     return
             self.add_timestamp_column(lanlan_name)
 
-    def store_conversation(self, event_id, messages, lanlan_name, timestamp=None):
+    async def store_conversation(self, event_id, messages, lanlan_name, timestamp=None):
         if timestamp is None:
             timestamp = datetime.now()
 
@@ -57,7 +58,7 @@ class TimeIndexedMemory:
         )
 
         origin_history.add_messages(messages)
-        compressed_history.add_message(SystemMessage(self.recent_history_manager.compress_history(messages, lanlan_name)[1]))
+        compressed_history.add_message(SystemMessage((await self.recent_history_manager.compress_history(messages, lanlan_name))[1]))
 
         with self.engine[lanlan_name].connect() as conn:
             conn.execute(
