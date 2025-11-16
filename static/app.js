@@ -1150,7 +1150,7 @@ function init_app(){
             // 标记文本会话为活跃状态
             isTextSessionActive = true;
             
-            showStatusToast('🫴 她回来了！正在重新连接...', 3000);
+            showStatusToast(`🫴 ${lanlan_config.lanlan_name}回来了！正在重新连接...`, 3000);
             
             // 重置主动搭话定时器（如果已开启）
             if (proactiveChatEnabled) {
