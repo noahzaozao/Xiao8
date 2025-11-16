@@ -296,11 +296,11 @@
             const urlParams = new URLSearchParams(window.location.search);
             let lanlanNameFromUrl = urlParams.get('lanlan_name') || "";
             
-            // 从路径中提取 lanlan_name (例如 /viewer/{lanlan_name})
+            // 从路径中提取 lanlan_name (例如 /{lanlan_name})
             if (!lanlanNameFromUrl) {
                 const pathParts = window.location.pathname.split('/').filter(Boolean);
-                if (pathParts.length > 1 && pathParts[0] === 'viewer') {
-                    lanlanNameFromUrl = decodeURIComponent(pathParts[1]);
+                if (pathParts.length > 0 && !['api', 'static', 'subtitle', 'sync', 'sync_binary', 'subtitle_ws', 'ws'].includes(pathParts[0])) {
+                    lanlanNameFromUrl = decodeURIComponent(pathParts[0]);
                 }
             }
             
