@@ -5,13 +5,31 @@ API配置加载器
 """
 import json
 import logging
+from copy import deepcopy
 from pathlib import Path
 from typing import Dict, Any, Optional
 
+from config import (
+    DEFAULT_CORE_API_PROFILES,
+    DEFAULT_ASSIST_API_PROFILES,
+    DEFAULT_ASSIST_API_KEY_FIELDS,
+)
 logger = logging.getLogger(__name__)
 
 # 配置缓存
 _config_cache: Optional[Dict[str, Any]] = None
+
+
+def _get_default_core_api_profiles() -> Dict[str, Dict[str, Any]]:
+    return deepcopy(DEFAULT_CORE_API_PROFILES)
+
+
+def _get_default_assist_api_profiles() -> Dict[str, Dict[str, Any]]:
+    return deepcopy(DEFAULT_ASSIST_API_PROFILES)
+
+
+def _get_default_assist_api_key_fields() -> Dict[str, str]:
+    return deepcopy(DEFAULT_ASSIST_API_KEY_FIELDS)
 
 
 def _get_config_file_path() -> Path:
@@ -166,6 +184,9 @@ def get_core_api_profiles(force_reload: bool = False) -> Dict[str, Dict[str, Any
         # 转换为Python代码使用的格式
         result[key] = _convert_core_api_profile(profile)
     
+    if not result:
+        return _get_default_core_api_profiles()
+    
     return result
 
 
@@ -187,6 +208,9 @@ def get_assist_api_profiles(force_reload: bool = False) -> Dict[str, Dict[str, A
         # 转换为Python代码使用的格式
         result[key] = _convert_assist_api_profile(profile)
     
+    if not result:
+        return _get_default_assist_api_profiles()
+    
     return result
 
 
@@ -198,7 +222,10 @@ def get_assist_api_key_fields() -> Dict[str, str]:
         Dict: API Key字段映射字典
     """
     config = get_config()
-    return config.get('assist_api_key_fields', {})
+    result = config.get('assist_api_key_fields', {})
+    if not result:
+        return _get_default_assist_api_key_fields()
+    return result
 
 
 def get_default_models() -> Dict[str, str]:
