@@ -125,13 +125,6 @@ function init_app(){
     let focusModeEnabled = false;
     
     // 暴露到全局作用域，供 live2d.js 等其他模块访问和修改
-    // 如果已经初始化，则跳过（避免重复定义）
-    if (typeof window.proactiveChatEnabled === 'undefined') {
-        window.proactiveChatEnabled = proactiveChatEnabled;
-    }
-    if (typeof window.focusModeEnabled === 'undefined') {
-        window.focusModeEnabled = focusModeEnabled;
-    }
     // 同步更新（即使已存在也更新，因为这些是状态变量）
     window.proactiveChatEnabled = proactiveChatEnabled;
     window.focusModeEnabled = focusModeEnabled;
@@ -744,12 +737,16 @@ function init_app(){
         screenButton.classList.remove('active');
     }
 
-    window.switchMicCapture = async () => {
-        if (muteButton.disabled) {
-            await startMicCapture();
-        } else {
-            await stopMicCapture();
-        }
+    // 如果未定义或是占位符，则初始化（避免重复定义）
+    if (typeof window.switchMicCapture === 'undefined' || (window.switchMicCapture && window.switchMicCapture.__isPlaceholder)) {
+        window.switchMicCapture = async () => {
+            if (muteButton.disabled) {
+                await startMicCapture();
+            } else {
+                await stopMicCapture();
+            }
+        };
+        if (window.switchMicCapture) delete window.switchMicCapture.__isPlaceholder;
     }
     // 如果未定义或是占位符，则初始化（避免重复定义）
     if (typeof window.switchScreenSharing === 'undefined' || (window.switchScreenSharing && window.switchScreenSharing.__isPlaceholder)) {

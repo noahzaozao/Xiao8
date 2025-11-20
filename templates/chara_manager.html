@@ -1103,7 +1103,8 @@ window.unregisterVoice = async function(catgirlName) {
 }
 
 // Beacon功能 - 页面关闭时发送信号给服务器
-let beaconSent = false;
+// 注意：beaconSent 已在 global_vars.js 中初始化
+let beaconSent = window.beaconSent;
 
 function sendBeacon() {
     if (beaconSent) return; // 防止重复发送
