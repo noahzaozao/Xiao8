@@ -933,7 +933,7 @@ async function loadCurrentApiKey() {
 }
 
 // 全局变量存储待保存的API Key
-// 注意：pendingApiKey 已在 global_vars.js 中初始化
+// 注意：以下变量已在 global_vars.js 中初始化，这里使用本地引用（需要修改）
 let pendingApiKey = window.pendingApiKey;
 
 // 切换自定义API启用状态
@@ -1095,6 +1095,7 @@ document.getElementById('api-key-form').addEventListener('submit', async functio
             ttsModelProvider, ttsModelUrl, ttsModelApiKey,
             mcpToken, enableCustomApi
         };
+        window.pendingApiKey = pendingApiKey; // 同步到全局变量
         showWarningModal();
     } else {
         // 没有现有API Key，直接保存
@@ -1222,11 +1223,13 @@ function confirmApiKeyChange() {
         const apiKeyToSave = pendingApiKey; // 保存当前值
         closeWarningModal();
         pendingApiKey = null; // 清空全局变量
+        window.pendingApiKey = null; // 同步到全局变量
         saveApiKey(apiKeyToSave); // 使用保存的值
     } else {
         showStatus('API Key无效，请重新输入', 'error');
         closeWarningModal();
         pendingApiKey = null; // 清空全局变量
+        window.pendingApiKey = null; // 同步到全局变量
     }
 }
 
@@ -1390,7 +1393,7 @@ function autoFillCoreApiKey() {
 }
 
 // Beacon功能 - 页面关闭时发送信号给服务器（仅在直接打开时发送，iframe中不发送）
-// 注意：beaconSent 已在 global_vars.js 中初始化
+// 注意：以下变量已在 global_vars.js 中初始化，这里使用本地引用（需要修改）
 let beaconSent = window.beaconSent;
 
 function sendBeacon() {
@@ -1401,6 +1404,7 @@ function sendBeacon() {
     
     if (beaconSent) return; // 防止重复发送
     beaconSent = true;
+    window.beaconSent = true; // 同步回全局变量
     
     try {
         // 使用navigator.sendBeacon确保信号不被拦截

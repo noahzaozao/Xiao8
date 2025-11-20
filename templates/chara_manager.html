@@ -222,13 +222,20 @@ if (!window._charaManagerFoldHandler) {
 }
 
 // 角色数据缓存
-// 注意：characterData 和 expandedCatgirlName 已在 global_vars.js 中初始化
+// 注意：以下变量已在 global_vars.js 中初始化，这里使用本地引用（需要修改）
 let characterData = window.characterData;
 let expandedCatgirlName = window.expandedCatgirlName;
+
+// 辅助函数：设置 expandedCatgirlName 并同步到全局
+function setExpandedCatgirlName(value) {
+    expandedCatgirlName = value;
+    window.expandedCatgirlName = value;
+}
 
 async function loadCharacterData() {
     const resp = await fetch('/api/characters');
     characterData = await resp.json();
+    window.characterData = characterData; // 同步回全局变量
     renderMaster();
     renderCatgirls();
     updateSwitchButtons();
@@ -257,7 +264,7 @@ async function loadCharacterData() {
             }, 0);
         } else {
             // 如果猫娘不存在了，清除记录
-            expandedCatgirlName = null;
+            setExpandedCatgirlName(null);
         }
     }
 }
@@ -470,7 +477,7 @@ function renderCatgirls() {
         if (shouldBeOpen) {
             detailsDiv.style.display = 'block';
             expandBtn.textContent = '▼';
-            expandedCatgirlName = key;
+            setExpandedCatgirlName(key);
             // 延迟加载表单，确保 DOM 已渲染
             setTimeout(() => {
                 showCatgirlForm(key, detailsDiv);
@@ -487,7 +494,7 @@ function renderCatgirls() {
                 localStorage.setItem(storageKey, 'false');
                 // 清除展开记录
                 if (expandedCatgirlName === key) {
-                    expandedCatgirlName = null;
+                    setExpandedCatgirlName(null);
                 }
             } else {
                 detailsDiv.style.display = 'block';
@@ -495,7 +502,7 @@ function renderCatgirls() {
                 // 保存状态到 localStorage
                 localStorage.setItem(storageKey, 'true');
                 // 记录当前展开的猫娘
-                expandedCatgirlName = key;
+                setExpandedCatgirlName(key);
                 showCatgirlForm(key, detailsDiv);
             }
         };
@@ -875,7 +882,7 @@ function showCatgirlForm(key, container) {
                 // 验证并清理猫娘名称，避免特殊字符
                 formCatgirlName = formCatgirlName.trim();
                 if (formCatgirlName) {
-                    expandedCatgirlName = formCatgirlName;
+                    setExpandedCatgirlName(formCatgirlName);
                 }
             }
             
@@ -960,7 +967,7 @@ window.renameCatgirl = async function(oldName) {
     if (result.success) {
         // 如果重命名的是当前展开的猫娘，更新展开记录
         if (expandedCatgirlName === oldName) {
-            expandedCatgirlName = newName;
+            setExpandedCatgirlName(newName);
         }
         // 迁移 localStorage 中的展开状态记录
         const oldStorageKey = `catgirl_expand_${oldName}`;
@@ -1103,12 +1110,13 @@ window.unregisterVoice = async function(catgirlName) {
 }
 
 // Beacon功能 - 页面关闭时发送信号给服务器
-// 注意：beaconSent 已在 global_vars.js 中初始化
+// 注意：以下变量已在 global_vars.js 中初始化，这里使用本地引用（需要修改）
 let beaconSent = window.beaconSent;
 
 function sendBeacon() {
     if (beaconSent) return; // 防止重复发送
     beaconSent = true;
+    window.beaconSent = true; // 同步回全局变量
     
     try {
         // 使用navigator.sendBeacon确保信号不被拦截

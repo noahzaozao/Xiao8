@@ -192,8 +192,15 @@ input:checked + .toggle-slider:before {
     </div>
 </div>
 <script>
-// 注意：currentMemoryFile 已在 global_vars.js 中初始化
+// 注意：以下变量已在 global_vars.js 中初始化，这里使用本地引用（需要修改）
 let currentMemoryFile = window.currentMemoryFile;
+
+// 辅助函数：同步变量到全局
+function syncMemoryVars() {
+    window.currentMemoryFile = currentMemoryFile;
+    window.currentCatName = currentCatName;
+    window.chatData = chatData;
+}
 async function loadMemoryFileList() {
     const ul = document.getElementById('memory-file-list');
     ul.innerHTML = `<li style="color:#888;">${window.t ? window.t('memory.loading') : '加载中...'}</li>`;
@@ -240,7 +247,7 @@ async function loadMemoryFileList() {
     }
 }
 
-// 注意：chatData 和 currentCatName 已在 global_vars.js 中初始化
+// 注意：以下变量已在 global_vars.js 中初始化，这里使用本地引用（需要修改）
 let chatData = window.chatData;
 let currentCatName = window.currentCatName;
 
@@ -294,6 +301,7 @@ function renderChatEdit() {
 
 function deleteChat(idx) {
     chatData.splice(idx, 1);
+    syncMemoryVars(); // 同步到全局变量
     renderChatEdit();
 }
 // 新增：AI输入框内容变更时，自动拼接时间戳
@@ -305,15 +313,18 @@ function updateAIContent(idx, value) {
     } else {
         chatData[idx].text = value;
     }
+    syncMemoryVars(); // 同步到全局变量
 }
 function updateSystemContent(idx, value) {
     // 存储时加上前缀
     const memoPrefix = window.t ? window.t('memory.previousMemo') : '先前对话的备忘录: ';
     chatData[idx].text = memoPrefix + value;
+    syncMemoryVars(); // 同步到全局变量
 }
 async function selectMemoryFile(filename, li, catName) {
     currentMemoryFile = filename;
     currentCatName = catName || (li ? li.getAttribute('data-catname') : '');
+    syncMemoryVars(); // 同步到全局变量
     Array.from(document.getElementById('memory-file-list').children).forEach(x => x.classList.remove('selected'));
     if (li) li.classList.add('selected');
     const editDiv = document.getElementById('memory-chat-edit');
@@ -343,13 +354,16 @@ async function selectMemoryFile(filename, li, catName) {
                 }
             }).filter(Boolean);
             console.log(chatData);
+            syncMemoryVars(); // 同步到全局变量
             renderChatEdit();
         } else {
             chatData = [];
+            syncMemoryVars(); // 同步到全局变量
             editDiv.innerHTML = window.t ? window.t('memory.noChatContent') : '无聊天内容';
         }
     } catch (e) {
         chatData = [];
+        syncMemoryVars(); // 同步到全局变量
         editDiv.innerHTML = window.t ? window.t('memory.loadFailed') : '加载失败';
     }
 }
@@ -392,6 +406,7 @@ document.getElementById('save-memory-btn').onclick = async function() {
 document.getElementById('clear-memory-btn').onclick = function() {
     // 只保留 system 类型（备忘录），其余全部清除
     chatData = chatData.filter(msg => msg.role === 'system');
+    syncMemoryVars(); // 同步到全局变量
     renderChatEdit();
     showSaveStatus(window.t ? window.t('memory.clearedMemory') : '已清空近期记忆，未保存', false);
 };

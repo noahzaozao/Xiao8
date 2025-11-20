@@ -288,7 +288,7 @@
 
 <script>
     // 页面配置 - 从 URL 或 API 获取
-    // 注意：lanlan_config 和 cubism4Model 已在 global_vars.js 中初始化
+    // 注意：以下变量已在 global_vars.js 中初始化，这里使用本地引用（需要修改）
     let lanlan_config = window.lanlan_config;
     let cubism4Model = window.cubism4Model;
     
@@ -405,6 +405,7 @@
 
     // ===== WebSocket Connection to Monitor Server =====
     // 注意：以下变量已在 global_vars.js 中初始化，这里使用本地引用以提高性能
+    // 这些变量需要修改并同步回全局，所以使用 let 声明
     let ws = window.viewerWs;
     let reconnectAttempts = window.reconnectAttempts;
     const maxReconnectAttempts = 10;
@@ -412,6 +413,7 @@
 
     // Audio context for playing audio
     // 注意：以下变量已在 global_vars.js 中初始化，这里使用本地引用以提高性能
+    // 这些变量需要修改并同步回全局，所以使用 let 声明
     let audioContext = window.viewerAudioContext;
     let audioQueue = window.audioQueue;
     let isPlaying = window.isPlaying;

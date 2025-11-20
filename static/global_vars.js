@@ -185,5 +185,69 @@
     // ==================== 初始化完成标记 ====================
     initVar('globalVarsInitialized', true);
     
+    /**
+     * 工具函数：安全地设置全局函数（如果未定义或是占位符）
+     * 用于在其他文件中替换占位符函数
+     * 
+     * @param {string} name - 函数名（不需要 'window.' 前缀）
+     * @param {Function} fn - 实际的函数实现
+     * @returns {boolean} - 是否成功设置（如果已存在且不是占位符则返回 false）
+     * 
+     * @example
+     * // 在 app.js 中
+     * if (setGlobalFunction('showStatusToast', showStatusToast)) {
+     *     console.log('函数已设置');
+     * }
+     */
+    window.setGlobalFunction = function(name, fn) {
+        if (typeof window[name] === 'undefined' || (window[name] && window[name].__isPlaceholder)) {
+            window[name] = fn;
+            if (window[name]) {
+                delete window[name].__isPlaceholder;
+            }
+            return true;
+        }
+        return false;
+    };
+    
+    /**
+     * 工具函数：检查全局变量/函数是否需要初始化
+     * 
+     * @param {string} name - 变量/函数名（不需要 'window.' 前缀）
+     * @returns {boolean} - 如果未定义或是占位符则返回 true
+     * 
+     * @example
+     * if (shouldInitGlobal('showStatusToast')) {
+     *     window.showStatusToast = myFunction;
+     *     delete window.showStatusToast.__isPlaceholder;
+     * }
+     */
+    window.shouldInitGlobal = function(name) {
+        return typeof window[name] === 'undefined' || (window[name] && window[name].__isPlaceholder);
+    };
+    
+    /**
+     * 工具函数：批量从全局变量获取值到局部作用域
+     * 用于在 HTML 模板中简化局部变量的初始化
+     * 
+     * @param {...string} varNames - 变量名列表（不需要 'window.' 前缀）
+     * @returns {Object} - 包含所有变量的对象
+     * 
+     * @example
+     * // 在 HTML 模板中
+     * const { lanlan_config, cubism4Model } = window.getGlobalVars('lanlan_config', 'cubism4Model');
+     * // 或者使用解构赋值
+     * const vars = window.getGlobalVars('characterData', 'expandedCatgirlName');
+     * let characterData = vars.characterData;
+     * let expandedCatgirlName = vars.expandedCatgirlName;
+     */
+    window.getGlobalVars = function(...varNames) {
+        const result = {};
+        for (const name of varNames) {
+            result[name] = window[name];
+        }
+        return result;
+    };
+    
     console.log('[Global Vars] 全局变量已初始化');
 })();

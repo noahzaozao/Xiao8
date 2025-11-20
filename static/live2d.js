@@ -2730,7 +2730,7 @@ Live2DManager.prototype.applyPersistentExpressionsNative = async function() {
 
 // 创建全局 Live2D 管理器实例
 // 如果未定义，则初始化（避免重复定义）
-if (typeof window.Live2DManager === 'undefined') {
+if (window.shouldInitGlobal && window.shouldInitGlobal('Live2DManager')) {
     window.Live2DManager = Live2DManager;
 }
 if (typeof window.live2dManager === 'undefined' || window.live2dManager === null) {

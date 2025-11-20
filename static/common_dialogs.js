@@ -338,8 +338,7 @@
      * @returns {Promise<boolean>}
      */
     // 如果未定义或是占位符，则初始化（避免重复定义）
-    if (typeof window.showAlert === 'undefined' || (window.showAlert && window.showAlert.__isPlaceholder)) {
-        window.showAlert = function(message, title = null) {
+    window.setGlobalFunction('showAlert', function(message, title = null) {
         if (title === null) {
             title = window.t ? window.t('common.alert') : '提示';
         }
@@ -348,9 +347,7 @@
             title: title,
             message: message,
         });
-    };
-    if (window.showAlert) delete window.showAlert.__isPlaceholder;
-    }
+    });
 
     /**
      * 显示确认对话框（替代 confirm）
@@ -360,8 +357,7 @@
      * @returns {Promise<boolean>}
      */
     // 如果未定义或是占位符，则初始化（避免重复定义）
-    if (typeof window.showConfirm === 'undefined' || (window.showConfirm && window.showConfirm.__isPlaceholder)) {
-        window.showConfirm = function(message, title = null, options = {}) {
+    window.setGlobalFunction('showConfirm', function(message, title = null, options = {}) {
         console.log('[showConfirm] 被调用，参数:', { message, title, options });
         if (title === null) {
             try {
@@ -382,7 +378,7 @@
         });
         console.log('[showConfirm] 返回 Promise:', promise);
         return promise;
-    };
+    });
 
     /**
      * 显示输入对话框（替代 prompt）
@@ -392,8 +388,7 @@
      * @returns {Promise<string|null>}
      */
     // 如果未定义或是占位符，则初始化（避免重复定义）
-    if (typeof window.showPrompt === 'undefined' || (window.showPrompt && window.showPrompt.__isPlaceholder)) {
-        window.showPrompt = function(message, defaultValue = '', title = null) {
+    window.setGlobalFunction('showPrompt', function(message, defaultValue = '', title = null) {
         if (title === null) {
             title = window.t ? window.t('common.input') : '输入';
         }
@@ -403,7 +398,7 @@
             message: message,
             defaultValue: defaultValue,
         });
-    };
+    });
 
     // 添加 fadeOut 动画
     const fadeOutStyle = document.createElement('style');
