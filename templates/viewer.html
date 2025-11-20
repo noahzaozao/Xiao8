@@ -8,7 +8,9 @@
     <link rel="apple-touch-icon" href="/static/xiaoba_192.png">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta charset="UTF-8">
-    <title>Viewer - Project N.E.K.O.</title>
+    <title data-i18n="viewer.title">Viewer - Project N.E.K.O.</title>
+    <!-- i18next 加载器（统一处理 CDN 加载和初始化） -->
+    <script src="/static/i18n-i18next.js"></script>
     <style>
         *:focus {
             outline: none !important;
@@ -122,7 +124,8 @@
             border-radius: 4px;
             cursor: pointer;
             font-weight: bold;
-            line-height: 18px;
+            font-size: 14px; /* 统一字体大小 */
+            line-height: 24px; /* 与按钮高度一致 */
             text-align: center;
             z-index: 21;
             padding: 0;
@@ -270,9 +273,9 @@
 <body>
 <div id="chat-container">
     <div id="chat-header">
-        <span id="chat-title">💬 对话 (观看模式)</span>
+        <span id="chat-title" data-i18n="chat.viewerTitle">💬 对话 (观看模式)</span>
     </div>
-    <button id="toggle-chat-btn" title="最小化">—</button>
+    <button id="toggle-chat-btn" data-i18n-title="common.minimize" title="最小化"><img src="/static/icons/minimize_icon.png" alt="最小化" data-i18n-alt="common.minimize" style="width: 24px; height: 24px; object-fit: contain; pointer-events: none;"></button>
     <div id="chat-content-wrapper">
         <div id="chatContainer"></div>
     </div>
@@ -295,11 +298,11 @@
             const urlParams = new URLSearchParams(window.location.search);
             let lanlanNameFromUrl = urlParams.get('lanlan_name') || "";
             
-            // 从路径中提取 lanlan_name (例如 /viewer/{lanlan_name})
+            // 从路径中提取 lanlan_name (例如 /{lanlan_name})
             if (!lanlanNameFromUrl) {
                 const pathParts = window.location.pathname.split('/').filter(Boolean);
-                if (pathParts.length > 1 && pathParts[0] === 'viewer') {
-                    lanlanNameFromUrl = decodeURIComponent(pathParts[1]);
+                if (pathParts.length > 0 && !['api', 'static', 'subtitle', 'sync', 'sync_binary', 'subtitle_ws', 'ws'].includes(pathParts[0])) {
+                    lanlanNameFromUrl = decodeURIComponent(pathParts[0]);
                 }
             }
             
@@ -373,12 +376,22 @@
         chatMinimized = !chatMinimized;
         if (chatMinimized) {
             chatContainer.classList.add('minimized');
-            toggleChatBtn.textContent = '+';
-            toggleChatBtn.title = '展开';
+            // 更新图标为展开图标
+            let iconImg = toggleChatBtn.querySelector('img');
+            if (iconImg) {
+                iconImg.src = '/static/icons/expand_icon.png';
+                iconImg.alt = window.t ? window.t('common.expand') : '展开';
+            }
+            toggleChatBtn.title = window.t ? window.t('common.expand') : '展开';
         } else {
             chatContainer.classList.remove('minimized');
-            toggleChatBtn.textContent = '—';
-            toggleChatBtn.title = '最小化';
+            // 更新图标为最小化图标
+            let iconImg = toggleChatBtn.querySelector('img');
+            if (iconImg) {
+                iconImg.src = '/static/icons/minimize_icon.png';
+                iconImg.alt = window.t ? window.t('common.minimize') : '最小化';
+            }
+            toggleChatBtn.title = window.t ? window.t('common.minimize') : '最小化';
             scrollToBottom();
         }
     });

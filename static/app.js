@@ -4,6 +4,7 @@ function init_app(){
     const screenButton = document.getElementById('screenButton');
     const stopButton = document.getElementById('stopButton');
     const resetSessionButton = document.getElementById('resetSessionButton');
+    const returnSessionButton = document.getElementById('returnSessionButton');
     const statusElement = document.getElementById('status');
     const statusToast = document.getElementById('status-toast');
     
@@ -195,7 +196,8 @@ function init_app(){
                     }
                 } else if (response.type === 'screen_share_error') {
                     // 屏幕分享/截图错误，复位按钮状态
-                    showStatusToast(response.message, 4000);
+                    const translatedMessage = window.translateStatusMessage ? window.translateStatusMessage(response.message) : response.message;
+                    showStatusToast(translatedMessage, 4000);
                     
                     // 停止屏幕分享
                     stopScreening();
@@ -231,12 +233,14 @@ function init_app(){
                         console.log('模式切换中，忽略"已离开"状态消息');
                         return;
                     }
-                    showStatusToast(response.message, 4000);
+                    // 翻译后端发送的状态消息
+                    const translatedMessage = window.translateStatusMessage ? window.translateStatusMessage(response.message) : response.message;
+                    showStatusToast(translatedMessage, 4000);
                     if (response.message === `${lanlan_config.lanlan_name}失联了，即将重启！`){
                         if (isRecording === false && !isTextSessionActive){
-                            showStatusToast(`${lanlan_config.lanlan_name}正在打盹...`, 5000);
+                            showStatusToast(window.t ? window.t('app.catgirlResting', {name: lanlan_config.lanlan_name}) : `${lanlan_config.lanlan_name}正在打盹...`, 5000);
                         } else if (isTextSessionActive) {
-                            showStatusToast(`正在文本聊天中...`, 5000);
+                            showStatusToast(window.t ? window.t('app.textChatting') : `正在文本聊天中...`, 5000);
                         } else {
                             stopRecording();
                             if (socket.readyState === WebSocket.OPEN) {
@@ -250,6 +254,7 @@ function init_app(){
                             screenButton.disabled = true;
                             stopButton.disabled = true;
                             resetSessionButton.disabled = true;
+                            returnSessionButton.disabled = true;
 
                             setTimeout(async () => {
                                 try {
@@ -261,7 +266,7 @@ function init_app(){
                                         setTimeout(() => {
                                             if (sessionStartedResolver) {
                                                 sessionStartedResolver = null;
-                                                reject(new Error('Session启动超时'));
+                                                reject(new Error(window.t ? window.t('app.sessionTimeout') : 'Session启动超时'));
                                             }
                                         }, 10000);
                                     });
@@ -280,10 +285,10 @@ function init_app(){
                                     if (screenCaptureStream != null){
                                         await startScreenSharing();
                                     }
-                                    showStatusToast(`重启完成，${lanlan_config.lanlan_name}回来了！`, 4000);
+                                    showStatusToast(window.t ? window.t('app.restartComplete', {name: lanlan_config.lanlan_name}) : `重启完成，${lanlan_config.lanlan_name}回来了！`, 4000);
                                 } catch (error) {
                                     console.error("重启时出错:", error);
-                                    showStatusToast(`重启失败: ${error.message}`, 5000);
+                                    showStatusToast(window.t ? window.t('app.restartFailed', {error: error.message}) : `重启失败: ${error.message}`, 5000);
                                 }
                             }, 7500); // 7.5秒后执行
                         }
@@ -318,7 +323,7 @@ function init_app(){
                 } else if (response.type === 'reload_page') {
                     console.log('收到reload_page事件：', response.message);
                     // 显示提示信息
-                    showStatusToast(response.message || '配置已更新，页面即将刷新', 3000);
+                    showStatusToast(response.message || (window.t ? window.t('app.configUpdated') : '配置已更新，页面即将刷新'), 3000);
                     
                     // 延迟2.5秒后刷新页面，让后端有足够时间完成session关闭和配置重新加载
                     setTimeout(() => {
@@ -343,7 +348,7 @@ function init_app(){
                         micButton.classList.remove('recording');
                         
                         // 显示提示信息
-                        showStatusToast(response.message || '长时间无语音输入，已自动关闭麦克风', 4000);
+                        showStatusToast(response.message || (window.t ? window.t('app.autoMuteTimeout') : '长时间无语音输入，已自动关闭麦克风'), 4000);
                     }
                 }
             } catch (error) {
@@ -459,7 +464,7 @@ function init_app(){
         if (isRecording) {
             const wasRecording = isRecording;
             // 先显示选择提示
-            showStatusToast(`已选择 ${deviceName}`, 3000);
+            showStatusToast(window.t ? window.t('app.deviceSelected', {device: deviceName}) : `已选择 ${deviceName}`, 3000);
             // 延迟重启录音，让用户看到选择提示
             await stopMicCapture();
             // 等待一小段时间，确保选择提示显示出来
@@ -469,7 +474,7 @@ function init_app(){
             }
         } else {
             // 如果不在录音，直接显示选择提示
-            showStatusToast(`已选择 ${deviceName}`, 3000);
+            showStatusToast(window.t ? window.t('app.deviceSelected', {device: deviceName}) : `已选择 ${deviceName}`, 3000);
         }
     }
     
@@ -541,7 +546,7 @@ function init_app(){
 
             if (audioTracks.length === 0) {
                 console.error("没有可用的音频轨道");
-                showStatusToast('无法访问麦克风', 4000);
+                showStatusToast(window.t ? window.t('app.micAccessDenied') : '无法访问麦克风', 4000);
                 return;
             }
 
@@ -552,7 +557,7 @@ function init_app(){
             screenButton.disabled = false;
             stopButton.disabled = true;
             resetSessionButton.disabled = false;
-            showStatusToast('正在语音...', 2000);
+            showStatusToast(window.t ? window.t('app.speaking') : '正在语音...', 2000);
             
             // 添加active类以保持激活状态的颜色
             micButton.classList.add('active');
@@ -561,7 +566,7 @@ function init_app(){
             stopProactiveChatSchedule();
         } catch (err) {
             console.error('获取麦克风权限失败:', err);
-            showStatusToast('无法访问麦克风', 4000);
+            showStatusToast(window.t ? window.t('app.micAccessDenied') : '无法访问麦克风', 4000);
             // 失败时移除录音状态类
             micButton.classList.remove('recording');
             // 移除active类
@@ -596,7 +601,7 @@ function init_app(){
         }
         
         // 如果是从语音模式切换回来，显示待机状态
-        showStatusToast(`${lanlan_config.lanlan_name}待机中...`, 2000);
+        showStatusToast(window.t ? window.t('app.standby', {name: lanlan_config.lanlan_name}) : `${lanlan_config.lanlan_name}待机中...`, 2000);
         
         // 延迟重置模式切换标志，确保"已离开"消息已经被忽略
         setTimeout(() => {
@@ -636,7 +641,7 @@ function init_app(){
     async function startScreenSharing(){ // 分享屏幕，按钮on click
         // 检查是否在录音状态
         if (!isRecording) {
-            showStatusToast('请先开启麦克风录音！', 3000);
+            showStatusToast(window.t ? window.t('app.micRequired') : '请先开启麦克风录音！', 3000);
             return;
         }
         
@@ -689,7 +694,7 @@ function init_app(){
             };
 
             // 获取麦克风流
-            if (!isRecording) showStatusToast('没开麦啊喂！', 3000);
+            if (!isRecording) showStatusToast(window.t ? window.t('app.micNotOpen') : '没开麦啊喂！', 3000);
           } catch (err) {
             console.error(isMobile() ? '摄像头访问失败:' : '屏幕共享失败:', err);
             console.error('启动失败 →', err);
@@ -718,7 +723,7 @@ function init_app(){
         stopButton.disabled = true;
         resetSessionButton.disabled = false;
         screenCaptureStream = null;
-        showStatusToast('正在语音...', 2000);
+        showStatusToast(window.t ? window.t('app.speaking') : '正在语音...', 2000);
         
         // 移除active类
         screenButton.classList.remove('active');
@@ -735,7 +740,7 @@ function init_app(){
         if (stopButton.disabled) {
             // 检查是否在录音状态
             if (!isRecording) {
-                showStatusToast('请先开启麦克风！', 3000);
+                showStatusToast(window.t ? window.t('app.micRequired') : '请先开启麦克风录音！', 3000);
                 return;
             }
             await startScreenSharing();
@@ -886,7 +891,7 @@ function init_app(){
         
         toast.innerHTML = `
             <img src="/static/icons/ready_to_talk.png" style="width: 36px; height: 36px; object-fit: contain; display: block; flex-shrink: 0;" alt="ready">
-            <span style="display: flex; align-items: center;">可以开始说话了！</span>
+            <span style="display: flex; align-items: center;">${window.t ? window.t('app.readyToSpeak') : '可以开始说话了！'}</span>
         `;
         
         // 2秒后自动消失
@@ -901,7 +906,7 @@ function init_app(){
     // 开始麦克风录音
     micButton.addEventListener('click', async () => {
         // 立即显示准备提示
-        showVoicePreparingToast('语音系统准备中...');
+        showVoicePreparingToast(window.t ? window.t('app.voiceSystemPreparing') : '语音系统准备中...');
         
         // 如果有活跃的文本会话，先结束它
         if (isTextSessionActive) {
@@ -912,15 +917,17 @@ function init_app(){
                 }));
             }
             isTextSessionActive = false;
-            showStatusToast('正在切换到语音模式...', 3000);
-            showVoicePreparingToast('正在切换到语音模式...');
+            showStatusToast(window.t ? window.t('app.switchingToVoice') : '正在切换到语音模式...', 3000);
+            showVoicePreparingToast(window.t ? window.t('app.switchingToVoice') : '正在切换到语音模式...');
             // 增加等待时间，确保后端完全清理资源
             await new Promise(resolve => setTimeout(resolve, 1500)); // 从500ms增加到1500ms
         }
         
-        // 隐藏文本输入区
+        // 隐藏文本输入区（仅非移动端）
         const textInputArea = document.getElementById('text-input-area');
-        textInputArea.classList.add('hidden');
+        if (!isMobile()) {
+            textInputArea.classList.add('hidden');
+        }
         
         // 立即禁用所有语音按钮
         micButton.disabled = true;
@@ -928,9 +935,10 @@ function init_app(){
         screenButton.disabled = true;
         stopButton.disabled = true;
         resetSessionButton.disabled = true;
+        returnSessionButton.disabled = true;
         
-        showStatusToast('正在初始化语音对话...', 3000);
-        showVoicePreparingToast('正在连接服务器...');
+        showStatusToast(window.t ? window.t('app.initializingVoice') : '正在初始化语音对话...', 3000);
+        showVoicePreparingToast(window.t ? window.t('app.connectingToServer') : '正在连接服务器...');
         
         try {
             // 创建一个 Promise 来等待 session_started 消息
@@ -941,7 +949,7 @@ function init_app(){
                 setTimeout(() => {
                     if (sessionStartedResolver) {
                         sessionStartedResolver = null;
-                        reject(new Error('Session启动超时'));
+                        reject(new Error(window.t ? window.t('app.sessionTimeout') : 'Session启动超时'));
                     }
                 }, 15000);
             });
@@ -953,14 +961,14 @@ function init_app(){
                     input_type: 'audio'
                 }));
             } else {
-                throw new Error('WebSocket未连接');
+                throw new Error(window.t ? window.t('app.websocketNotConnectedError') : 'WebSocket未连接');
             }
             
             // 等待session真正启动成功
             await sessionStartPromise;
             
-            showStatusToast('正在初始化麦克风...', 3000);
-            showVoicePreparingToast('正在初始化麦克风...');
+            showStatusToast(window.t ? window.t('app.initializingMic') : '正在初始化麦克风...', 3000);
+            showVoicePreparingToast(window.t ? window.t('app.initializingMic') : '正在初始化麦克风...');
             
             // 显示Live2D
             showLive2d();
@@ -988,7 +996,7 @@ function init_app(){
             stopButton.disabled = true;
             resetSessionButton.disabled = false;
             textInputArea.classList.remove('hidden');
-            showStatusToast(`启动失败: ${error.message}`, 5000);
+            showStatusToast(window.t ? window.t('app.startFailed', {error: error.message}) : `启动失败: ${error.message}`, 5000);
             isSwitchingMode = false; // 切换失败，重置标志
             
             // 移除active类
@@ -1007,12 +1015,31 @@ function init_app(){
     muteButton.addEventListener('click', stopMicCapture);
 
     resetSessionButton.addEventListener('click', () => {
+        console.log('[App] resetSessionButton 被点击！当前 isGoodbyeMode 检查');
         isSwitchingMode = true; // 开始重置会话（也是一种模式切换）
         
         // 检查是否是"请她离开"触发的
-        const isGoodbyeMode = window.live2d && window.live2d._goodbyeClicked;
+        const isGoodbyeMode = window.live2dManager && window.live2dManager._goodbyeClicked;
+        console.log('[App] 检测 isGoodbyeMode =', isGoodbyeMode, 'goodbyeClicked =', window.live2dManager ? window.live2dManager._goodbyeClicked : 'undefined');
+        
+        // 检查 hideLive2d 前的容器状态
+        const live2dContainer = document.getElementById('live2d-container');
+        console.log('[App] hideLive2d 前容器状态:', {
+            存在: !!live2dContainer,
+            当前类: live2dContainer ? live2dContainer.className : 'undefined',
+            classList: live2dContainer ? live2dContainer.classList.toString() : 'undefined',
+            display: live2dContainer ? getComputedStyle(live2dContainer).display : 'undefined'
+        });
         
         hideLive2d()
+        
+        // 检查 hideLive2d 后的容器状态
+        console.log('[App] hideLive2d 后容器状态:', {
+            存在: !!live2dContainer,
+            当前类: live2dContainer ? live2dContainer.className : 'undefined',
+            classList: live2dContainer ? live2dContainer.classList.toString() : 'undefined',
+            display: live2dContainer ? getComputedStyle(live2dContainer).display : 'undefined'
+        });
         if (socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({
                 action: 'end_session'
@@ -1034,8 +1061,12 @@ function init_app(){
         updateScreenshotCount();
         screenshotCounter = 0;
         
-        // 如果不是"请她离开"模式，才显示文本输入区并启用按钮
+        // 根据模式执行不同逻辑
+        console.log('[App] 执行分支判断，isGoodbyeMode =', isGoodbyeMode);
         if (!isGoodbyeMode) {
+            // 非"请她离开"模式：显示文本输入区并启用按钮
+            console.log('[App] 执行普通结束会话逻辑');
+            
             // 结束会话后，重置主动搭话计时器（如果已开启）
             if (proactiveChatEnabled) {
                 resetProactiveChatBackoff();
@@ -1055,9 +1086,19 @@ function init_app(){
             screenButton.disabled = true;
             stopButton.disabled = true;
             resetSessionButton.disabled = true;
+            returnSessionButton.disabled = true;  // 禁用"请她回来"按钮
             
-            showStatusToast('会话已结束', 3000);
+            showStatusToast(window.t ? window.t('app.sessionEnded') : '会话已结束', 3000);
         } else {
+            // "请她离开"模式：隐藏所有内容
+            console.log('[App] 执行"请她离开"模式逻辑');
+            
+            // 重置 goodbyeClicked 标志（在处理完成后）
+            if (window.live2dManager) {
+                window.live2dManager._goodbyeClicked = false;
+            }
+            console.log('[App] 已重置 goodbyeClicked 标志为 false');
+            
             // "请她离开"模式：隐藏所有内容
             const textInputArea = document.getElementById('text-input-area');
             textInputArea.classList.add('hidden');
@@ -1071,6 +1112,7 @@ function init_app(){
             screenButton.disabled = true;
             stopButton.disabled = true;
             resetSessionButton.disabled = true;
+            returnSessionButton.disabled = false;  // 启用"请她回来"按钮
             
             // "请她离开"时，停止主动搭话定时器
             stopProactiveChatSchedule();
@@ -1079,6 +1121,82 @@ function init_app(){
         }
         
         // 延迟重置模式切换标志，确保"已离开"消息已经被忽略
+        setTimeout(() => {
+            isSwitchingMode = false;
+        }, 500);
+    });
+
+    // "请她回来"按钮事件
+    returnSessionButton.addEventListener('click', () => {
+        isSwitchingMode = true; // 开始模式切换
+        
+        // 显示Live2D模型
+        showLive2d();
+        
+        // 清除所有语音相关的状态类（确保按钮不会显示为激活状态）
+        micButton.classList.remove('recording');
+        micButton.classList.remove('active');
+        screenButton.classList.remove('active');
+        
+        // 确保停止录音状态
+        isRecording = false;
+        
+        // 同步更新Live2D浮动按钮的状态
+        if (window.live2dManager && window.live2dManager._floatingButtons) {
+            // 更新麦克风和屏幕分享按钮状态
+            ['mic', 'screen'].forEach(buttonId => {
+                const buttonData = window.live2dManager._floatingButtons[buttonId];
+                if (buttonData && buttonData.button) {
+                    buttonData.button.dataset.active = 'false';
+                    // 更新图标显示：显示off图标，隐藏on图标
+                    if (buttonData.imgOff) {
+                        buttonData.imgOff.style.opacity = '1';
+                    }
+                    if (buttonData.imgOn) {
+                        buttonData.imgOn.style.opacity = '0';
+                    }
+                }
+            });
+        }
+        
+        // 启用所有基本输入按钮
+        micButton.disabled = false;
+        textSendButton.disabled = false;
+        textInputBox.disabled = false;
+        screenshotButton.disabled = false;
+        resetSessionButton.disabled = false;
+        
+        // 禁用语音控制按钮（文本模式下不需要）
+        muteButton.disabled = true;
+        screenButton.disabled = true;
+        stopButton.disabled = true;
+        
+        // 显示文本输入区
+        const textInputArea = document.getElementById('text-input-area');
+        textInputArea.classList.remove('hidden');
+        
+        // 如果是"请她离开"后返回，需要重新建立会话
+        if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({
+                action: 'start_session',
+                input_type: 'text',
+                new_session: true  // 开始新会话
+            }));
+            
+            // 标记文本会话为活跃状态
+            isTextSessionActive = true;
+            
+            showStatusToast(window.t ? window.t('app.returning', {name: lanlan_config.lanlan_name}) : `🫴 ${lanlan_config.lanlan_name}回来了！正在重新连接...`, 3000);
+            
+            // 重置主动搭话定时器（如果已开启）
+            if (proactiveChatEnabled) {
+                resetProactiveChatBackoff();
+            }
+        } else {
+            showStatusToast(window.t ? window.t('app.websocketNotConnected') : 'WebSocket未连接！', 4000);
+        }
+        
+        // 延迟重置模式切换标志
         setTimeout(() => {
             isSwitchingMode = false;
         }, 500);
@@ -1102,7 +1220,7 @@ function init_app(){
             screenshotButton.disabled = true;
             resetSessionButton.disabled = false;
             
-            showStatusToast('正在初始化文本对话...', 3000);
+            showStatusToast(window.t ? window.t('app.initializingText') : '正在初始化文本对话...', 3000);
             
             try {
                 // 创建一个 Promise 来等待 session_started 消息
@@ -1113,7 +1231,7 @@ function init_app(){
                     setTimeout(() => {
                         if (sessionStartedResolver) {
                             sessionStartedResolver = null;
-                            reject(new Error('Session启动超时'));
+                            reject(new Error(window.t ? window.t('app.sessionTimeout') : 'Session启动超时'));
                         }
                     }, 15000);
                 });
@@ -1126,7 +1244,7 @@ function init_app(){
                         new_session: false
                     }));
                 } else {
-                    throw new Error('WebSocket未连接');
+                    throw new Error(window.t ? window.t('app.websocketNotConnectedError') : 'WebSocket未连接');
                 }
                 
                 // 等待session真正启动成功
@@ -1140,10 +1258,10 @@ function init_app(){
                 textInputBox.disabled = false;
                 screenshotButton.disabled = false;
                 
-                showStatusToast('正在文本聊天中', 2000);
+                showStatusToast(window.t ? window.t('app.textChattingShort') : '正在文本聊天中', 2000);
             } catch (error) {
                 console.error('启动文本session失败:', error);
-                showStatusToast(`启动失败: ${error.message}`, 5000);
+                showStatusToast(window.t ? window.t('app.startFailed', {error: error.message}) : `启动失败: ${error.message}`, 5000);
                 
                 // 重新启用按钮，允许用户重试
                 textSendButton.disabled = false;
@@ -1200,9 +1318,9 @@ function init_app(){
                 resetProactiveChatBackoff();
             }
             
-            showStatusToast('正在文本聊天中', 2000);
+            showStatusToast(window.t ? window.t('app.textChattingShort') : '正在文本聊天中', 2000);
         } else {
-            showStatusToast('WebSocket未连接！', 4000);
+            showStatusToast(window.t ? window.t('app.websocketNotConnected') : 'WebSocket未连接！', 4000);
         }
     });
     
@@ -1219,7 +1337,7 @@ function init_app(){
         try {
             // 临时禁用截图按钮，防止重复点击
             screenshotButton.disabled = true;
-            showStatusToast('正在截图...', 2000);
+            showStatusToast(window.t ? window.t('app.capturing') : '正在截图...', 2000);
             
             let captureStream;
             
@@ -1262,7 +1380,7 @@ function init_app(){
             // 添加截图到待发送列表（不立即发送）
             addScreenshotToList(dataUrl);
             
-            showStatusToast('截图已添加，点击发送一起发送', 3000);
+            showStatusToast(window.t ? window.t('app.screenshotAdded') : '截图已添加，点击发送一起发送', 3000);
             
             // 重新启用截图按钮
             screenshotButton.disabled = false;
@@ -1271,15 +1389,15 @@ function init_app(){
             console.error('截图失败:', err);
             
             // 根据错误类型显示不同提示
-            let errorMsg = '截图失败';
+            let errorMsg = window.t ? window.t('app.screenshotFailed') : '截图失败';
             if (err.name === 'NotAllowedError') {
-                errorMsg = '用户取消了截图';
+                errorMsg = window.t ? window.t('app.screenshotCancelled') : '用户取消了截图';
             } else if (err.name === 'NotFoundError') {
-                errorMsg = '未找到可用的媒体设备';
+                errorMsg = window.t ? window.t('app.deviceNotFound') : '未找到可用的媒体设备';
             } else if (err.name === 'NotReadableError') {
-                errorMsg = '无法访问媒体设备';
+                errorMsg = window.t ? window.t('app.deviceNotAccessible') : '无法访问媒体设备';
             } else if (err.message) {
-                errorMsg = `截图失败: ${err.message}`;
+                errorMsg = window.t ? window.t('app.screenshotFailed') + ': ' + err.message : `截图失败: ${err.message}`;
             }
             
             showStatusToast(errorMsg, 5000);
@@ -1302,8 +1420,8 @@ function init_app(){
         const img = document.createElement('img');
         img.className = 'screenshot-thumbnail';
         img.src = dataUrl;
-        img.alt = `截图 ${screenshotCounter}`;
-        img.title = `点击查看截图 ${screenshotCounter}`;
+        img.alt = window.t ? window.t('chat.screenshotAlt', {index: screenshotCounter}) : `截图 ${screenshotCounter}`;
+        img.title = window.t ? window.t('chat.screenshotTitle', {index: screenshotCounter}) : `点击查看截图 ${screenshotCounter}`;
         
         // 点击缩略图可以在新标签页查看大图
         img.addEventListener('click', () => {
@@ -1314,7 +1432,7 @@ function init_app(){
         const removeBtn = document.createElement('button');
         removeBtn.className = 'screenshot-remove';
         removeBtn.innerHTML = '×';
-        removeBtn.title = '移除此截图';
+        removeBtn.title = window.t ? window.t('chat.removeScreenshot') : '移除此截图';
         removeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             removeScreenshotFromList(item);
@@ -1367,7 +1485,11 @@ function init_app(){
     clearAllScreenshots.addEventListener('click', async () => {
         if (screenshotsList.children.length === 0) return;
         
-        if (await showConfirm('确定要清空所有待发送的截图吗？', '清空截图', {danger: true})) {
+        if (await showConfirm(
+            window.t ? window.t('dialogs.clearScreenshotsConfirm') : '确定要清空所有待发送的截图吗？',
+            window.t ? window.t('dialogs.clearScreenshots') : '清空截图',
+            {danger: true}
+        )) {
             screenshotsList.innerHTML = '';
             screenshotThumbnailContainer.classList.remove('show');
             updateScreenshotCount();
@@ -1432,7 +1554,7 @@ function init_app(){
         // 启动5秒定时器
         silenceDetectionTimer = setTimeout(() => {
             if (!hasSoundDetected && isRecording) {
-                showStatusToast('⚠️ 麦克风无声音，请检查麦克风设置', 5000);
+                showStatusToast(window.t ? window.t('app.micNoSound') : '⚠️ 麦克风无声音，请检查麦克风设置', 5000);
                 console.warn('麦克风静音检测：5秒内未检测到声音');
             }
         }, 5000);
@@ -1472,8 +1594,9 @@ function init_app(){
                 
                 // 如果之前显示了无声音警告，现在检测到声音了，恢复正常状态显示
                 // 检查隐藏的 status 元素是否包含无声音警告（保持兼容性）
-                if (statusElement && statusElement.textContent.includes('麦克风无声音')) {
-                    showStatusToast('正在语音...', 2000);
+                const noSoundText = window.t ? window.t('voiceControl.noSound') : '麦克风无声音';
+                if (statusElement && statusElement.textContent.includes(noSoundText)) {
+                    showStatusToast(window.t ? window.t('app.speaking') : '正在语音...', 2000);
                     console.log('麦克风静音检测：检测到声音，已清除警告');
                 }
             }
@@ -1547,7 +1670,7 @@ function init_app(){
         } catch (err) {
             console.error('加载AudioWorklet失败:', err);
             console.dir(err); // <--- 使用 console.dir()
-            showStatusToast('AudioWorklet加载失败', 5000);
+            showStatusToast(window.t ? window.t('app.audioWorkletFailed') : 'AudioWorklet加载失败', 5000);
             stopSilenceDetection();
         }
     }
@@ -1801,32 +1924,45 @@ function init_app(){
 
     // 隐藏live2d函数
     function hideLive2d() {
+        console.log('[App] hideLive2d函数被调用');
         const container = document.getElementById('live2d-container');
+        console.log('[App] hideLive2d调用前，容器类列表:', container.classList.toString());
+        
+        // 首先清除任何可能干扰动画的强制显示样式
+        container.style.removeProperty('visibility');
+        container.style.removeProperty('display');
+        container.style.removeProperty('opacity');
+        
+        // 添加minimized类，触发CSS过渡动画
         container.classList.add('minimized');
+        console.log('[App] hideLive2d调用后，容器类列表:', container.classList.toString());
+        
+        // 添加一个延迟检查，确保类被正确添加
+        setTimeout(() => {
+            console.log('[App] 延迟检查容器类列表:', container.classList.toString());
+        }, 100);
     }
 
     // 显示live2d函数
     function showLive2d() {
-        const container = document.getElementById('live2d-container');
-
-        // 判断是否已经最小化（通过检查是否有hidden类或检查样式）
-        if (!container.classList.contains('minimized') &&
-            container.style.visibility !== 'minimized') {
-            // 如果已经显示，则不执行任何操作
+        console.log('[App] showLive2d函数被调用');
+        
+        // 检查是否处于"请她离开"状态，如果是则直接返回，不执行显示逻辑
+        if (window.live2dManager && window.live2dManager._goodbyeClicked) {
+            console.log('[App] showLive2d: 当前处于"请她离开"状态，跳过显示逻辑');
             return;
         }
-
-        // 重置"请她离开"状态
-        if (window.live2d) {
-            window.live2d._goodbyeClicked = false;
-        }
         
-        // 清除强制隐藏的样式
+        const container = document.getElementById('live2d-container');
+        console.log('[App] showLive2d调用前，容器类列表:', container.classList.toString());
+        
+        // 确保浮动按钮显示（使用 !important 强制显示，覆盖所有其他逻辑）
         const floatingButtons = document.getElementById('live2d-floating-buttons');
         if (floatingButtons) {
-            floatingButtons.style.removeProperty('display');
-            floatingButtons.style.removeProperty('visibility');
-            floatingButtons.style.removeProperty('opacity');
+            // 直接设置 !important 样式，不先清除（避免被鼠标跟踪逻辑覆盖）
+            floatingButtons.style.setProperty('display', 'flex', 'important');
+            floatingButtons.style.setProperty('visibility', 'visible', 'important');
+            floatingButtons.style.setProperty('opacity', '1', 'important');
         }
         
         const lockIcon = document.getElementById('live2d-lock-icon');
@@ -1866,16 +2002,23 @@ function init_app(){
             statusElement.style.setProperty('opacity', '0', 'important');
         }
 
-        // 先恢复容器尺寸和可见性，但保持透明度为0和位置在屏幕外
-        // container.style.height = '1080px';
-        // container.style.width = '720px';
+        // 强制显示live2d容器
         container.style.visibility = 'visible';
+        container.style.display = 'block';
+        container.style.opacity = '1';
 
         // 强制浏览器重新计算样式，确保过渡效果正常
         void container.offsetWidth;
 
-        // 移除hidden类，触发过渡动画
+        // 移除minimized类，触发过渡动画
         container.classList.remove('minimized');
+        
+        // 如果容器没有其他类，完全移除class属性以避免显示为class=""
+        if (container.classList.length === 0) {
+            container.removeAttribute('class');
+        }
+        
+        console.log('[App] showLive2d调用后，容器类列表:', container.classList.toString());
     }
     window.startScreenSharing = startScreenSharing;
     window.stopScreenSharing  = stopScreenSharing;
@@ -1930,27 +2073,39 @@ function init_app(){
                 // 主动搭话开关
                 const proactiveChatDiv = document.createElement('div');
                 proactiveChatDiv.style.cssText = 'padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.1);';
-                proactiveChatDiv.innerHTML = `
-                    <span style="font-size: 14px;">💬 主动搭话</span>
-                    <input type="checkbox" id="proactive-chat-toggle-l2d" style="cursor: pointer; width: 18px; height: 18px;">
-                `;
+                const proactiveChatSpan = document.createElement('span');
+                proactiveChatSpan.style.fontSize = '14px';
+                proactiveChatSpan.textContent = window.t ? window.t('settings.toggles.proactiveChat') : '💬 主动搭话';
+                proactiveChatSpan.setAttribute('data-i18n', 'settings.toggles.proactiveChat');
+                proactiveChatDiv.appendChild(proactiveChatSpan);
+                const proactiveChatCheckbox = document.createElement('input');
+                proactiveChatCheckbox.type = 'checkbox';
+                proactiveChatCheckbox.id = 'proactive-chat-toggle-l2d';
+                proactiveChatCheckbox.style.cssText = 'cursor: pointer; width: 18px; height: 18px;';
+                proactiveChatDiv.appendChild(proactiveChatCheckbox);
                 container.appendChild(proactiveChatDiv);
                 
                 // Focus模式开关
                 const focusModeDiv = document.createElement('div');
                 focusModeDiv.style.cssText = 'padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.1);';
-                focusModeDiv.innerHTML = `
-                    <span style="font-size: 14px;">🎯 Focus模式</span>
-                    <input type="checkbox" id="focus-mode-toggle-l2d" style="cursor: pointer; width: 18px; height: 18px;">
-                `;
+                const focusModeSpan = document.createElement('span');
+                focusModeSpan.style.fontSize = '14px';
+                focusModeSpan.textContent = window.t ? window.t('settings.toggles.allowInterrupt') : '🎯 允许打断';
+                focusModeSpan.setAttribute('data-i18n', 'settings.toggles.allowInterrupt');
+                focusModeDiv.appendChild(focusModeSpan);
+                const focusModeCheckbox = document.createElement('input');
+                focusModeCheckbox.type = 'checkbox';
+                focusModeCheckbox.id = 'focus-mode-toggle-l2d';
+                focusModeCheckbox.style.cssText = 'cursor: pointer; width: 18px; height: 18px;';
+                focusModeDiv.appendChild(focusModeCheckbox);
                 container.appendChild(focusModeDiv);
                 
                 // 页面链接
                 const links = [
-                    { href: `/memory_browser`, text: '📝 记忆管理' },
-                    { href: `/chara_manager`, text: '👤 角色设置' },
-                    { href: `/l2d?lanlan_name=${lanlan_config.lanlan_name}`, text: '🎨 Live2D管理' },
-                    { href: `/api_key`, text: '🔑 API设置' }
+                    { href: `/memory_browser`, textKey: 'settings.menu.memoryManage', text: window.t ? window.t('settings.menu.memoryManage') : '📝 记忆管理' },
+                    { href: `/chara_manager`, textKey: 'settings.menu.characterSettings', text: window.t ? window.t('settings.menu.characterSettings') : '👤 角色设置' },
+                    { href: `/l2d?lanlan_name=${lanlan_config.lanlan_name}`, textKey: 'settings.menu.live2dManage', text: window.t ? window.t('settings.menu.live2dManage') : '🎨 Live2D管理' },
+                    { href: `/api_key`, textKey: 'settings.menu.apiSettings', text: window.t ? window.t('settings.menu.apiSettings') : '🔑 API设置' }
                 ];
                 
                 // 已打开的设置窗口引用映射（URL -> Window对象）
@@ -1962,6 +2117,9 @@ function init_app(){
                     const linkDiv = document.createElement('div');
                     linkDiv.style.cssText = 'display: block; padding: 10px 12px; text-decoration: none; color: #333; font-size: 14px; border-bottom: 1px solid rgba(0,0,0,0.05); transition: background 0.2s; cursor: pointer;';
                     linkDiv.textContent = link.text;
+                    if (link.textKey) {
+                        linkDiv.setAttribute('data-i18n', link.textKey);
+                    }
                     linkDiv.onmouseenter = () => linkDiv.style.background = 'rgba(79, 140, 255, 0.1)';
                     linkDiv.onmouseleave = () => linkDiv.style.background = 'transparent';
                     linkDiv.onclick = (e) => {
@@ -2037,6 +2195,7 @@ function init_app(){
                 
                 settingsPopupInitialized = true;
                 console.log('设置弹出框已初始化');
+                
             }
         }
     });
@@ -2044,11 +2203,13 @@ function init_app(){
     // 睡觉按钮（请她离开）
     window.addEventListener('live2d-goodbye-click', () => {
         console.log('[App] 请她离开按钮被点击，开始隐藏所有按钮');
+        console.log('[App] 当前 goodbyeClicked 状态:', window.live2dManager ? window.live2dManager._goodbyeClicked : 'undefined');
         
         // 第一步：立即设置标志位，防止任何后续逻辑显示按钮
-        if (window.live2d) {
-            window.live2d._goodbyeClicked = true;
+        if (window.live2dManager) {
+            window.live2dManager._goodbyeClicked = true;
         }
+        console.log('[App] 设置 goodbyeClicked 为 true，当前状态:', window.live2dManager ? window.live2dManager._goodbyeClicked : 'undefined');
         
         // 第二步：立即隐藏所有浮动按钮和锁按钮（设置为 !important 防止其他代码覆盖）
         const floatingButtons = document.getElementById('live2d-floating-buttons');
@@ -2065,7 +2226,14 @@ function init_app(){
             lockIcon.style.setProperty('opacity', '0', 'important');
         }
         
-        // 第三步：立即隐藏所有 side-btn 按钮和侧边栏
+        // 第三步：显示独立的"请她回来"按钮（居中显示）
+        const returnButtonContainer = document.getElementById('live2d-return-button-container');
+        if (returnButtonContainer) {
+            returnButtonContainer.style.display = 'flex';
+            returnButtonContainer.style.pointerEvents = 'auto';
+        }
+        
+        // 第四步：立即隐藏所有 side-btn 按钮和侧边栏
         const sidebar = document.getElementById('sidebar');
         const sidebarbox = document.getElementById('sidebarbox');
         
@@ -2088,7 +2256,7 @@ function init_app(){
             btn.style.setProperty('opacity', '0', 'important');
         });
         
-        // 第四步：自动折叠对话区
+        // 第五步：自动折叠对话区
         const chatContainerEl = document.getElementById('chat-container');
         const toggleChatBtn = document.getElementById('toggle-chat-btn');
         if (chatContainerEl && !chatContainerEl.classList.contains('minimized')) {
@@ -2098,14 +2266,105 @@ function init_app(){
             }
         }
         
-        // 第五步：触发原有的离开逻辑（关闭会话并让live2d消失）
+        // 第六步：触发原有的离开逻辑（关闭会话并让live2d消失）
         if (resetSessionButton) {
             // 延迟一点点执行，确保隐藏操作已经生效
             setTimeout(() => {
+                console.log('[App] 触发 resetSessionButton.click()，当前 goodbyeClicked 状态:', window.live2dManager ? window.live2dManager._goodbyeClicked : 'undefined');
                 resetSessionButton.click();
             }, 10);
         } else {
             console.error('[App] ❌ resetSessionButton 未找到！');
+        }
+    });
+    
+    // 请她回来按钮
+    window.addEventListener('live2d-return-click', () => {
+        console.log('[App] 请她回来按钮被点击，开始恢复所有界面');
+        
+        // 第一步：清除"请她离开"标志
+        if (window.live2dManager) {
+            window.live2dManager._goodbyeClicked = false;
+        }
+        if (window.live2d) {
+            window.live2d._goodbyeClicked = false;
+        }
+        
+        // 第二步：隐藏独立的"请她回来"按钮
+        const returnButtonContainer = document.getElementById('live2d-return-button-container');
+        if (returnButtonContainer) {
+            returnButtonContainer.style.display = 'none';
+            returnButtonContainer.style.pointerEvents = 'none';
+        }
+        
+        // 第三步：恢复live2d容器（移除minimized类）
+        const live2dContainer = document.getElementById('live2d-container');
+        if (live2dContainer) {
+            console.log('[App] 移除minimized类前，容器类列表:', live2dContainer.classList.toString());
+            live2dContainer.classList.remove('minimized');
+            
+            // 如果容器没有其他类，完全移除class属性以避免显示为class=""
+            if (live2dContainer.classList.length === 0) {
+                live2dContainer.removeAttribute('class');
+            }
+            
+            console.log('[App] 移除minimized类后，容器类列表:', live2dContainer.classList.toString());
+            live2dContainer.style.removeProperty('display');
+            live2dContainer.style.removeProperty('visibility');
+            live2dContainer.style.removeProperty('opacity');
+        }
+        
+        // 第四步：恢复锁按钮
+        const lockIcon = document.getElementById('live2d-lock-icon');
+        if (lockIcon) {
+            lockIcon.style.display = 'block';
+            lockIcon.style.removeProperty('visibility');
+            lockIcon.style.removeProperty('opacity');
+        }
+        
+        // 第五步：恢复浮动按钮系统（使用 !important 强制显示，覆盖之前的隐藏样式）
+        const floatingButtons = document.getElementById('live2d-floating-buttons');
+        if (floatingButtons) {
+            // 先清除所有可能的隐藏样式
+            floatingButtons.style.removeProperty('display');
+            floatingButtons.style.removeProperty('visibility');
+            floatingButtons.style.removeProperty('opacity');
+            
+            // 使用 !important 强制显示，确保覆盖之前的隐藏样式
+            floatingButtons.style.setProperty('display', 'flex', 'important');
+            floatingButtons.style.setProperty('visibility', 'visible', 'important');
+            floatingButtons.style.setProperty('opacity', '1', 'important');
+            
+            // 恢复所有按钮的显示状态（清除之前"请她离开"时设置的 display: 'none'）
+            if (window.live2dManager && window.live2dManager._floatingButtons) {
+                Object.keys(window.live2dManager._floatingButtons).forEach(btnId => {
+                    const buttonData = window.live2dManager._floatingButtons[btnId];
+                    if (buttonData && buttonData.button) {
+                        // 清除 display 样式，让按钮正常显示
+                        buttonData.button.style.removeProperty('display');
+                    }
+                });
+            }
+        }
+        
+        // 第六步：恢复对话区
+        const chatContainerEl = document.getElementById('chat-container');
+        const toggleChatBtn = document.getElementById('toggle-chat-btn');
+        if (chatContainerEl && chatContainerEl.classList.contains('minimized')) {
+            // 如果对话区当前是折叠的，模拟点击展开按钮
+            if (toggleChatBtn) {
+                toggleChatBtn.click();
+            }
+        }
+        
+        // 第七步：触发原有的返回逻辑
+        if (returnSessionButton) {
+            setTimeout(() => {
+                console.log('[App] 触发returnSessionButton点击');
+                returnSessionButton.click();
+            }, 10);
+        } else {
+            console.error('[App] ❌ returnSessionButton 未找到！');
         }
     });
     
@@ -2132,7 +2391,7 @@ function init_app(){
                 if (!cb) continue;
                 const available = await checkCapability(capability, false);
                 cb.disabled = !available;
-                cb.title = available ? name : `${name}不可用`;
+                cb.title = available ? name : (window.t ? window.t('settings.toggles.unavailable', {name: name}) : `${name}不可用`);
             }
         };
         
@@ -2235,13 +2494,13 @@ function init_app(){
                         if (!agentKeyboardCheckbox) return;
                         const available = await checkCapability('computer_use', false);
                         agentKeyboardCheckbox.disabled = !available;
-                        agentKeyboardCheckbox.title = available ? '键鼠控制' : '键鼠控制不可用';
+                        agentKeyboardCheckbox.title = available ? (window.t ? window.t('settings.toggles.keyboardControl') : '键鼠控制') : (window.t ? window.t('settings.toggles.unavailable', {name: window.t('settings.toggles.keyboardControl')}) : '键鼠控制不可用');
                     })(),
                     (async () => {
                         if (!agentMcpCheckbox) return;
                         const available = await checkCapability('mcp', false);
                         agentMcpCheckbox.disabled = !available;
-                        agentMcpCheckbox.title = available ? 'MCP工具' : 'MCP工具不可用';
+                        agentMcpCheckbox.title = available ? (window.t ? window.t('settings.toggles.mcpTools') : 'MCP工具') : (window.t ? window.t('settings.toggles.unavailable', {name: window.t('settings.toggles.mcpTools')}) : 'MCP工具不可用');
                     })()
                 ]);
                 
@@ -2415,7 +2674,7 @@ function init_app(){
             
             if (audioInputs.length === 0) {
                 const noMicItem = document.createElement('div');
-                noMicItem.textContent = '没有检测到麦克风设备';
+                noMicItem.textContent = window.t ? window.t('microphone.noDevices') : '没有检测到麦克风设备';
                 noMicItem.style.padding = '8px 12px';
                 noMicItem.style.color = '#666';
                 noMicItem.style.fontSize = '13px';
@@ -2427,7 +2686,7 @@ function init_app(){
             const defaultOption = document.createElement('button');
             defaultOption.className = 'mic-option';
             // 不设置 dataset.deviceId，让它保持 undefined（表示默认）
-            defaultOption.textContent = '系统默认麦克风';
+            defaultOption.textContent = window.t ? window.t('microphone.defaultDevice') : '系统默认麦克风';
             if (selectedMicrophoneId === null) {
                 defaultOption.classList.add('selected');
             }
@@ -2473,7 +2732,8 @@ function init_app(){
                 const option = document.createElement('button');
                 option.className = 'mic-option';
                 option.dataset.deviceId = device.deviceId; // 存储设备ID用于更新选中状态
-                option.textContent = device.label || `麦克风 ${audioInputs.indexOf(device) + 1}`;
+                const micIndex = audioInputs.indexOf(device) + 1;
+                option.textContent = device.label || (window.t ? window.t('microphone.deviceLabel', {index: micIndex}) : `麦克风 ${micIndex}`);
                 if (selectedMicrophoneId === device.deviceId) {
                     option.classList.add('selected');
                 }
@@ -2517,7 +2777,7 @@ function init_app(){
             console.error('渲染麦克风列表失败:', error);
             micPopup.innerHTML = '';
             const errorItem = document.createElement('div');
-            errorItem.textContent = '获取麦克风列表失败';
+            errorItem.textContent = window.t ? window.t('microphone.loadFailed') : '获取麦克风列表失败';
             errorItem.style.padding = '8px 12px';
             errorItem.style.color = '#dc3545';
             errorItem.style.fontSize = '13px';
@@ -2717,7 +2977,7 @@ function init_app(){
         console.log('[猫娘切换] 🚀 开始切换，从', lanlan_config.lanlan_name, '切换到', newCatgirl);
         
         // 显示切换提示
-        showStatusToast(`正在切换到 ${newCatgirl}...`, 3000);
+        showStatusToast(window.t ? window.t('app.switchingCatgirl', {name: newCatgirl}) : `正在切换到 ${newCatgirl}...`, 3000);
         
         // 标记正在切换，防止自动重连冲突
         isSwitchingCatgirl = true;
@@ -2764,7 +3024,7 @@ function init_app(){
         connectWebSocket();
         
         // 更新页面标题
-        document.title = `${newCatgirl} Terminal - Project Lanlan`;
+        document.title = `${newCatgirl} Terminal - Project N.E.K.O.`;
         
         // 重新加载 Live2D 模型（强制重新加载，因为猫娘已切换）
         try {
@@ -2888,10 +3148,10 @@ function init_app(){
                     console.error('[猫娘切换] 回退到默认模型失败:', fallbackError);
                 }
             }
-            showStatusToast(`已切换到 ${newCatgirl}`, 3000);
+            showStatusToast(window.t ? window.t('app.switchedCatgirl', {name: newCatgirl}) : `已切换到 ${newCatgirl}`, 3000);
         } catch (error) {
             console.error('[猫娘切换] 重新加载 Live2D 模型失败:', error);
-            showStatusToast(`切换到 ${newCatgirl} 失败`, 4000);
+            showStatusToast(window.t ? window.t('app.switchCatgirlFailed', {name: newCatgirl}) : `切换到 ${newCatgirl} 失败`, 4000);
             console.error('[猫娘切换] 错误堆栈:', error.stack);
         } finally {
             // 在所有操作完成后重置标记
@@ -2988,7 +3248,7 @@ window.addEventListener("load", ready);
 window.addEventListener("load", () => {
     setTimeout(() => {
         if (typeof window.showStatusToast === 'function' && typeof lanlan_config !== 'undefined' && lanlan_config.lanlan_name) {
-            window.showStatusToast(`${lanlan_config.lanlan_name}已启动`, 3000);
+            window.showStatusToast(window.t ? window.t('app.started') : `已启动`, 3000);
         }
     }, 1000);
 });
@@ -2998,7 +3258,7 @@ window.addEventListener('message', function(event) {
     if (event.data.type === 'voice_id_updated') {
         console.log('[Voice Clone] 收到voice_id更新消息:', event.data.voice_id);
         if (typeof window.showStatusToast === 'function' && typeof lanlan_config !== 'undefined' && lanlan_config.lanlan_name) {
-            window.showStatusToast(`${lanlan_config.lanlan_name}的语音已更新`, 3000);
+            window.showStatusToast(window.t ? window.t('app.voiceUpdated', {name: lanlan_config.lanlan_name}) : `${lanlan_config.lanlan_name}的语音已更新`, 3000);
         }
     }
 });
