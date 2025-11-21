@@ -337,7 +337,9 @@
      * @param {string} title - 标题（可选）
      * @returns {Promise<boolean>}
      */
-    window.showAlert = function(message, title = null) {
+    // 如果未定义或是占位符，则初始化（避免重复定义）
+    if (typeof window.showAlert === 'undefined' || (window.showAlert && window.showAlert.__isPlaceholder)) {
+        window.showAlert = function(message, title = null) {
         if (title === null) {
             title = window.t ? window.t('common.alert') : '提示';
         }
@@ -347,6 +349,8 @@
             message: message,
         });
     };
+    if (window.showAlert) delete window.showAlert.__isPlaceholder;
+    }
 
     /**
      * 显示确认对话框（替代 confirm）
@@ -355,7 +359,9 @@
      * @param {Object} options - 额外选项
      * @returns {Promise<boolean>}
      */
-    window.showConfirm = function(message, title = null, options = {}) {
+    // 如果未定义或是占位符，则初始化（避免重复定义）
+    if (typeof window.showConfirm === 'undefined' || (window.showConfirm && window.showConfirm.__isPlaceholder)) {
+        window.showConfirm = function(message, title = null, options = {}) {
         console.log('[showConfirm] 被调用，参数:', { message, title, options });
         if (title === null) {
             try {
@@ -385,7 +391,9 @@
      * @param {string} title - 标题（可选）
      * @returns {Promise<string|null>}
      */
-    window.showPrompt = function(message, defaultValue = '', title = null) {
+    // 如果未定义或是占位符，则初始化（避免重复定义）
+    if (typeof window.showPrompt === 'undefined' || (window.showPrompt && window.showPrompt.__isPlaceholder)) {
+        window.showPrompt = function(message, defaultValue = '', title = null) {
         if (title === null) {
             title = window.t ? window.t('common.input') : '输入';
         }

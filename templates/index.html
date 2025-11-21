@@ -9,6 +9,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta charset="UTF-8">
     <title data-i18n="app.title">Project N.E.K.O.</title>
+    <!-- 全局变量初始化（必须在所有其他脚本之前加载） -->
+    <script src="/static/global_vars.js"></script>
     <!-- i18next 加载器（统一处理 CDN 加载和初始化） -->
     <script src="/static/i18n-i18next.js"></script>
     <script src="/static/common_dialogs.js"></script>
@@ -1030,11 +1032,9 @@
 
 <script>
     // 页面配置 - 从 URL 或 API 获取
-    let lanlan_config = {
-        lanlan_name: ""
-    };
-    window.lanlan_config = lanlan_config;
-    let cubism4Model = "";
+    // 注意：lanlan_config 和 cubism4Model 已在 global_vars.js 中初始化
+    let lanlan_config = window.lanlan_config;
+    let cubism4Model = window.cubism4Model;
     
     // 异步获取页面配置
     async function loadPageConfig() {
@@ -1064,6 +1064,7 @@
                 lanlan_config.lanlan_name = lanlanNameFromUrl || data.lanlan_name || "";
                 window.lanlan_config = lanlan_config;
                 cubism4Model = data.model_path || "";
+                window.cubism4Model = cubism4Model;
                 
                 // 动态设置页面标题
                 document.title = `${lanlan_config.lanlan_name} Terminal - Project N.E.K.O.`;
@@ -1075,6 +1076,8 @@
                 // 使用默认值
                 lanlan_config.lanlan_name = "";
                 cubism4Model = "";
+                window.lanlan_config = lanlan_config;
+                window.cubism4Model = cubism4Model;
                 return false;
             }
         } catch (error) {
@@ -1082,6 +1085,8 @@
             // 使用默认值
             lanlan_config.lanlan_name = "";
             cubism4Model = "";
+            window.lanlan_config = lanlan_config;
+            window.cubism4Model = cubism4Model;
             return false;
         }
     }
@@ -1091,11 +1096,13 @@
 </script>
 <script>
     // Beacon功能 - 页面关闭时发送信号给服务器
-    let beaconSent = false;
+    // 注意：beaconSent 已在 global_vars.js 中初始化
+    let beaconSent = window.beaconSent;
 
     function sendBeacon() {
         if (beaconSent) return; // 防止重复发送
         beaconSent = true;
+        window.beaconSent = true;
         
         try {
             // 使用navigator.sendBeacon确保信号不被拦截
@@ -1130,19 +1137,8 @@
 </script>
 <script src="/static/libs/live2dcubismcore.min.js"></script>  <!-- Cubism 4核心库（支持Cubism 3/4模型） -->
 <script>
-    // 全局菜单跟踪机制 - 必须在所有其他脚本之前定义
-    // 用于跟踪当前是否有活动的菜单（麦克风列表、Agent面板、侧边栏等）
-    window.activeMenuCount = 0;
-    
-    // 辅助函数：标记菜单打开
-    window.markMenuOpen = function() {
-        window.activeMenuCount++;
-    };
-    
-    // 辅助函数：标记菜单关闭
-    window.markMenuClosed = function() {
-        window.activeMenuCount = Math.max(0, window.activeMenuCount - 1);
-    };
+    // 全局菜单跟踪机制
+    // 注意：activeMenuCount、markMenuOpen、markMenuClosed 已在 global_vars.js 中初始化
     
     // 页面间通信：监听来自模型设置页面的消息
     async function handlePageMessage(event) {

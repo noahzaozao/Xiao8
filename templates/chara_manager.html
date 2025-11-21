@@ -5,6 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title data-i18n="character.manager">角色管理 - Project N.E.K.O.</title>
+    <!-- 全局变量初始化（必须在所有其他脚本之前加载） -->
+    <script src="/static/global_vars.js"></script>
     <!-- i18next 加载器（统一处理 CDN 加载和初始化） -->
     <script src="/static/i18n-i18next.js"></script>
     <script src="/static/common_dialogs.js"></script>
@@ -220,11 +222,9 @@ if (!window._charaManagerFoldHandler) {
 }
 
 // 角色数据缓存
-let characterData = null;
-
-// 加载角色数据
-// 跟踪当前展开的猫娘名称
-let expandedCatgirlName = null;
+// 注意：characterData 和 expandedCatgirlName 已在 global_vars.js 中初始化
+let characterData = window.characterData;
+let expandedCatgirlName = window.expandedCatgirlName;
 
 async function loadCharacterData() {
     const resp = await fetch('/api/characters');

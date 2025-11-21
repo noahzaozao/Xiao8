@@ -5,6 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title data-i18n="api.settingsTitle">API Key 设置 - Project N.E.K.O.</title>
+    <!-- 全局变量初始化（必须在所有其他脚本之前加载） -->
+    <script src="/static/global_vars.js"></script>
     <!-- i18next 加载器（统一处理 CDN 加载和初始化） -->
     <script src="/static/i18n-i18next.js"></script>
     <style>
@@ -931,7 +933,8 @@ async function loadCurrentApiKey() {
 }
 
 // 全局变量存储待保存的API Key
-let pendingApiKey = null;
+// 注意：pendingApiKey 已在 global_vars.js 中初始化
+let pendingApiKey = window.pendingApiKey;
 
 // 切换自定义API启用状态
 function toggleCustomApi() {
@@ -1387,7 +1390,8 @@ function autoFillCoreApiKey() {
 }
 
 // Beacon功能 - 页面关闭时发送信号给服务器（仅在直接打开时发送，iframe中不发送）
-let beaconSent = false;
+// 注意：beaconSent 已在 global_vars.js 中初始化
+let beaconSent = window.beaconSent;
 
 function sendBeacon() {
     // 如果在iframe中，不发送beacon

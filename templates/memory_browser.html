@@ -5,6 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title data-i18n="memory.title">记忆整理 - Project N.E.K.O.</title>
+    <!-- 全局变量初始化（必须在所有其他脚本之前加载） -->
+    <script src="/static/global_vars.js"></script>
     <!-- i18next 加载器（统一处理 CDN 加载和初始化） -->
     <script src="/static/i18n-i18next.js"></script>
     <style>
@@ -190,7 +192,8 @@ input:checked + .toggle-slider:before {
     </div>
 </div>
 <script>
-let currentMemoryFile = null;
+// 注意：currentMemoryFile 已在 global_vars.js 中初始化
+let currentMemoryFile = window.currentMemoryFile;
 async function loadMemoryFileList() {
     const ul = document.getElementById('memory-file-list');
     ul.innerHTML = `<li style="color:#888;">${window.t ? window.t('memory.loading') : '加载中...'}</li>`;
@@ -237,8 +240,9 @@ async function loadMemoryFileList() {
     }
 }
 
-let chatData = [];
-let currentCatName = '';
+// 注意：chatData 和 currentCatName 已在 global_vars.js 中初始化
+let chatData = window.chatData;
+let currentCatName = window.currentCatName;
 
 function renderChatEdit() {
     const div = document.getElementById('memory-chat-edit');

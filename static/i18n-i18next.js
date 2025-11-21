@@ -22,7 +22,10 @@
     if (window.i18nInitialized) {
         return;
     }
-    window.i18nInitialized = true;
+    // 标记已初始化（避免重复初始化）
+    if (typeof window.i18nInitialized === 'undefined') {
+        window.i18nInitialized = false; // 先设为 false，初始化成功后再设为 true
+    }
     
     // 支持的语言列表
     const SUPPORTED_LANGUAGES = ['zh-CN', 'en'];
@@ -361,24 +364,38 @@
     function exportFallbackFunctions() {
         console.warn('[i18n] Using fallback functions due to initialization failure');
         
-        window.t = function(key, params = {}) {
-            console.warn('[i18n] Fallback t() called with key:', key);
-            return key;
-        };
+        // 如果未定义或是占位符，则初始化（避免重复定义）
+        if (typeof window.t === 'undefined' || (window.t && window.t.__isPlaceholder)) {
+            window.t = function(key, params = {}) {
+                console.warn('[i18n] Fallback t() called with key:', key);
+                return key;
+            };
+            if (window.t) delete window.t.__isPlaceholder;
+        }
         
-        window.i18n = {
-            isInitialized: false,
-            language: INITIAL_LANGUAGE,
-            store: { data: {} }
-        };
+        if (typeof window.i18n === 'undefined' || window.i18n === null) {
+            window.i18n = {
+                isInitialized: false,
+                language: INITIAL_LANGUAGE,
+                store: { data: {} }
+            };
+        }
         
-        window.updatePageTexts = function() {
-            console.warn('[i18n] Fallback updatePageTexts() called - no-op');
-        };
+        if (typeof window.updatePageTexts === 'undefined' || (window.updatePageTexts && window.updatePageTexts.__isPlaceholder)) {
+            window.updatePageTexts = function() {
+                console.warn('[i18n] Fallback updatePageTexts() called - no-op');
+            };
+            if (window.updatePageTexts) delete window.updatePageTexts.__isPlaceholder;
+        }
         
-        window.updateLive2DDynamicTexts = function() {
-            console.warn('[i18n] Fallback updateLive2DDynamicTexts() called - no-op');
-        };
+        if (typeof window.updateLive2DDynamicTexts === 'undefined' || (window.updateLive2DDynamicTexts && window.updateLive2DDynamicTexts.__isPlaceholder)) {
+            window.updateLive2DDynamicTexts = function() {
+                console.warn('[i18n] Fallback updateLive2DDynamicTexts() called - no-op');
+            };
+            if (window.updateLive2DDynamicTexts) delete window.updateLive2DDynamicTexts.__isPlaceholder;
+        }
+        
+        window.i18nInitialized = false;
     }
     
     /**
@@ -445,6 +462,7 @@
                     const finalizeInit = () => {
                         if (initialized) return;
                         initialized = true;
+                        window.i18nInitialized = true;
                         updatePageTexts();
                         window.dispatchEvent(new CustomEvent('localechange'));
                         exportNormalFunctions();
@@ -516,22 +534,35 @@
      */
     function exportNormalFunctions() {
         // 导出翻译函数
-        window.t = function(key, params = {}) {
-            if (!key) return '';
-            
-            // 处理 providerKey 参数（与现有代码兼容）
-            resolveProviderName(params);
-            
-            return i18next.t(key, params);
-        };
+        // 如果未定义或是占位符，则初始化（避免重复定义）
+        if (typeof window.t === 'undefined' || (window.t && window.t.__isPlaceholder)) {
+            window.t = function(key, params = {}) {
+                if (!key) return '';
+                
+                // 处理 providerKey 参数（与现有代码兼容）
+                resolveProviderName(params);
+                
+                return i18next.t(key, params);
+            };
+            if (window.t) delete window.t.__isPlaceholder;
+        }
         
         // 导出 i18next 实例
         window.i18n = i18next;
         
         // 导出更新函数
-        window.updatePageTexts = updatePageTexts;
-        window.updateLive2DDynamicTexts = updateLive2DDynamicTexts;
-        window.translateStatusMessage = translateStatusMessage;
+        if (typeof window.updatePageTexts === 'undefined' || (window.updatePageTexts && window.updatePageTexts.__isPlaceholder)) {
+            window.updatePageTexts = updatePageTexts;
+            if (window.updatePageTexts) delete window.updatePageTexts.__isPlaceholder;
+        }
+        if (typeof window.updateLive2DDynamicTexts === 'undefined' || (window.updateLive2DDynamicTexts && window.updateLive2DDynamicTexts.__isPlaceholder)) {
+            window.updateLive2DDynamicTexts = updateLive2DDynamicTexts;
+            if (window.updateLive2DDynamicTexts) delete window.updateLive2DDynamicTexts.__isPlaceholder;
+        }
+        if (typeof window.translateStatusMessage === 'undefined' || (window.translateStatusMessage && window.translateStatusMessage.__isPlaceholder)) {
+            window.translateStatusMessage = translateStatusMessage;
+            if (window.translateStatusMessage) delete window.translateStatusMessage.__isPlaceholder;
+        }
         
         // 监听语言变化（用于更新文本）
         i18next.on('languageChanged', (lng) => {
@@ -543,13 +574,16 @@
         });
         
         // 导出语言切换函数
-        window.changeLanguage = function(lng) {
+        if (typeof window.changeLanguage === 'undefined' || (window.changeLanguage && window.changeLanguage.__isPlaceholder)) {
+            window.changeLanguage = function(lng) {
             if (!SUPPORTED_LANGUAGES.includes(lng)) {
                 console.warn(`[i18n] 不支持的语言: ${lng}，支持的语言: ${SUPPORTED_LANGUAGES.join(', ')}`);
                 return Promise.reject(new Error(`不支持的语言: ${lng}`));
             }
             return i18next.changeLanguage(lng);
         };
+        if (window.changeLanguage) delete window.changeLanguage.__isPlaceholder;
+        }
         
         // 确保在 DOM 加载完成后更新文本
         if (document.readyState === 'loading') {

@@ -202,6 +202,9 @@ function handleAudioBlobFor(id, blob, seq) {
     });
 }
 
-window.AM = new AudioManager();
+// 如果未定义，则初始化（避免重复定义）
+if (typeof window.AM === 'undefined' || window.AM === null) {
+    window.AM = new AudioManager();
+}
 window.addEventListener('pointerdown', unlockAudio, {passive: true});
 window.addEventListener('keydown', unlockAudio, {passive: true});

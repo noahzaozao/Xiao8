@@ -67,7 +67,14 @@ function init_app(){
     }
     
     // 将 showStatusToast 暴露到全局作用域，方便调试和测试
-    window.showStatusToast = showStatusToast;
+    // 如果已经初始化且不是占位符，则跳过（避免重复定义）
+    if (typeof window.showStatusToast === 'undefined' || (window.showStatusToast && window.showStatusToast.__isPlaceholder)) {
+        window.showStatusToast = showStatusToast;
+        // 标记为实际实现（非占位符）
+        if (window.showStatusToast) {
+            delete window.showStatusToast.__isPlaceholder;
+        }
+    }
     const chatContainer = document.getElementById('chatContainer');
     const textInputBox = document.getElementById('textInputBox');
     const textSendButton = document.getElementById('textSendButton');
@@ -118,6 +125,14 @@ function init_app(){
     let focusModeEnabled = false;
     
     // 暴露到全局作用域，供 live2d.js 等其他模块访问和修改
+    // 如果已经初始化，则跳过（避免重复定义）
+    if (typeof window.proactiveChatEnabled === 'undefined') {
+        window.proactiveChatEnabled = proactiveChatEnabled;
+    }
+    if (typeof window.focusModeEnabled === 'undefined') {
+        window.focusModeEnabled = focusModeEnabled;
+    }
+    // 同步更新（即使已存在也更新，因为这些是状态变量）
     window.proactiveChatEnabled = proactiveChatEnabled;
     window.focusModeEnabled = focusModeEnabled;
     
@@ -736,17 +751,21 @@ function init_app(){
             await stopMicCapture();
         }
     }
-    window.switchScreenSharing = async () => {
-        if (stopButton.disabled) {
-            // 检查是否在录音状态
-            if (!isRecording) {
-                showStatusToast(window.t ? window.t('app.micRequired') : '请先开启麦克风录音！', 3000);
-                return;
+    // 如果未定义或是占位符，则初始化（避免重复定义）
+    if (typeof window.switchScreenSharing === 'undefined' || (window.switchScreenSharing && window.switchScreenSharing.__isPlaceholder)) {
+        window.switchScreenSharing = async () => {
+            if (stopButton.disabled) {
+                // 检查是否在录音状态
+                if (!isRecording) {
+                    showStatusToast(window.t ? window.t('app.micRequired') : '请先开启麦克风录音！', 3000);
+                    return;
+                }
+                await startScreenSharing();
+            } else {
+                await stopScreenSharing();
             }
-            await startScreenSharing();
-        } else {
-            await stopScreenSharing();
-        }
+        };
+        if (window.switchScreenSharing) delete window.switchScreenSharing.__isPlaceholder;
     }
 
     // 显示语音准备提示框
@@ -2020,9 +2039,19 @@ function init_app(){
         
         console.log('[App] showLive2d调用后，容器类列表:', container.classList.toString());
     }
-    window.startScreenSharing = startScreenSharing;
-    window.stopScreenSharing  = stopScreenSharing;
-    window.screen_share       = startScreenSharing;
+    // 如果未定义或是占位符，则初始化（避免重复定义）
+    if (typeof window.startScreenSharing === 'undefined' || (window.startScreenSharing && window.startScreenSharing.__isPlaceholder)) {
+        window.startScreenSharing = startScreenSharing;
+        if (window.startScreenSharing) delete window.startScreenSharing.__isPlaceholder;
+    }
+    if (typeof window.stopScreenSharing === 'undefined' || (window.stopScreenSharing && window.stopScreenSharing.__isPlaceholder)) {
+        window.stopScreenSharing = stopScreenSharing;
+        if (window.stopScreenSharing) delete window.stopScreenSharing.__isPlaceholder;
+    }
+    if (typeof window.screen_share === 'undefined' || (window.screen_share && window.screen_share.__isPlaceholder)) {
+        window.screen_share = startScreenSharing;
+        if (window.screen_share) delete window.screen_share.__isPlaceholder;
+    }
     
     // ========== 连接浮动按钮到原有功能 ==========
     
@@ -2660,7 +2689,9 @@ function init_app(){
     }
     
     // 为浮动弹出框渲染麦克风列表（修复版本：确保有权限后再渲染）
-    window.renderFloatingMicList = async () => {
+    // 如果未定义或是占位符，则初始化（避免重复定义）
+    if (typeof window.renderFloatingMicList === 'undefined' || (window.renderFloatingMicList && window.renderFloatingMicList.__isPlaceholder)) {
+        window.renderFloatingMicList = async () => {
         const micPopup = document.getElementById('live2d-mic-popup');
         if (!micPopup) {
             return false;
@@ -2785,6 +2816,8 @@ function init_app(){
             return false;
         }
     };
+    if (window.renderFloatingMicList) delete window.renderFloatingMicList.__isPlaceholder;
+    }
     
     // 轻量级更新：仅更新麦克风列表的选中状态（不重新渲染整个列表）
     function updateMicListSelection() {
@@ -2912,8 +2945,15 @@ function init_app(){
     }
     
     // 暴露函数到全局作用域，供 live2d.js 调用
-    window.resetProactiveChatBackoff = resetProactiveChatBackoff;
-    window.stopProactiveChatSchedule = stopProactiveChatSchedule;
+    // 如果未定义或是占位符，则初始化（避免重复定义）
+    if (typeof window.resetProactiveChatBackoff === 'undefined' || (window.resetProactiveChatBackoff && window.resetProactiveChatBackoff.__isPlaceholder)) {
+        window.resetProactiveChatBackoff = resetProactiveChatBackoff;
+        if (window.resetProactiveChatBackoff) delete window.resetProactiveChatBackoff.__isPlaceholder;
+    }
+    if (typeof window.stopProactiveChatSchedule === 'undefined' || (window.stopProactiveChatSchedule && window.stopProactiveChatSchedule.__isPlaceholder)) {
+        window.stopProactiveChatSchedule = stopProactiveChatSchedule;
+        if (window.stopProactiveChatSchedule) delete window.stopProactiveChatSchedule.__isPlaceholder;
+    }
     
     // 保存设置到localStorage
     function saveSettings() {
@@ -2925,7 +2965,11 @@ function init_app(){
     }
     
     // 暴露到全局作用域，供 live2d.js 等其他模块调用
-    window.saveXiao8Settings = saveSettings;
+    // 如果未定义或是占位符，则初始化（避免重复定义）
+    if (typeof window.saveXiao8Settings === 'undefined' || (window.saveXiao8Settings && window.saveXiao8Settings.__isPlaceholder)) {
+        window.saveXiao8Settings = saveSettings;
+        if (window.saveXiao8Settings) delete window.saveXiao8Settings.__isPlaceholder;
+    }
     
     // 从localStorage加载设置
     function loadSettings() {

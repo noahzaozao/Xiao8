@@ -2729,12 +2729,19 @@ Live2DManager.prototype.applyPersistentExpressionsNative = async function() {
 };
 
 // 创建全局 Live2D 管理器实例
-window.Live2DManager = Live2DManager;
-window.live2dManager = new Live2DManager();
-
+// 如果未定义，则初始化（避免重复定义）
+if (typeof window.Live2DManager === 'undefined') {
+    window.Live2DManager = Live2DManager;
+}
+if (typeof window.live2dManager === 'undefined' || window.live2dManager === null) {
+    window.live2dManager = new Live2DManager();
+}
 
 // 兼容性：保持原有的全局变量和函数
-window.LanLan1 = window.LanLan1 || {};
+// 如果未定义，则初始化（已在 global_vars.js 中初始化，这里确保兼容性）
+if (typeof window.LanLan1 === 'undefined' || !window.LanLan1) {
+    window.LanLan1 = {};
+}
 window.LanLan1.setEmotion = (emotion) => window.live2dManager.setEmotion(emotion);
 window.LanLan1.playExpression = (emotion) => window.live2dManager.playExpression(emotion);
 window.LanLan1.playMotion = (emotion) => window.live2dManager.playMotion(emotion);
