@@ -11,6 +11,10 @@ coverage/
 build/
 .react-router/
 
+# Vite
+.vite/
+dist/
+
 # Environment variables
 .env
 .env.local
