@@ -19,7 +19,7 @@
 1. **React Router v7 SPA 应用** - `react_web/`
    - ✅ 项目基础架构（SPA 模式）
    - ✅ Lanlan Terminal 主界面 (`app/routes/main.tsx`)
-   - ✅ API 拦截器机制 (`static/api_interceptor.js`)
+   - ✅ 统一的 Request 模块 (`@xiao8/request` + `request.global.js`)
    - ✅ 与 static/ 资源的桥接
    - ✅ 环境变量配置系统
    - ✅ 纯客户端渲染，无需 Node SSR 服务器

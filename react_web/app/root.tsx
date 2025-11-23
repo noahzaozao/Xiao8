@@ -26,7 +26,6 @@ export const links: Route.LinksFunction = () => [
 export function Layout({ children }: { children: React.ReactNode }) {
   // 在 CSS 加载之前设置 CSS 变量，避免回退值被加载
   const STATIC_SERVER_URL = (import.meta.env.VITE_STATIC_SERVER_URL as string) || "http://localhost:48911";
-  const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) || "http://localhost:48911";
   
   return (
     <html lang="en">
@@ -40,16 +39,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             __html: `:root { --toast-background-url: url('${STATIC_SERVER_URL}/static/icons/toast_background.png'); }`,
           }}
         />
-        {/* 设置 API_BASE_URL 并加载 fetch 拦截器 - 必须在其他脚本之前加载 */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              // 设置 API_BASE_URL 供 api 拦截器使用
-              window.API_BASE_URL = ${JSON.stringify(API_BASE_URL)};
-            `,
-          }}
-        />
-        <script src={`${STATIC_SERVER_URL}/static/api_interceptor.js`} defer={false}></script>
+        {/* 使用统一的 request 模块（在 main.tsx 中通过 exposeRequestToGlobal() 初始化） */}
       </head>
       <body>
         {children}

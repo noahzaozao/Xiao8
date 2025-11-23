@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import "./main.css";
-import { buildApiUrl, fetchWithBaseUrl } from "../utils/api";
+import { request, exposeRequestToGlobal, buildApiUrl } from "../api/request";
 import { ExampleButton } from "../components/ExampleButton";
 
 export function meta() {
@@ -28,10 +28,7 @@ export default function Main() {
     scriptsLoadedRef.current = true;
 
     // API Base URL 配置
-    // 可以通过环境变量或配置来设置，默认为空（使用相对路径）
-
     const STATIC_SERVER_URL = (import.meta.env.VITE_STATIC_SERVER_URL as string) || "http://localhost:48911";
-    const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) || "http://localhost:48911";
 
     // 全局错误处理：忽略 static 相关的加载错误（仅在开发环境）
     const originalConsoleError = console.error;
@@ -220,14 +217,9 @@ export default function Main() {
       });
     })();
 
-    // 将工具函数暴露到全局，供 JS 文件使用（JS 文件暂时不改，但可以使用这些函数）
-    // 方法1: 使用 window（当前方法）
-    window.buildApiUrl = buildApiUrl;
-    window.fetchWithBaseUrl = fetchWithBaseUrl;
-    window.API_BASE_URL = API_BASE_URL;
-    
-    // 方法2: 使用 globalThis（等同于 window，但更标准）
-    // globalThis.buildApiUrl = buildApiUrl;
+    // 将 request 实例和相关工具函数暴露到全局，供外部 JS 文件使用
+    // 这会暴露：window.request, window.buildApiUrl, window.buildStaticUrl, window.buildWebSocketUrl
+    exposeRequestToGlobal();
 
     // 页面配置 - 从 URL 或 API 获取（初始化为空值）
     let lanlan_config = {
@@ -256,15 +248,12 @@ export default function Main() {
 
         // 从 API 获取配置
         const apiUrl = lanlanNameFromUrl
-          ? buildApiUrl(
-              `/api/config/page_config?lanlan_name=${encodeURIComponent(
-                lanlanNameFromUrl
-              )}`
-            )
-          : buildApiUrl("/api/config/page_config");
+          ? `/api/config/page_config?lanlan_name=${encodeURIComponent(
+              lanlanNameFromUrl
+            )}`
+          : "/api/config/page_config";
 
-        const response = await fetchWithBaseUrl(apiUrl);
-        const data = await response.json();
+        const data = await request.get(apiUrl) as any;
 
         if (data.success) {
           // 使用 URL 中的 lanlan_name（如果有），否则使用 API 返回的
@@ -343,16 +332,11 @@ export default function Main() {
         if (success) {
           console.log("Beacon信号已发送");
         } else {
-          console.warn("Beacon发送失败，尝试使用fetch");
-          fetchWithBaseUrl("/api/beacon/shutdown", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              timestamp: Date.now(),
-              action: "shutdown",
-            }),
-            keepalive: true,
-          }).catch((err) => console.log("备用beacon发送失败:", err));
+          console.warn("Beacon发送失败，尝试使用request");
+          request.post("/api/beacon/shutdown", {
+            timestamp: Date.now(),
+            action: "shutdown",
+          }).catch((err: any) => console.log("备用beacon发送失败:", err));
         }
       } catch (e) {
         console.log("Beacon发送异常:", e);
@@ -434,12 +418,7 @@ export default function Main() {
         
         // 方法3: 直接访问（如果已在 global.d.ts 中声明）
         // const currentLanlanName = lanlan_config?.lanlan_name;
-        const charResponse = await fetchWithBaseUrl("/api/characters");
-        if (!charResponse.ok) {
-          console.warn("获取角色配置失败，跳过模型检查");
-          return;
-        }
-        const charactersData = await charResponse.json();
+        const charactersData = await request.get("/api/characters") as any;
         if (!currentLanlanName) {
           console.warn("当前角色名称为空，跳过模型检查");
           return;
@@ -452,12 +431,7 @@ export default function Main() {
           return;
         }
         const newModelName = catgirlConfig.live2d || "mao_pro";
-        const modelsResponse = await fetchWithBaseUrl("/api/live2d/models");
-        if (!modelsResponse.ok) {
-          console.warn("获取模型列表失败，跳过模型检查");
-          return;
-        }
-        const models = await modelsResponse.json();
+        const models = await request.get("/api/live2d/models") as any;
         const modelInfo = models.find((m: any) => m.name === newModelName);
         if (!modelInfo) {
           console.warn(`未找到模型 ${newModelName}，跳过模型检查`);
@@ -568,11 +542,9 @@ export default function Main() {
       });
     };
 
-    // 设置 API_BASE_URL 供 api 拦截器使用（必须在拦截器脚本加载之前设置）
-    (window as any).API_BASE_URL = API_BASE_URL;
+    // 使用统一的 request 模块（通过 exposeRequestToGlobal() 暴露到全局）
 
     const scripts = [
-      `${STATIC_SERVER_URL}/static/api_interceptor.js`, // API 拦截器（必须在最前面加载）
       `${STATIC_SERVER_URL}/static/libs/pixi.min.js`, // PixiJS v7
       `${STATIC_SERVER_URL}/static/libs/live2d.min.js`, // Cubism 2.1核心库
       `${STATIC_SERVER_URL}/static/libs/live2dcubismcore.min.js`, // Cubism 4核心库

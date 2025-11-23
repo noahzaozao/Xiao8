@@ -66,56 +66,65 @@ react_web/
 
 - **此目录位置**：`Xiao8/react_web`
 - **静态资源来源**：依赖根项目的 `static/` 目录（`Xiao8/static`）
-- **脚本依赖**：`static/api_interceptor.js`, `static/common_ui.js`, `static/app.js`, `static/libs/*.js`, `static/live2d.js` 等
+- **脚本依赖**：`static/request.global.js`, `static/common_ui.js`, `static/app.js`, `static/libs/*.js`, `static/live2d.js` 等
 - **API 地址**：通过环境变量 `VITE_API_BASE_URL` 统一配置，默认 `http://localhost:48911`
 - **静态资源服务器地址**：通过 `VITE_STATIC_SERVER_URL` 配置，默认 `http://localhost:48911`
 
 ---
 
-## API 拦截器 `static/api_interceptor.js`
+## 统一的 Request 模块
 
-- **主要作用**
-  - 统一拦截 **`fetch` / `XMLHttpRequest` / `WebSocket`** 调用
-  - 自动为以 **`/api/`、`/ws/`、`/static/`** 开头的请求补全前缀：
-    - `/api/**`、`/ws/**` → 基于 `API_BASE_URL`（通常为 `VITE_API_BASE_URL`）
-    - `/static/**` → 基于 `STATIC_SERVER_URL`（通常为 `VITE_STATIC_SERVER_URL`）
-  - 支持既拦相对路径（`/api/...`）也拦截指向当前域名的完整 URL（如 `http://localhost:48911/api/...`）
+### 两套前端架构
 
-- **内部工作方式（简要）**
-  - 读取全局变量：`window.API_BASE_URL`、`window.STATIC_SERVER_URL`，若未设置则默认 `http://localhost:48911`
-  - 包装：
-    - `window.fetch(...)`
-    - 原生 `XMLHttpRequest.prototype.open(...)`
-    - `window.WebSocket(...)`
-  - 根据 URL 前缀判断类别：
-    - `api` / `ws`：使用 `buildApiUrl` 拼出完整 HTTP 地址，再转换为 WebSocket 地址（`ws://` / `wss://`）
-    - `static`：使用 `buildStaticUrl` 拼出完整静态资源地址
-  - 在开发调试时通过 `console.log("[API Interceptor] ...")` 打印重写前后 URL，便于排查网络问题
+**1. React Web (`react_web/`)**
+- ✅ 使用统一的 `@xiao8/request` 模块
+- 在 `app/api/request.ts` 中创建请求客户端实例
+- 通过 `exposeRequestToGlobal()` 暴露到全局：
+  - `window.request` - 统一的请求实例（基于 Axios）
+  - `window.buildApiUrl(path)` - 构建 API URL
+  - `window.buildStaticUrl(path)` - 构建静态资源 URL
+  - `window.buildWebSocketUrl(path)` - 构建 WebSocket URL
+- React 组件中直接使用 `import { request } from '~/api/request'`
 
-- **加载顺序要求**
-  - **必须在其他依赖 `/api`、`/ws`、`/static` 的脚本之前加载**
-    - 包括：`static/app.js`、`static/live2d.js`、页面自己的业务脚本等
-  - 推荐的 HTML 片段示例（仅示意）：
+**2. 静态模板 (`templates/index.html`)**
+- ✅ 使用 `request.global.js`（打包了 axios 和 axios-auth-refresh）
+- 自动初始化 `window.request` 等工具函数
+- 旧版 JS 代码应使用 `window.request` 或 `window.buildApiUrl` 等工具函数
 
-```html
-<script src="/static/api_interceptor.js"></script>
-<script src="/static/common_ui.js"></script>
-<script src="/static/app.js"></script>
-<script src="/static/live2d.js"></script>
+### Request 模块特性
+
+- ✅ **Axios 基础** - 基于 Axios，提供强大的 HTTP 客户端能力
+- ✅ **统一请求实例** - 一次配置，全项目使用
+- ✅ **自动 Token 刷新** - 401 时自动刷新 access token，无需手动处理
+- ✅ **请求队列** - 防止并发刷新 token，确保请求顺序执行
+- ✅ **工具函数** - 提供 `buildApiUrl`、`buildStaticUrl`、`buildWebSocketUrl` 等
+
+### 使用方式
+
+**在 React 组件中：**
+```typescript
+import { request } from '~/api/request';
+
+const data = await request.get('/api/users');
 ```
 
-- **与 React Web 的关系**
-  - 在 `app/root.tsx` / `app/routes/main.tsx` 中会根据 `.env` 设置：
-    - `window.API_BASE_URL`
-    - `window.STATIC_SERVER_URL`
-  - 前端 / 旧版 `static/*.js` 中只要继续用 `/api/...`、`/ws/...`、`/static/...` 这类路径，就可以借助拦截器自动走到正确的后端和静态资源服务器，无需在每个调用点手动拼接 Base URL。
+**在静态 HTML 或旧版 JS 中：**
+```javascript
+// 使用 request 实例
+const data = await window.request.get('/api/users');
 
-在 `app/root.tsx` 和 `app/routes/main.tsx` 中，会根据这些环境变量动态注入：
+// 使用工具函数构建 URL
+const apiUrl = window.buildApiUrl('/api/users');
+const wsUrl = window.buildWebSocketUrl('/ws/chat');
+```
 
-- `window.API_BASE_URL`
-- `window.STATIC_SERVER_URL`
-- `window.buildApiUrl` / `window.fetchWithBaseUrl`
-- Live2D / 聊天相关的全局对象（如 `window.live2dManager`, `window.LanLan1` 等）
+### 构建 request.global.js
+
+```bash
+npm run build:request
+```
+
+这会打包 `app/api/request.global.ts` 及其所有依赖，并复制到 `static/request.global.js`
 
 ---
 
