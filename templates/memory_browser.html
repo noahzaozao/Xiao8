@@ -442,10 +442,14 @@ async function loadReviewConfig() {
         const status = document.getElementById('review-status');
         
         toggle.checked = data.enabled;
-        status.textContent = data.enabled ? (window.t ? window.t('memory.enabled') : '已开启') : (window.t ? window.t('memory.disabled') : '已关闭');
+        const key = data.enabled ? 'memory.enabled' : 'memory.disabled';
+        status.setAttribute('data-i18n', key);
+        status.textContent = window.t ? window.t(key) : (data.enabled ? '已开启' : '已关闭');
     } catch (e) {
         console.error('加载审阅配置失败:', e);
-        document.getElementById('review-status').textContent = window.t ? window.t('memory.loadFailed') : '加载失败';
+        const status = document.getElementById('review-status');
+        status.setAttribute('data-i18n', 'memory.loadFailed');
+        status.textContent = window.t ? window.t('memory.loadFailed') : '加载失败';
     }
 }
 
@@ -460,19 +464,25 @@ async function toggleReview(enabled) {
         
         if (data.success) {
             const status = document.getElementById('review-status');
-            status.textContent = enabled ? (window.t ? window.t('memory.enabled') : '已开启') : (window.t ? window.t('memory.disabled') : '已关闭');
+            const key = enabled ? 'memory.enabled' : 'memory.disabled';
+            status.setAttribute('data-i18n', key);
+            status.textContent = window.t ? window.t(key) : (enabled ? '已开启' : '已关闭');
         } else {
             // 如果保存失败，恢复原来的状态
             const toggle = document.getElementById('review-toggle');
             toggle.checked = !enabled;
-            document.getElementById('review-status').textContent = window.t ? window.t('memory.saveFailedStatus') : '保存失败';
+            const status = document.getElementById('review-status');
+            status.setAttribute('data-i18n', 'memory.saveFailedStatus');
+            status.textContent = window.t ? window.t('memory.saveFailedStatus') : '保存失败';
         }
     } catch (e) {
         console.error('更新审阅配置失败:', e);
         // 如果请求失败，恢复原来的状态
         const toggle = document.getElementById('review-toggle');
         toggle.checked = !enabled;
-        document.getElementById('review-status').textContent = window.t ? window.t('memory.saveFailedStatus') : '保存失败';
+        const status = document.getElementById('review-status');
+        status.setAttribute('data-i18n', 'memory.saveFailedStatus');
+        status.textContent = window.t ? window.t('memory.saveFailedStatus') : '保存失败';
     }
 }
 </script>

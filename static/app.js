@@ -3389,8 +3389,13 @@ const ready = () => {
     init_app();
 };
 
-document.addEventListener("DOMContentLoaded", ready);
-window.addEventListener("load", ready);
+// 检查页面加载状态，如果已加载完成则直接执行
+if (document.readyState === "complete" || document.readyState === "interactive") {
+    setTimeout(ready, 1); // 使用setTimeout确保异步执行，避免阻塞当前脚本执行
+} else {
+    document.addEventListener("DOMContentLoaded", ready);
+    window.addEventListener("load", ready);
+}
 
 // 页面加载后显示启动提示
 window.addEventListener("load", () => {
