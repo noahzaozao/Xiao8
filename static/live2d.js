@@ -2800,7 +2800,8 @@ window.LanLan1.clearExpression = () => window.live2dManager.clearExpression();
 window.LanLan1.setMouth = (value) => window.live2dManager.setMouth(value);
 
 // 自动初始化（如果存在 cubism4Model 变量）
-if (typeof cubism4Model !== 'undefined' && cubism4Model) {
+const targetModelPath = (typeof cubism4Model !== 'undefined' ? cubism4Model : (window.cubism4Model || ''));
+if (targetModelPath) {
     (async function() {
         try {
             // 初始化 PIXI 应用
@@ -2812,7 +2813,7 @@ if (typeof cubism4Model !== 'undefined' && cubism4Model) {
             // 根据模型路径找到对应的偏好设置
             let modelPreferences = null;
             if (preferences && preferences.length > 0) {
-                modelPreferences = preferences.find(p => p && p.model_path === cubism4Model);
+                modelPreferences = preferences.find(p => p && p.model_path === targetModelPath);
                 if (modelPreferences) {
                     console.log('找到模型偏好设置:', modelPreferences);
                 } else {
@@ -2821,7 +2822,7 @@ if (typeof cubism4Model !== 'undefined' && cubism4Model) {
             }
             
             // 加载模型
-            await window.live2dManager.loadModel(cubism4Model, {
+            await window.live2dManager.loadModel(targetModelPath, {
                 preferences: modelPreferences,
                 isMobile: window.innerWidth <= 768
             });

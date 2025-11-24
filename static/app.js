@@ -2096,7 +2096,7 @@ function init_app(){
                 proactiveChatDiv.style.cssText = 'padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.1);';
                 const proactiveChatSpan = document.createElement('span');
                 proactiveChatSpan.style.fontSize = '14px';
-                proactiveChatSpan.textContent = window.t ? window.t('settings.toggles.proactiveChat') : '💬 主动搭话';
+                proactiveChatSpan.textContent = window.t ? window.t('settings.toggles.proactiveChat') : '主动搭话';
                 proactiveChatSpan.setAttribute('data-i18n', 'settings.toggles.proactiveChat');
                 proactiveChatDiv.appendChild(proactiveChatSpan);
                 const proactiveChatCheckbox = document.createElement('input');

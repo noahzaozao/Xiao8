@@ -1867,7 +1867,38 @@ async function initializePage() {
 }
 
 // 页面加载完成后开始初始化
-window.addEventListener('load', initializePage);
+document.addEventListener('DOMContentLoaded', initializePage);
+
+// 兼容性：防止在某些情况下DOMContentLoaded不触发（如样式表阻塞），添加load作为后备
+window.addEventListener('load', () => {
+    if (!window.apiKeySettingsInitialized) {
+        initializePage();
+    }
+    // Electron白屏修复：强制重绘
+    if (document.body) {
+        void document.body.offsetHeight;
+    }
+});
+
+// 立即执行一次白屏修复（针对Electron）
+(function() {
+    const fixWhiteScreen = () => {
+        if (document.body) {
+            void document.body.offsetHeight;
+            // 微小透明度变化触发重绘
+            const currentOpacity = document.body.style.opacity || '1';
+            document.body.style.opacity = '0.99';
+            requestAnimationFrame(() => {
+                document.body.style.opacity = currentOpacity;
+            });
+        }
+    };
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', fixWhiteScreen);
+    } else {
+        fixWhiteScreen();
+    }
+})();
 
 // 关闭API Key设置页面
 function closeApiKeySettings() {

@@ -290,6 +290,16 @@
         };
 
         document.addEventListener('DOMContentLoaded', async () => {
+        // Electron白屏修复
+        if (document.body) {
+            void document.body.offsetHeight;
+            const currentOpacity = document.body.style.opacity || '1';
+            document.body.style.opacity = '0.99';
+            requestAnimationFrame(() => {
+                document.body.style.opacity = currentOpacity;
+            });
+        }
+
         const statusDiv = document.getElementById('status');
         const modelSelect = document.getElementById('model-select');
         const motionSelect = document.getElementById('motion-select');
@@ -327,14 +337,17 @@
             fullscreenBtn.id = 'fullscreen-btn';
             fullscreenBtn.className = 'btn btn-primary';
             fullscreenBtn.textContent = t('live2d.toggleFullscreen', '切换全屏');
+            fullscreenBtn.setAttribute('data-i18n', 'live2d.toggleFullscreen');
             fullscreenBtn.onclick = async () => {
                 try {
                     if (isFullscreen()) {
                         await exitFullscreen();
                         fullscreenBtn.textContent = t('live2d.toggleFullscreen', '切换全屏');
+                        fullscreenBtn.setAttribute('data-i18n', 'live2d.toggleFullscreen');
                     } else {
                         await requestFullscreen();
                         fullscreenBtn.textContent = t('live2d.exitFullscreen', '退出全屏');
+                        fullscreenBtn.setAttribute('data-i18n', 'live2d.exitFullscreen');
                     }
                 } catch (e) {
                     console.log('切换全屏失败:', e);
@@ -359,8 +372,10 @@
             if (fullscreenBtn) {
                 if (isFullscreen()) {
                     fullscreenBtn.textContent = t('live2d.exitFullscreen', '退出全屏');
+                    fullscreenBtn.setAttribute('data-i18n', 'live2d.exitFullscreen');
                 } else {
                     fullscreenBtn.textContent = t('live2d.toggleFullscreen', '切换全屏');
+                    fullscreenBtn.setAttribute('data-i18n', 'live2d.toggleFullscreen');
                 }
             }
         }
@@ -1054,13 +1069,16 @@
                 sendMessageToMainPage('show_main_ui');
             }
             
-            // 如果有未保存的更改，阻止页面关闭并显示确认对话框
-            // 注意：现代浏览器会忽略自定义消息，显示标准的确认对话框
+            // 如果有未保存的更改，本应阻止页面关闭并显示确认对话框
+            // 但在Electron中可能导致无法关闭窗口，且无法使用自定义模态窗替代系统默认弹窗
+            // 因此直接允许关闭，不再拦截
+            /* 
             if (window.hasUnsavedChanges) {
                 e.preventDefault();
                 e.returnValue = ''; // Chrome需要这个
                 return ''; // 某些浏览器需要返回值
             }
+            */
         });
         
         // 确保在页面关闭时也恢复主界面
