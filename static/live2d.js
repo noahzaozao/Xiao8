@@ -1525,28 +1525,7 @@ class Live2DManager {
                     
                     // 实现互斥逻辑：如果有exclusive配置，关闭对方
                     if (!isPopupVisible && config.exclusive) {
-                        const exclusiveBtn = this._floatingButtons[config.exclusive];
-                        if (exclusiveBtn) {
-                            const exclusivePopup = document.getElementById(`live2d-popup-${config.exclusive}`);
-                            if (exclusivePopup && exclusivePopup.style.display === 'flex') {
-                                // 关闭对方的弹出框
-                                exclusivePopup.style.opacity = '0';
-                                exclusivePopup.style.transform = 'translateX(-10px)';
-                                setTimeout(() => {
-                                    exclusivePopup.style.display = 'none';
-                                }, 200);
-                                // 对方按钮恢复白色（通过移除激活状态）
-                                exclusiveBtn.button.dataset.active = 'false';
-                                // 恢复白色背景
-                                exclusiveBtn.button.style.background = 'rgba(255, 255, 255, 0.7)';
-                                
-                                // 更新对方按钮的图标状态（显示off图标）
-                                if (exclusiveBtn.imgOff && exclusiveBtn.imgOn) {
-                                    exclusiveBtn.imgOff.style.opacity = '1';
-                                    exclusiveBtn.imgOn.style.opacity = '0';
-                                }
-                            }
-                        }
+                        this.closePopupById(config.exclusive);
                     }
                     
                     // 切换弹出框
@@ -2352,6 +2331,9 @@ class Live2DManager {
 									}
 								}
 								
+								// 打开新的弹窗前关闭其他已打开的设置窗口，实现全局互斥
+								this.closeAllSettingsWindows();
+								
 								// 打开新窗口并保存引用
 								const newWindow = window.open(finalUrl, '_blank', 'width=1000,height=800,menubar=no,toolbar=no,location=no,status=no');
 								if (newWindow) {
@@ -2372,6 +2354,9 @@ class Live2DManager {
 										delete this._openSettingsWindows[finalUrl];
 									}
 								}
+								
+								// 打开新的弹窗前关闭其他已打开的设置窗口，实现全局互斥
+								this.closeAllSettingsWindows();
 								
 								// 打开新窗口并保存引用
 								const newWindow = window.open(finalUrl, '_blank', 'width=1000,height=800,menubar=no,toolbar=no,location=no,status=no');
@@ -2396,6 +2381,67 @@ class Live2DManager {
         }
 
         return popup;
+    }
+
+    // 关闭指定按钮对应的弹出框，并恢复按钮状态
+    closePopupById(buttonId) {
+        if (!buttonId) return false;
+        const popup = document.getElementById(`live2d-popup-${buttonId}`);
+        if (!popup || popup.style.display !== 'flex') {
+            return false;
+        }
+
+        popup.style.opacity = '0';
+        popup.style.transform = 'translateX(-10px)';
+        setTimeout(() => {
+            popup.style.display = 'none';
+        }, 200);
+
+        const buttonEntry = this._floatingButtons[buttonId];
+        if (buttonEntry && buttonEntry.button) {
+            buttonEntry.button.dataset.active = 'false';
+            buttonEntry.button.style.background = 'rgba(255, 255, 255, 0.7)';
+
+            if (buttonEntry.imgOff && buttonEntry.imgOn) {
+                buttonEntry.imgOff.style.opacity = '1';
+                buttonEntry.imgOn.style.opacity = '0';
+            }
+        }
+
+        if (this._popupTimers[buttonId]) {
+            clearTimeout(this._popupTimers[buttonId]);
+            this._popupTimers[buttonId] = null;
+        }
+
+        return true;
+    }
+
+    // 关闭除当前按钮之外的所有弹出框
+    closeAllPopupsExcept(currentButtonId) {
+        const popups = document.querySelectorAll('[id^="live2d-popup-"]');
+        popups.forEach(popup => {
+            const popupId = popup.id.replace('live2d-popup-', '');
+            if (popupId !== currentButtonId && popup.style.display === 'flex') {
+                this.closePopupById(popupId);
+            }
+        });
+    }
+
+    // 关闭所有通过 window.open 打开的设置窗口，可选保留特定 URL
+    closeAllSettingsWindows(exceptUrl = null) {
+        if (!this._openSettingsWindows) return;
+        Object.keys(this._openSettingsWindows).forEach(url => {
+            if (exceptUrl && url === exceptUrl) return;
+            const winRef = this._openSettingsWindows[url];
+            try {
+                if (winRef && !winRef.closed) {
+                    winRef.close();
+                }
+            } catch (_) {
+                // 忽略跨域导致的 close 异常
+            }
+            delete this._openSettingsWindows[url];
+        });
     }
 
     // 显示弹出框（1秒后自动隐藏），支持点击切换
@@ -2499,6 +2545,9 @@ class Live2DManager {
                 }
             }, 200);
         } else {
+            // 全局互斥：打开前关闭其他弹出框
+            this.closeAllPopupsExcept(buttonId);
+
             // 如果隐藏，则显示
             popup.style.display = 'flex';
             // 先让弹出框可见但透明，以便计算尺寸
