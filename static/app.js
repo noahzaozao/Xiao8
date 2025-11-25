@@ -3077,7 +3077,7 @@ function init_app(){
             proactiveChatEnabled: currentProactive,
             focusModeEnabled: currentFocus
         };
-        localStorage.setItem('xiao8_settings', JSON.stringify(settings));
+        localStorage.setItem('n.e.k.o._settings', JSON.stringify(settings));
         
         // 同步回局部变量，保持一致性
         proactiveChatEnabled = currentProactive;
@@ -3085,12 +3085,12 @@ function init_app(){
     }
     
     // 暴露到全局作用域，供 live2d.js 等其他模块调用
-    window.saveXiao8Settings = saveSettings;
+    window.saveNEKOSettings = saveSettings;
     
     // 从localStorage加载设置
     function loadSettings() {
         try {
-            const saved = localStorage.getItem('xiao8_settings');
+            const saved = localStorage.getItem('n.e.k.o._settings');
             if (saved) {
                 const settings = JSON.parse(saved);
                 // 使用 ?? 运算符提供更好的默认值处理（避免将 false 误判为需要使用默认值）

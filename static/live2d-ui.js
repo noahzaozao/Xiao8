@@ -979,15 +979,15 @@ Live2DManager.prototype._createSettingsToggleItem = function(toggle, popup) {
             window.focusModeEnabled = actualValue;
             
             // 保存到localStorage
-            if (typeof window.saveXiao8Settings === 'function') {
-                window.saveXiao8Settings();
+            if (typeof window.saveNEKOSettings === 'function') {
+                window.saveNEKOSettings();
             }
         } else if (toggle.id === 'proactive-chat') {
             window.proactiveChatEnabled = isChecked;
             
             // 保存到localStorage
-            if (typeof window.saveXiao8Settings === 'function') {
-                window.saveXiao8Settings();
+            if (typeof window.saveNEKOSettings === 'function') {
+                window.saveNEKOSettings();
             }
             
             if (isChecked && typeof window.resetProactiveChatBackoff === 'function') {
