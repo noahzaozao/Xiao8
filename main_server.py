@@ -59,10 +59,15 @@ from config.prompts_sys import emotion_analysis_prompt, proactive_chat_prompt
 import glob
 from utils.config_manager import get_config_manager
 
-# 确定 templates 目录位置（支持 PyInstaller 打包）
+# 确定 templates 目录位置（支持 PyInstaller/Nuitka 打包）
 if getattr(sys, 'frozen', False):
-    # 打包后运行：从 _MEIPASS 读取
-    template_dir = sys._MEIPASS
+    # 打包后运行
+    if hasattr(sys, '_MEIPASS'):
+        # PyInstaller
+        template_dir = sys._MEIPASS
+    else:
+        # Nuitka
+        template_dir = os.path.dirname(os.path.abspath(__file__))
 else:
     # 正常运行：当前目录
     template_dir = "./"
@@ -265,10 +270,15 @@ class CustomStaticFiles(StaticFiles):
             response.headers['Content-Type'] = 'application/javascript'
         return response
 
-# 确定 static 目录位置（支持 PyInstaller 打包）
+# 确定 static 目录位置（支持 PyInstaller/Nuitka 打包）
 if getattr(sys, 'frozen', False):
-    # 打包后运行：从 _MEIPASS 读取（onedir 模式下是 _internal）
-    static_dir = os.path.join(sys._MEIPASS, 'static')
+    # 打包后运行
+    if hasattr(sys, '_MEIPASS'):
+        # PyInstaller
+        static_dir = os.path.join(sys._MEIPASS, 'static')
+    else:
+        # Nuitka
+        static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
 else:
     # 正常运行：当前目录
     static_dir = 'static'
@@ -2414,7 +2424,7 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
         
         dashscope.api_key = audio_api_key
         service = VoiceEnrollmentService()
-        target_model = "cosyvoice-v2"
+        target_model = "cosyvoice-v3-plus"
         
         # 重试配置
         max_retries = 3
@@ -4679,17 +4689,14 @@ if __name__ == "__main__":
     logger.info(f"Access UI at: http://127.0.0.1:{MAIN_SERVER_PORT} (or your network IP:{MAIN_SERVER_PORT})")
     logger.info("-----------------------------")
 
-    # Custom logging filter to suppress specific endpoints
-    class EndpointFilter(logging.Filter):
-        def filter(self, record: logging.LogRecord) -> bool:
-            # Suppress only INFO level logs for specific endpoints
-            # Keep WARNING and ERROR logs
-            if record.levelno > logging.INFO:
-                return True
-            return record.getMessage().find("/api/characters/current_catgirl") == -1
-
+    # 使用统一的速率限制日志过滤器
+    from utils.logger_config import create_main_server_filter, create_httpx_filter
+    
     # Add filter to uvicorn access logger
-    logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
+    logging.getLogger("uvicorn.access").addFilter(create_main_server_filter())
+    
+    # Add filter to httpx logger for availability check requests
+    logging.getLogger("httpx").addFilter(create_httpx_filter())
 
     # 1) 配置 UVicorn
     config = uvicorn.Config(
