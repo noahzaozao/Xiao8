@@ -2589,45 +2589,45 @@ function init_app(){
     
     // ========== Agent控制逻辑 ==========
     
-    // Agent 定时检查器
+    // Agent 定时检查器（暴露到 window 供 live2d-ui.js 调用）
     let agentCheckInterval = null;
     
-    // 启动 Agent 可用性定时检查
-    function startAgentAvailabilityCheck() {
+    // 检查 Agent 能力（供轮询使用）
+    const checkAgentCapabilities = async () => {
+        const checks = [
+            { id: 'live2d-agent-keyboard', capability: 'computer_use', name: '键鼠控制' },
+            { id: 'live2d-agent-mcp', capability: 'mcp', name: 'MCP工具' }
+        ];
+        for (const {id, capability, name} of checks) {
+            const cb = document.getElementById(id);
+            if (!cb) continue;
+            const available = await checkCapability(capability, false);
+            cb.disabled = !available;
+            cb.title = available ? name : (window.t ? window.t('settings.toggles.unavailable', {name: name}) : `${name}不可用`);
+        }
+    };
+    
+    // 启动 Agent 可用性定时检查（由 live2d-ui.js 在 agent 弹出框打开时调用）
+    window.startAgentAvailabilityCheck = function() {
         // 清除之前的定时器
         if (agentCheckInterval) {
             clearInterval(agentCheckInterval);
         }
-        
-        // 每秒检查一次键鼠控制和MCP工具的可用性
-        const checkAgentCapabilities = async () => {
-            const checks = [
-                { id: 'live2d-agent-keyboard', capability: 'computer_use', name: '键鼠控制' },
-                { id: 'live2d-agent-mcp', capability: 'mcp', name: 'MCP工具' }
-            ];
-            for (const {id, capability, name} of checks) {
-                const cb = document.getElementById(id);
-                if (!cb) continue;
-                const available = await checkCapability(capability, false);
-                cb.disabled = !available;
-                cb.title = available ? name : (window.t ? window.t('settings.toggles.unavailable', {name: name}) : `${name}不可用`);
-            }
-        };
         
         // 立即检查一次
         checkAgentCapabilities();
         
         // 每秒检查一次
         agentCheckInterval = setInterval(checkAgentCapabilities, 1000);
-    }
+    };
     
-    // 停止 Agent 可用性定时检查
-    function stopAgentAvailabilityCheck() {
+    // 停止 Agent 可用性定时检查（由 live2d-ui.js 在 agent 弹出框关闭时调用）
+    window.stopAgentAvailabilityCheck = function() {
         if (agentCheckInterval) {
             clearInterval(agentCheckInterval);
             agentCheckInterval = null;
         }
-    }
+    };
     
     // 浮动Agent status更新函数
     function setFloatingAgentStatus(msg) {
@@ -2733,9 +2733,7 @@ function init_app(){
                         })
                     });
                     if (!r.ok) throw new Error('main_server rejected');
-                    
-                    // 启动定时检查器
-                    startAgentAvailabilityCheck();
+                    // 轮询由 live2d-ui.js 在 agent 弹出框打开时启动
                 } catch(e) {
                     agentMasterCheckbox.checked = false;
                     setSubCheckboxes(true);
@@ -2743,9 +2741,6 @@ function init_app(){
                 }
             } else {
                 setFloatingAgentStatus('Agent模式已关闭');
-                
-                // 停止定时检查器
-                stopAgentAvailabilityCheck();
                 
                 // 重置子开关
                 setSubCheckboxes(true, false);

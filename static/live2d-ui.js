@@ -1192,6 +1192,11 @@ Live2DManager.prototype.closePopupById = function(buttonId) {
     if (!popup || popup.style.display !== 'flex') {
         return false;
     }
+    
+    // agent 弹出框关闭时停止轮询
+    if (buttonId === 'agent' && window.stopAgentAvailabilityCheck) {
+        window.stopAgentAvailabilityCheck();
+    }
 
     popup.style.opacity = '0';
     popup.style.transform = 'translateX(-10px)';
@@ -1607,6 +1612,12 @@ Live2DManager.prototype.showPopup = function(buttonId, popup) {
         // 如果已经显示，则隐藏
         popup.style.opacity = '0';
         popup.style.transform = 'translateX(-10px)';
+        
+        // agent 弹出框关闭时停止轮询
+        if (buttonId === 'agent' && window.stopAgentAvailabilityCheck) {
+            window.stopAgentAvailabilityCheck();
+        }
+        
         setTimeout(() => {
             popup.style.display = 'none';
             // 重置位置和样式
@@ -1624,6 +1635,11 @@ Live2DManager.prototype.showPopup = function(buttonId, popup) {
     } else {
         // 全局互斥：打开前关闭其他弹出框
         this.closeAllPopupsExcept(buttonId);
+        
+        // agent 弹出框打开时启动轮询
+        if (buttonId === 'agent' && window.startAgentAvailabilityCheck) {
+            window.startAgentAvailabilityCheck();
+        }
 
         // 如果隐藏，则显示
         popup.style.display = 'flex';
