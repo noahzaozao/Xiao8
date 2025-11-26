@@ -58,10 +58,7 @@ from config import MAIN_SERVER_PORT, MONITOR_SERVER_PORT, MEMORY_SERVER_PORT, MO
 from config.prompts_sys import emotion_analysis_prompt, proactive_chat_prompt
 import glob
 from utils.config_manager import get_config_manager
-os.add_dll_directory(os.getcwd())
-from steamworks import STEAMWORKS
-from steamworks.exceptions import SteamNotLoadedException
-from steamworks.enums import EWorkshopFileType, EItemUpdateStatus
+
 # 确定 templates 目录位置（支持 PyInstaller 打包）
 if getattr(sys, 'frozen', False):
     # 打包后运行：从 _MEIPASS 读取
