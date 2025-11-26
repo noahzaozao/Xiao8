@@ -2716,25 +2716,28 @@ function init_app(){
         if (agentKeyboardCheckbox) agentKeyboardCheckbox._hasExternalHandler = true;
         if (agentMcpCheckbox) agentMcpCheckbox._hasExternalHandler = true;
         
-        // 初始化时，确保键鼠控制和MCP工具默认禁用（除非Agent总开关已开启）
-        const setSubCheckboxes = (disabled, checked = null) => {
-            [agentKeyboardCheckbox, agentMcpCheckbox].forEach(cb => {
-                if (cb) {
-                    cb.disabled = disabled;
-                    if (checked !== null) cb.checked = checked;
-                }
-            });
-        };
-        if (!agentMasterCheckbox.checked) {
-            setSubCheckboxes(true);
-        }
-        
         // 辅助函数：同步更新 checkbox 的 UI 样式
         const syncCheckboxUI = (checkbox) => {
             if (checkbox && typeof checkbox._updateStyle === 'function') {
                 checkbox._updateStyle();
             }
         };
+        
+        // 辅助函数：重置子开关状态和 UI
+        const resetSubCheckboxes = () => {
+            [agentKeyboardCheckbox, agentMcpCheckbox].forEach(cb => {
+                if (cb) {
+                    cb.disabled = true;
+                    cb.checked = false;
+                    syncCheckboxUI(cb);
+                }
+            });
+        };
+        
+        // 初始化时，确保键鼠控制和MCP工具默认禁用（除非Agent总开关已开启）
+        if (!agentMasterCheckbox.checked) {
+            resetSubCheckboxes();
+        }
         
         // Agent总开关逻辑
         agentMasterCheckbox.addEventListener('change', async () => {
@@ -2790,20 +2793,25 @@ function init_app(){
                     } catch(e) {
                         agentMasterCheckbox.checked = false;
                         syncCheckboxUI(agentMasterCheckbox);
-                        setSubCheckboxes(true);
+                        resetSubCheckboxes();
+                        // 确保任务轮询已停止
+                        window.stopAgentTaskPolling();
                         setFloatingAgentStatus('开启失败');
                     }
                 } else {
                     setFloatingAgentStatus('Agent模式已关闭');
                     
-                    // 停止定时检查器
+                    // 同步总开关自身的 UI
+                    syncCheckboxUI(agentMasterCheckbox);
+                    
+                    // 停止可用性定时检查器（但不影响弹窗打开时的连通性检查）
                     window.stopAgentAvailabilityCheck();
                     
+                    // 停止任务轮询并隐藏 HUD
+                    window.stopAgentTaskPolling();
+                    
                     // 重置子开关
-                    setSubCheckboxes(true, false);
-                    // 同步子开关 UI
-                    syncCheckboxUI(agentKeyboardCheckbox);
-                    syncCheckboxUI(agentMcpCheckbox);
+                    resetSubCheckboxes();
                     
                     // 停止所有任务并重置状态
                     try {
@@ -2886,6 +2894,10 @@ function init_app(){
                         });
                         if (!r.ok) throw new Error('main_server rejected');
                         setFloatingAgentStatus(enabled ? `${name}已开启` : `${name}已关闭`);
+                        // 关闭成功时也需要同步 UI
+                        if (!enabled) {
+                            syncCheckboxUI(checkbox);
+                        }
                     } catch(e) {
                         if (enabled) {
                             checkbox.checked = false;
@@ -2906,6 +2918,35 @@ function init_app(){
         
         // MCP工具开关逻辑
         setupSubCheckbox(agentMcpCheckbox, 'mcp', 'mcp_enabled', 'MCP工具');
+        
+        // 监听 Agent 弹窗打开事件，在弹窗显示时检查服务器状态
+        window.addEventListener('live2d-agent-popup-opening', async () => {
+            // 如果总开关已经是开启状态，不需要检查
+            if (agentMasterCheckbox.checked) {
+                return;
+            }
+            
+            // 禁用总开关，显示连接中状态
+            agentMasterCheckbox.disabled = true;
+            setFloatingAgentStatus('Agent服务器连接中...');
+            
+            try {
+                const ok = await checkToolServerHealth();
+                if (ok) {
+                    // 服务器在线，启用总开关
+                    agentMasterCheckbox.disabled = false;
+                    setFloatingAgentStatus('Agent服务器就绪');
+                } else {
+                    // 服务器离线，保持禁用
+                    agentMasterCheckbox.disabled = true;
+                    setFloatingAgentStatus('Agent服务器未启动');
+                }
+            } catch (e) {
+                // 检查失败，保持禁用
+                agentMasterCheckbox.disabled = true;
+                setFloatingAgentStatus('Agent服务器未启动');
+            }
+        });
         
         console.log('[App] Agent开关事件监听器绑定完成');
     };

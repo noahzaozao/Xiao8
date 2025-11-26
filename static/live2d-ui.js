@@ -1950,6 +1950,12 @@ Live2DManager.prototype.showPopup = function(buttonId, popup) {
         }
     }
     
+    // 如果是 agent 弹窗，触发服务器状态检查事件
+    if (buttonId === 'agent' && !isVisible) {
+        // 弹窗即将显示，派发事件让 app.js 检查服务器状态
+        window.dispatchEvent(new CustomEvent('live2d-agent-popup-opening'));
+    }
+    
     if (isVisible) {
         // 如果已经显示，则隐藏
         popup.style.opacity = '0';
