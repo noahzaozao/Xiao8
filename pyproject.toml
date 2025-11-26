@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "N.E.K.O."
+name = "N.E.K.O"
 version = "1.0.0"
 description = "N.E.K.O. Desktop"
 readme = "README.MD"
