@@ -32,10 +32,15 @@ from config.prompts_sys import emotion_analysis_prompt, proactive_chat_prompt
 import glob
 from utils.config_manager import get_config_manager
 
-# 确定 templates 目录位置（支持 PyInstaller 打包）
+# 确定 templates 目录位置（支持 PyInstaller/Nuitka 打包）
 if getattr(sys, 'frozen', False):
-    # 打包后运行：从 _MEIPASS 读取
-    template_dir = sys._MEIPASS
+    # 打包后运行
+    if hasattr(sys, '_MEIPASS'):
+        # PyInstaller
+        template_dir = sys._MEIPASS
+    else:
+        # Nuitka
+        template_dir = os.path.dirname(os.path.abspath(__file__))
 else:
     # 正常运行：当前目录
     template_dir = "./"
@@ -184,10 +189,15 @@ class CustomStaticFiles(StaticFiles):
             response.headers['Content-Type'] = 'application/javascript'
         return response
 
-# 确定 static 目录位置（支持 PyInstaller 打包）
+# 确定 static 目录位置（支持 PyInstaller/Nuitka 打包）
 if getattr(sys, 'frozen', False):
-    # 打包后运行：从 _MEIPASS 读取（onedir 模式下是 _internal）
-    static_dir = os.path.join(sys._MEIPASS, 'static')
+    # 打包后运行
+    if hasattr(sys, '_MEIPASS'):
+        # PyInstaller
+        static_dir = os.path.join(sys._MEIPASS, 'static')
+    else:
+        # Nuitka
+        static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
 else:
     # 正常运行：当前目录
     static_dir = 'static'
@@ -1550,9 +1560,18 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
         
         # 3. 用直链注册音色
         core_config = _config_manager.get_core_config()
-        dashscope.api_key = core_config['AUDIO_API_KEY']
+        audio_api_key = core_config.get('AUDIO_API_KEY')
+        
+        if not audio_api_key:
+            logger.error("未配置 AUDIO_API_KEY")
+            return JSONResponse({
+                'error': '未配置音频API密钥，请在设置中配置AUDIO_API_KEY',
+                'suggestion': '请前往设置页面配置音频API密钥'
+            }, status_code=400)
+        
+        dashscope.api_key = audio_api_key
         service = VoiceEnrollmentService()
-        target_model = "cosyvoice-v2"
+        target_model = "cosyvoice-v3-plus"
         
         # 重试配置
         max_retries = 3
@@ -1561,35 +1580,9 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
         for attempt in range(max_retries):
             try:
                 logger.info(f"开始音色注册（尝试 {attempt + 1}/{max_retries}），使用URL: {tmp_url}")
-                # 设置超时参数
-                import time
-                start_time = time.time()
                 
-                # 添加超时装饰器或使用上下文管理器
-                # 这里使用try-except块和时间检查来实现简单的超时控制
-                voice_id = None
-                
-                # 创建一个超时标志
-                timeout_occurred = False
-                
-                try:
-                    # 尝试执行音色注册，设置一个较大的超时时间
-                    voice_id = service.create_voice(target_model=target_model, prefix=prefix, url=tmp_url)
-                except Exception as inner_e:
-                    error_str = str(inner_e)
-                    if "ResponseTimeout" in error_str or "response timeout" in error_str.lower():
-                        timeout_occurred = True
-                        logger.warning(f"音色注册超时: {error_str}")
-                    else:
-                        raise inner_e
-                
-                if timeout_occurred:
-                    return JSONResponse({
-                        'error': '音色注册超时，请稍后重试',
-                        'detail': '服务器响应超时，这可能是由于网络延迟或服务繁忙导致的',
-                        'file_url': tmp_url,
-                        'suggestion': '请检查您的网络连接，或稍后再试'
-                    }, status_code=408)
+                # 尝试执行音色注册
+                voice_id = service.create_voice(target_model=target_model, prefix=prefix, url=tmp_url)
                     
                 logger.info(f"音色注册成功，voice_id: {voice_id}")
                 voice_data = {
@@ -1602,15 +1595,24 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
                     _config_manager.save_voice_for_current_api(voice_id, voice_data)
                     logger.info(f"voice_id已保存到音色库: {voice_id}")
                     
-                    # 验证voice_id是否能够被正确读取
-                    if not _config_manager.validate_voice_id(voice_id):
-                        logger.error(f"voice_id保存后验证失败: {voice_id}")
-                        return JSONResponse({
-                            'error': f'音色注册成功但保存验证失败，请重试',
-                            'voice_id': voice_id,
-                            'file_url': tmp_url
-                        }, status_code=500)
-                    logger.info(f"voice_id保存验证成功: {voice_id}")
+                    # 验证voice_id是否能够被正确读取（添加短暂延迟，避免文件系统延迟）
+                    import time
+                    time.sleep(0.1)  # 等待100ms，确保文件写入完成
+                    
+                    # 最多验证3次，每次间隔100ms
+                    validation_success = False
+                    for validation_attempt in range(3):
+                        if _config_manager.validate_voice_id(voice_id):
+                            validation_success = True
+                            logger.info(f"voice_id保存验证成功: {voice_id} (尝试 {validation_attempt + 1})")
+                            break
+                        if validation_attempt < 2:
+                            time.sleep(0.1)
+                    
+                    if not validation_success:
+                        logger.warning(f"voice_id保存后验证失败，但可能已成功保存: {voice_id}")
+                        # 不返回错误，因为保存可能已成功，只是验证失败
+                        # 继续返回成功，让用户尝试使用
                     
                 except Exception as save_error:
                     logger.error(f"保存voice_id到音色库失败: {save_error}")
@@ -1619,46 +1621,56 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
                         'voice_id': voice_id,
                         'file_url': tmp_url
                     }, status_code=500)
+                    
                 return JSONResponse({
                     'voice_id': voice_id,
                     'request_id': service.get_last_request_id(),
                     'file_url': tmp_url,
                     'message': '音色注册成功并已保存到音色库'
                 })
+                
             except Exception as e:
                 logger.error(f"音色注册失败（尝试 {attempt + 1}/{max_retries}）: {str(e)}")
-                # 详细的错误信息
                 error_detail = str(e)
                 
-                # 添加对ResponseTimeout的专门处理
-                if "ResponseTimeout" in error_detail or "response timeout" in error_detail.lower():
+                # 检查是否是超时错误
+                is_timeout = ("ResponseTimeout" in error_detail or 
+                             "response timeout" in error_detail.lower() or
+                             "timeout" in error_detail.lower())
+                
+                # 检查是否是文件下载失败错误
+                is_download_failed = ("download audio failed" in error_detail or 
+                                     "415" in error_detail)
+                
+                # 如果是超时或下载失败，且还有重试机会，则重试
+                if (is_timeout or is_download_failed) and attempt < max_retries - 1:
+                    logger.warning(f"检测到{'超时' if is_timeout else '文件下载失败'}错误，等待 {retry_delay} 秒后重试...")
+                    await asyncio.sleep(retry_delay)
+                    continue  # 重试
+                
+                # 如果是最后一次尝试或非可重试错误，返回错误
+                if is_timeout:
                     return JSONResponse({
-                        'error': '音色注册超时，请稍后重试',
+                        'error': f'音色注册超时，已尝试{max_retries}次',
                         'detail': error_detail,
                         'file_url': tmp_url,
-                        'suggestion': '请检查您的网络连接，或稍后再试'
+                        'suggestion': '请检查您的网络连接，或稍后再试。如果问题持续，可能是服务器繁忙。'
                     }, status_code=408)
-                
-                # 处理415错误（文件下载失败）- 如果不是最后一次尝试，则等待后重试
-                elif "download audio failed" in error_detail or "415" in error_detail:
-                    if attempt < max_retries - 1:
-                        logger.warning(f"检测到文件下载失败（415错误），等待 {retry_delay} 秒后重试...")
-                        await asyncio.sleep(retry_delay)
-                        continue  # 重试
-                    else:
-                        logger.error(f"音色注册失败: 达到最大重试次数（{max_retries}次）")
-                        return JSONResponse({
-                            'error': f'音色注册失败: 无法下载音频文件，已尝试{max_retries}次',
-                            'detail': error_detail,
-                            'file_url': tmp_url,
-                            'suggestion': '请检查文件URL是否可访问，或稍后重试'
-                        }, status_code=415)
-                
-                # 其他错误直接返回
-                return JSONResponse({
-                    'error': f'音色注册失败: {error_detail}',
-                    'file_url': tmp_url
-                }, status_code=500)
+                elif is_download_failed:
+                    return JSONResponse({
+                        'error': f'音色注册失败: 无法下载音频文件，已尝试{max_retries}次',
+                        'detail': error_detail,
+                        'file_url': tmp_url,
+                        'suggestion': '请检查文件URL是否可访问，或稍后重试'
+                    }, status_code=415)
+                else:
+                    # 其他错误直接返回
+                    return JSONResponse({
+                        'error': f'音色注册失败: {error_detail}',
+                        'file_url': tmp_url,
+                        'attempt': attempt + 1,
+                        'max_retries': max_retries
+                    }, status_code=500)
     except Exception as e:
         # 确保tmp_url在出现异常时也有定义
         tmp_url = locals().get('tmp_url', '未获取到URL')
@@ -2328,6 +2340,101 @@ async def save_recent_file(request: Request):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+@app.post('/api/memory/update_catgirl_name')
+async def update_catgirl_name(request: Request):
+    """
+    更新记忆文件中的猫娘名称
+    1. 重命名记忆文件
+    2. 更新文件内容中的猫娘名称引用
+    """
+    import os, json
+    data = await request.json()
+    old_name = data.get('old_name')
+    new_name = data.get('new_name')
+    
+    if not old_name or not new_name:
+        return JSONResponse({"success": False, "error": "缺少必要参数"}, status_code=400)
+    
+    try:
+        from utils.config_manager import get_config_manager
+        cm = get_config_manager()
+        
+        # 1. 重命名记忆文件
+        old_filename = f'recent_{old_name}.json'
+        new_filename = f'recent_{new_name}.json'
+        old_file_path = str(cm.memory_dir / old_filename)
+        new_file_path = str(cm.memory_dir / new_filename)
+        
+        # 检查旧文件是否存在
+        if not os.path.exists(old_file_path):
+            logger.warning(f"记忆文件不存在: {old_file_path}")
+            return JSONResponse({"success": False, "error": f"记忆文件不存在: {old_filename}"}, status_code=404)
+        
+        # 如果新文件已存在，先删除
+        if os.path.exists(new_file_path):
+            os.remove(new_file_path)
+        
+        # 重命名文件
+        os.rename(old_file_path, new_file_path)
+        
+        # 2. 更新文件内容中的猫娘名称引用
+        with open(new_file_path, 'r', encoding='utf-8') as f:
+            file_content = json.load(f)
+        
+        # 遍历所有消息，仅在特定字段中更新猫娘名称
+        for item in file_content:
+            if isinstance(item, dict):
+                # 安全的方式：只在特定的字段中替换猫娘名称
+                # 避免在整个content中进行字符串替换
+                
+                # 检查角色名称相关字段
+                name_fields = ['speaker', 'author', 'name', 'character', 'role']
+                for field in name_fields:
+                    if field in item and isinstance(item[field], str) and old_name in item[field]:
+                        if item[field] == old_name:  # 完全匹配才替换
+                            item[field] = new_name
+                            logger.debug(f"更新角色名称字段 {field}: {old_name} -> {new_name}")
+                
+                # 如果item有data嵌套结构，也检查其中的name字段
+                if 'data' in item and isinstance(item['data'], dict):
+                    data = item['data']
+                    for field in name_fields:
+                        if field in data and isinstance(data[field], str) and old_name in data[field]:
+                            if data[field] == old_name:  # 完全匹配才替换
+                                data[field] = new_name
+                                logger.debug(f"更新data中角色名称字段 {field}: {old_name} -> {new_name}")
+                    
+                    # 对于content字段，使用更保守的方法 - 仅在明确标识为角色名称的地方替换
+                    if 'content' in data and isinstance(data['content'], str):
+                        content = data['content']
+                        # 检查是否是明确的角色发言格式，如"小白说："或"小白: "
+                        # 这种格式通常表示后面的内容是角色发言
+                        patterns = [
+                            f"{old_name}说：",  # 中文冒号
+                            f"{old_name}说:",   # 英文冒号  
+                            f"{old_name}:",     # 纯冒号
+                            f"{old_name}->",    # 箭头
+                            f"[{old_name}]",    # 方括号
+                        ]
+                        
+                        for pattern in patterns:
+                            if pattern in content:
+                                new_pattern = pattern.replace(old_name, new_name)
+                                content = content.replace(pattern, new_pattern)
+                                logger.debug(f"在消息内容中发现角色标识，更新: {pattern} -> {new_pattern}")
+                        
+                        data['content'] = content
+        
+        # 保存更新后的内容
+        with open(new_file_path, 'w', encoding='utf-8') as f:
+            json.dump(file_content, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"已更新猫娘名称从 '{old_name}' 到 '{new_name}' 的记忆文件")
+        return {"success": True}
+    except Exception as e:
+        logger.exception("更新猫娘名称失败")
+        return {"success": False, "error": str(e)}
+
 @app.post('/api/emotion/analysis')
 async def emotion_analysis(request: Request):
     try:
@@ -2635,17 +2742,14 @@ if __name__ == "__main__":
     logger.info(f"Access UI at: http://127.0.0.1:{MAIN_SERVER_PORT} (or your network IP:{MAIN_SERVER_PORT})")
     logger.info("-----------------------------")
 
-    # Custom logging filter to suppress specific endpoints
-    class EndpointFilter(logging.Filter):
-        def filter(self, record: logging.LogRecord) -> bool:
-            # Suppress only INFO level logs for specific endpoints
-            # Keep WARNING and ERROR logs
-            if record.levelno > logging.INFO:
-                return True
-            return record.getMessage().find("/api/characters/current_catgirl") == -1
-
+    # 使用统一的速率限制日志过滤器
+    from utils.logger_config import create_main_server_filter, create_httpx_filter
+    
     # Add filter to uvicorn access logger
-    logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
+    logging.getLogger("uvicorn.access").addFilter(create_main_server_filter())
+    
+    # Add filter to httpx logger for availability check requests
+    logging.getLogger("httpx").addFilter(create_httpx_filter())
 
     # 1) 配置 UVicorn
     config = uvicorn.Config(
