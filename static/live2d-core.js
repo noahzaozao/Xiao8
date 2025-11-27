@@ -268,6 +268,7 @@ class Live2DManager {
         }
 
         try {
+            model.anchor.set(0.65, 0.75);
             // 根据移动端/桌面端重置到默认位置和缩放
             if (isMobileWidth()) {
                 // 移动端默认设置
@@ -287,8 +288,8 @@ class Live2DManager {
                     (window.innerWidth * 0.6) / 7000
                 );
                 this.currentModel.scale.set(scale);
-                this.currentModel.x = this.pixi_app.renderer.width * 0.92;
-                this.currentModel.y = this.pixi_app.renderer.height * 0.68;
+                this.currentModel.x = this.pixi_app.renderer.width;
+                this.currentModel.y = this.pixi_app.renderer.height;
             }
 
             console.log('模型位置已复位到初始状态');

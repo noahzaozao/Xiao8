@@ -453,11 +453,11 @@ Live2DManager.prototype.applyModelSettings = function(model, options) {
             model.scale.set(scale);
             // 将默认 x 调整到屏幕靠右位置，使用 0.85 作为右侧偏移比例
             // 向右下角进一步偏移，靠近屏幕右下
-            model.x = this.pixi_app.renderer.width * 0.92;
-            model.y = this.pixi_app.renderer.height * 0.68;
+            model.x = this.pixi_app.renderer.width;
+            model.y = this.pixi_app.renderer.height;
         }
         // 增大 anchor.x 以便模型更靠近右侧边缘
-        model.anchor.set(0.9, 0.75);
+        model.anchor.set(0.65, 0.75);
     }
 };
 
