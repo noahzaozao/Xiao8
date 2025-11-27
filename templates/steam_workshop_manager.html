@@ -634,7 +634,7 @@
             <div class="upload-section">
                 <h2>上传到创意工坊</h2>
                 <div class="info-box">
-                    <p>请先在"管理本地物品"区域选择一个未发布的物品，然后点击"准备上传"按钮。内容文件夹路径和预览图片路径将自动填充。</p>
+                    <p>💡 您可以在"管理本地物品"中选择物品自动填充路径，也可以直接手动输入内容文件夹和预览图片的完整路径。</p>
                 </div>
                 
                 <div id="message-area"></div>
@@ -651,14 +651,14 @@
                 
                 <div class="form-group">
                     <label for="content-folder">内容文件夹路径 *</label>
-                    <input type="text" id="content-folder" placeholder="从本地物品中获取的内容文件夹路径" aria-describedby="content-folder-help" readonly>
-                    <small id="content-folder-help">此路径从您选择的本地物品中自动获取，不可手动修改。请先在"管理本地物品"中选择要上传的物品。</small>
+                    <input type="text" id="content-folder" placeholder="输入内容文件夹路径，如 D:\Projects\MyMod" aria-describedby="content-folder-help">
+                    <small id="content-folder-help">可从"管理本地物品"中选择自动填充，或手动输入完整路径。</small>
                 </div>
                 
                 <div class="form-group">
                     <label for="preview-image">预览图片路径 *</label>
-                    <input type="text" id="preview-image" placeholder="从本地物品中获取的预览图片路径" aria-describedby="preview-image-help" readonly>
-                    <small id="preview-image-help">此路径从您选择的本地物品中自动获取，不可手动修改。</small>
+                    <input type="text" id="preview-image" placeholder="输入预览图片路径，如 D:\Projects\MyMod\preview.png" aria-describedby="preview-image-help">
+                    <small id="preview-image-help">支持 .jpg 或 .png 格式。可自动填充或手动输入。</small>
                 </div>
                 
                 <div class="form-group">
@@ -1588,12 +1588,13 @@
         
         // 上传物品功能
         function uploadItem() {
-            // 检查是否已从本地物品中选择内容
+            // 获取路径
             let contentFolder = document.getElementById('content-folder').value.trim();
             let previewImage = document.getElementById('preview-image').value.trim();
             
             if (!contentFolder) {
-                showMessage('请先在"管理本地物品"中选择要上传的物品', 'error');
+                showMessage('请输入内容文件夹路径，或从"管理本地物品"中选择', 'error');
+                document.getElementById('content-folder').focus();
                 return;
             }
             
