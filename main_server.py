@@ -16,13 +16,13 @@ from urllib.parse import quote, unquote
 
 # 导入创意工坊工具模块
 from utils.workshop_utils import (
-    DEFAULT_WORKSHOP_FOLDER,
     WORKSHOP_CONFIG_FILE,
     workshop_config,
     load_workshop_config,
     save_workshop_config,
     ensure_workshop_folder_exists,
-    get_workshop_root
+    get_workshop_root,
+    get_default_workshop_folder
 )
 
 # 开发模式标志 - 在生产环境中设置为False
@@ -59,6 +59,10 @@ from config.prompts_sys import emotion_analysis_prompt, proactive_chat_prompt
 import glob
 from utils.config_manager import get_config_manager
 
+os.add_dll_directory(os.getcwd())
+from steamworks import STEAMWORKS
+from steamworks.exceptions import SteamNotLoadedException
+from steamworks.enums import EWorkshopFileType, EItemUpdateStatus
 # 确定 templates 目录位置（支持 PyInstaller/Nuitka 打包）
 if getattr(sys, 'frozen', False):
     # 打包后运行
@@ -3118,13 +3122,13 @@ async def scan_local_workshop_items(request: Request):
         logger.info(f'请求数据: {data}')
         folder_path = data.get('folder_path')
         
-        # 安全检查：始终使用DEFAULT_WORKSHOP_FOLDER作为基础目录
-        base_workshop_folder = os.path.abspath(os.path.normpath(DEFAULT_WORKSHOP_FOLDER))
+        # 安全检查：始终使用get_default_workshop_folder()作为基础目录
+        base_workshop_folder = os.path.abspath(os.path.normpath(get_default_workshop_folder()))
         
         # 如果没有提供路径，使用默认路径
         default_path_used = False
         if not folder_path:
-            # 优先使用常量DEFAULT_WORKSHOP_FOLDER
+            # 优先使用get_default_workshop_folder()获取默认路径
             folder_path = base_workshop_folder
             default_path_used = True
             logger.info(f'未提供文件夹路径，强制使用默认路径: {folder_path}')
@@ -3252,8 +3256,6 @@ async def save_workshop_config_api(config_data: dict):
 @app.get('/api/proxy-image')
 async def proxy_image(image_path: str):
     """代理访问本地图片文件，支持绝对路径和相对路径，特别是Steam创意工坊目录"""
-    # 在函数开头就声明全局变量，避免使用前未声明的语法错误
-    global DEFAULT_WORKSHOP_FOLDER
     try:
         logger.info(f"代理图片请求，原始路径: {image_path}")
         
@@ -3299,9 +3301,9 @@ async def proxy_image(image_path: str):
                     allowed_dirs.append(real_dir)
                     logger.info(f"添加允许的Steam创意工坊目录: {real_dir}")
         
-        # 添加DEFAULT_WORKSHOP_FOLDER作为允许目录，支持相对路径解析
+        # 添加get_default_workshop_folder()作为允许目录，支持相对路径解析
         try:
-            workshop_base_dir = os.path.abspath(os.path.normpath(DEFAULT_WORKSHOP_FOLDER))
+            workshop_base_dir = os.path.abspath(os.path.normpath(get_default_workshop_folder()))
             if os.path.exists(workshop_base_dir):
                 real_workshop_dir = os.path.realpath(workshop_base_dir)
                 if real_workshop_dir not in allowed_dirs:
@@ -3357,7 +3359,7 @@ async def proxy_image(image_path: str):
         # 尝试相对于默认创意工坊目录的路径处理
         if final_path is None:
             try:
-                workshop_base_dir = os.path.abspath(os.path.normpath(DEFAULT_WORKSHOP_FOLDER))
+                workshop_base_dir = os.path.abspath(os.path.normpath(get_default_workshop_folder()))
                 
                 # 尝试将解码路径作为相对于创意工坊目录的路径
                 rel_workshop_path = os.path.join(workshop_base_dir, decoded_path)
@@ -3431,8 +3433,8 @@ async def get_local_workshop_item(item_id: str, folder_path: str = None):
         if not folder_path:
             return JSONResponse(content={"success": False, "error": "未提供文件夹路径"}, status_code=400)
         
-        # 安全检查：始终使用DEFAULT_WORKSHOP_FOLDER作为基础目录
-        base_workshop_folder = os.path.abspath(os.path.normpath(DEFAULT_WORKSHOP_FOLDER))
+        # 安全检查：始终使用get_default_workshop_folder()作为基础目录
+        base_workshop_folder = os.path.abspath(os.path.normpath(get_default_workshop_folder()))
         
         # Windows路径处理：确保路径分隔符正确
         if os.name == 'nt':  # Windows系统
@@ -4008,6 +4010,14 @@ async def find_first_image(folder: str = None):
             os.path.realpath(os.path.join(base_dir, 'static')),
             os.path.realpath(os.path.join(base_dir, 'assets'))
         ]
+        
+        # 添加"我的文档/Xiao8"目录到允许列表
+        if os.name == 'nt':  # Windows系统
+            documents_path = os.path.join(os.path.expanduser('~'), 'Documents', 'Xiao8')
+            if os.path.exists(documents_path):
+                real_doc_path = os.path.realpath(documents_path)
+                allowed_dirs.append(real_doc_path)
+                logger.info(f"find-first-image: 添加允许的文档目录: {real_doc_path}")
         
         # 解码URL编码的路径
         decoded_folder = unquote(folder)

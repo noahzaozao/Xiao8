@@ -10,8 +10,43 @@ import asyncio
 import pathlib
 from typing import Optional, Dict, Any
 
-# 默认的创意工坊物品文件夹路径
-DEFAULT_WORKSHOP_FOLDER = os.path.join(os.path.expanduser('~'), 'Documents', 'Xiao8', 'live2d')
+# 默认的创意工坊物品文件夹路径 - 延迟初始化缓存
+_default_workshop_folder_cache: Optional[str] = None
+
+def get_default_workshop_folder() -> str:
+    """
+    获取默认的创意工坊物品文件夹路径
+    从config_manager获取live2d_dir作为默认路径，带缓存
+    """
+    global _default_workshop_folder_cache
+    if _default_workshop_folder_cache is None:
+        _default_workshop_folder_cache = _compute_default_workshop_folder()
+    return _default_workshop_folder_cache
+
+def _compute_default_workshop_folder() -> str:
+    """
+    从config_manager计算默认的创意工坊物品文件夹路径
+    使用延迟导入避免循环导入问题
+    """
+    try:
+        from utils.config_manager import get_config_manager
+        config_manager = get_config_manager()
+        # 使用config_manager的live2d_dir作为默认路径
+        return str(config_manager.live2d_dir)
+    except Exception as e:
+        print(f"无法从config_manager获取默认路径，使用后备路径: {e}")
+        # 后备路径：使用config模块中的APP_NAME
+        try:
+            from config import APP_NAME
+            return os.path.join(os.path.expanduser('~'), 'Documents', APP_NAME, 'live2d')
+        except Exception:
+            # 最终后备
+            return os.path.join(os.path.expanduser('~'), 'Documents', 'N.E.K.O', 'live2d')
+
+# 为向后兼容，保留DEFAULT_WORKSHOP_FOLDER变量名
+# 注意：这是一个函数调用结果的别名，用于兼容旧代码
+# 在模块加载时不初始化，等到第一次使用load_workshop_config时初始化
+DEFAULT_WORKSHOP_FOLDER: str = ""  # 占位符，在load_workshop_config中初始化
 
 # 配置文件名
 WORKSHOP_CONFIG_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config', 'workshop_config.json')
@@ -23,12 +58,22 @@ def load_workshop_config() -> None:
     """
     加载创意工坊配置
     """
-    global workshop_config
+    global workshop_config, DEFAULT_WORKSHOP_FOLDER
+    
+    # 初始化DEFAULT_WORKSHOP_FOLDER
+    DEFAULT_WORKSHOP_FOLDER = get_default_workshop_folder()
+    
     try:
         if os.path.exists(WORKSHOP_CONFIG_FILE):
             with open(WORKSHOP_CONFIG_FILE, 'r', encoding='utf-8') as f:
                 workshop_config = json.load(f)
                 print(f"成功加载创意工坊配置: {workshop_config}")
+                
+                # 如果配置文件中没有default_workshop_folder或为空，使用新的默认值
+                if not workshop_config.get("default_workshop_folder"):
+                    workshop_config["default_workshop_folder"] = DEFAULT_WORKSHOP_FOLDER
+                    save_workshop_config()
+                    print(f"更新创意工坊默认路径为: {DEFAULT_WORKSHOP_FOLDER}")
         else:
             # 如果配置文件不存在，创建默认配置
             workshop_config = {
@@ -96,7 +141,7 @@ def ensure_workshop_folder_exists(folder_path: Optional[str] = None) -> bool:
         bool: 文件夹是否存在或创建成功
     """
     # 确定目标文件夹路径
-    raw_folder = folder_path or workshop_config.get("default_workshop_folder", DEFAULT_WORKSHOP_FOLDER)
+    raw_folder = folder_path or workshop_config.get("default_workshop_folder") or get_default_workshop_folder()
     
     # 确保路径是绝对路径，如果不是则转换
     if not os.path.isabs(raw_folder):
@@ -234,7 +279,7 @@ def get_workshop_root(globals_dict: Optional[Dict[str, Any]] = None) -> str:
             print(error_msg)
     
     # 返回默认的创意工坊文件夹路径作为后备
-    default_path = workshop_config.get("default_workshop_folder", DEFAULT_WORKSHOP_FOLDER)
+    default_path = workshop_config.get("default_workshop_folder") or get_default_workshop_folder()
     # 尝试使用logger记录
     try:
         import logging
