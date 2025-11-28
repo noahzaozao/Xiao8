@@ -16,13 +16,16 @@ from urllib.parse import quote, unquote
 
 # 导入创意工坊工具模块
 from utils.workshop_utils import (
-    workshop_config,
     load_workshop_config,
     save_workshop_config,
     ensure_workshop_folder_exists,
     get_workshop_root,
-    get_default_workshop_folder
+    get_workshop_path
 )
+
+# 导入Steamworks异常类
+from steamworks.exceptions import SteamNotLoadedException
+from steamworks.enums import EWorkshopFileType, EItemUpdateStatus
 
 # 开发模式标志 - 在生产环境中设置为False
 DEVELOPMENT_MODE = True
@@ -87,6 +90,8 @@ def initialize_steamworks():
             print(f"从steam_appid.txt读取到应用ID: {app_id}")
         
         # 创建并初始化Steamworks实例
+        from steamworks import STEAMWORKS
+        from steamworks.exceptions import SteamNotLoadedException
         steamworks = STEAMWORKS()
         # 显示Steamworks初始化过程的详细日志
         print("正在初始化Steamworks...")
@@ -295,6 +300,13 @@ if os.path.exists(user_live2d_path):
     app.mount("/user_live2d", CustomStaticFiles(directory=user_live2d_path), name="user_live2d")
     logger.info(f"已挂载用户Live2D目录: {user_live2d_path}")
 
+# 挂载用户mod路径
+user_mod_path = _config_manager.get_workshop_path()
+if os.path.exists(user_mod_path) and os.path.isdir(user_mod_path):
+    app.mount("/user_mods", CustomStaticFiles(directory=user_mod_path), name="user_mods")
+    logger.info(f"已挂载用户mod路径: {user_mod_path}")
+else:
+    logger.warning(f"用户mod路径不存在或不是目录: {user_mod_path}")
 # 使用 FastAPI 的 app.state 来管理启动配置
 def get_start_config():
     """从 app.state 获取启动配置"""
@@ -1652,9 +1664,10 @@ if os.path.exists(WORKSHOP_PATH) and os.path.isdir(WORKSHOP_PATH):
         logger.info(f"成功挂载创意工坊目录: {WORKSHOP_PATH}")
         
         # 保存WORKSHOP_PATH到配置文件
-        from utils.workshop_utils import workshop_config, save_workshop_config
-        workshop_config["WORKSHOP_PATH"] = WORKSHOP_PATH
-        save_workshop_config()
+        from utils.workshop_utils import save_workshop_config, load_workshop_config
+        workshop_config_data = load_workshop_config()
+        workshop_config_data["WORKSHOP_PATH"] = WORKSHOP_PATH
+        save_workshop_config(workshop_config_data)
         logger.info(f"已保存WORKSHOP_PATH到配置文件: {WORKSHOP_PATH}")
         
     except Exception as e:
@@ -3161,21 +3174,22 @@ async def scan_local_workshop_items(request: Request):
         logger.info('接收到扫描本地创意工坊物品的API请求')
         
         # 确保配置已加载
-        if not workshop_config:
-            load_workshop_config()
-            logger.info(f'创意工坊配置已加载: {workshop_config}')
+        from utils.workshop_utils import load_workshop_config
+        workshop_config_data = load_workshop_config()
+        logger.info(f'创意工坊配置已加载: {workshop_config_data}')
         
         data = await request.json()
         logger.info(f'请求数据: {data}')
         folder_path = data.get('folder_path')
         
-        # 获取默认路径作为后备
-        default_workshop_folder = os.path.abspath(os.path.normpath(get_default_workshop_folder()))
+        # 安全检查：始终使用get_workshop_path()作为基础目录
+        base_workshop_folder = os.path.abspath(os.path.normpath(get_workshop_path()))
         
         # 如果没有提供路径，使用默认路径
         default_path_used = False
         if not folder_path:
-            folder_path = default_workshop_folder
+            # 优先使用get_workshop_path()函数获取路径
+            folder_path = base_workshop_folder
             default_path_used = True
             logger.info(f'未提供文件夹路径，使用默认路径: {folder_path}')
             # 确保默认文件夹存在
@@ -3186,7 +3200,6 @@ async def scan_local_workshop_items(request: Request):
             
             # 如果是相对路径，基于默认路径解析
             if not os.path.isabs(folder_path):
-                folder_path = os.path.join(default_workshop_folder, folder_path)
                 folder_path = os.path.normpath(folder_path)
             
             logger.info(f'用户指定路径: {folder_path}')
@@ -3245,9 +3258,9 @@ async def scan_local_workshop_items(request: Request):
 @app.get('/api/steam/workshop/config')
 async def get_workshop_config():
     try:
-        if not workshop_config:
-            load_workshop_config()
-        return {"success": True, "config": workshop_config}
+        from utils.workshop_utils import load_workshop_config
+        workshop_config_data = load_workshop_config()
+        return {"success": True, "config": workshop_config_data}
     except Exception as e:
         logger.error(f"获取创意工坊配置失败: {str(e)}")
         return {"success": False, "error": str(e)}
@@ -3256,22 +3269,32 @@ async def get_workshop_config():
 @app.post('/api/steam/workshop/config')
 async def save_workshop_config_api(config_data: dict):
     try:
-        global workshop_config
+        # 导入与get_workshop_config相同路径的函数，保持一致性
+        from utils.workshop_utils import load_workshop_config, save_workshop_config, ensure_workshop_folder_exists
+        
+        # 先加载现有配置，避免使用全局变量导致的不一致问题
+        workshop_config_data = load_workshop_config() or {}
         
         # 更新配置
         if 'default_workshop_folder' in config_data:
-            workshop_config['default_workshop_folder'] = config_data['default_workshop_folder']
+            workshop_config_data['default_workshop_folder'] = config_data['default_workshop_folder']
         if 'auto_create_folder' in config_data:
-            workshop_config['auto_create_folder'] = config_data['auto_create_folder']
+            workshop_config_data['auto_create_folder'] = config_data['auto_create_folder']
+        # 支持用户mod路径配置
+        if 'user_mod_folder' in config_data:
+            workshop_config_data['user_mod_folder'] = config_data['user_mod_folder']
         
-        # 保存配置到文件
-        save_workshop_config()
+        # 保存配置到文件，传递完整的配置数据作为参数
+        save_workshop_config(workshop_config_data)
         
-        # 如果启用了自动创建文件夹且提供了默认路径，则确保文件夹存在
-        if workshop_config.get('auto_create_folder', True) and workshop_config.get('default_workshop_folder'):
-            ensure_workshop_folder_exists(workshop_config['default_workshop_folder'])
+        # 如果启用了自动创建文件夹且提供了路径，则确保文件夹存在
+        if workshop_config_data.get('auto_create_folder', True):
+            # 优先使用user_mod_folder，如果没有则使用default_workshop_folder
+            folder_path = workshop_config_data.get('user_mod_folder') or workshop_config_data.get('default_workshop_folder')
+            if folder_path:
+                ensure_workshop_folder_exists(folder_path)
         
-        return {"success": True, "config": workshop_config}
+        return {"success": True, "config": workshop_config_data}
     except Exception as e:
         logger.error(f"保存创意工坊配置失败: {str(e)}")
         return {"success": False, "error": str(e)}
@@ -3279,6 +3302,7 @@ async def save_workshop_config_api(config_data: dict):
 @app.get('/api/proxy-image')
 async def proxy_image(image_path: str):
     """代理访问本地图片文件，支持绝对路径和相对路径，特别是Steam创意工坊目录"""
+
     try:
         logger.info(f"代理图片请求，原始路径: {image_path}")
         
@@ -3300,33 +3324,10 @@ async def proxy_image(image_path: str):
             os.path.realpath(os.path.join(base_dir, 'assets'))
         ]
         
-        # 添加"我的文档/Xiao8"目录
-        if os.name == 'nt':  # Windows系统
-            documents_path = os.path.join(os.path.expanduser('~'), 'Documents', 'Xiao8')
-            # 确保目录存在并添加到允许列表
-            if os.path.exists(documents_path):
-                real_doc_path = os.path.realpath(documents_path)
-                allowed_dirs.append(real_doc_path)
-                logger.info(f"添加允许的文档目录: {real_doc_path}")
         
-        # 添加Steam创意工坊目录（支持Windows平台）
-        if os.name == 'nt':
-            steam_workshop_dirs = [
-                os.path.join(os.environ.get('ProgramFiles', 'C:/Program Files'), 'Valve/steamapps/workshop/content'),
-                os.path.join(os.environ.get('ProgramFiles(x86)', 'C:/Program Files (x86)'), 'Steam/steamapps/workshop/content'),
-                # 增加常见的Steam安装路径
-                os.path.join('D:/', 'Program Files', 'Valve', 'steamapps', 'workshop', 'content'),
-                os.path.join('D:/', 'Program Files (x86)', 'Steam', 'steamapps', 'workshop', 'content')
-            ]
-            for workshop_dir in steam_workshop_dirs:
-                if os.path.exists(workshop_dir):
-                    real_dir = os.path.realpath(workshop_dir)
-                    allowed_dirs.append(real_dir)
-                    logger.info(f"添加允许的Steam创意工坊目录: {real_dir}")
-        
-        # 添加get_default_workshop_folder()作为允许目录，支持相对路径解析
+        # 添加get_workshop_path()返回的路径作为允许目录，支持相对路径解析
         try:
-            workshop_base_dir = os.path.abspath(os.path.normpath(get_default_workshop_folder()))
+            workshop_base_dir = os.path.abspath(os.path.normpath(get_workshop_path()))
             if os.path.exists(workshop_base_dir):
                 real_workshop_dir = os.path.realpath(workshop_base_dir)
                 if real_workshop_dir not in allowed_dirs:
@@ -3334,6 +3335,43 @@ async def proxy_image(image_path: str):
                     logger.info(f"添加允许的默认创意工坊目录: {real_workshop_dir}")
         except Exception as e:
             logger.warning(f"无法添加默认创意工坊目录: {str(e)}")
+        
+        # 动态添加路径到允许列表：如果请求的路径包含创意工坊相关标识，则允许访问
+        try:
+            # 检查解码后的路径是否包含创意工坊相关路径标识
+            if ('steamapps\\workshop' in decoded_path.lower() or 
+                'steamapps/workshop' in decoded_path.lower()):
+                
+                # 获取创意工坊父目录
+                workshop_related_dir = None
+                
+                # 方法1：如果路径存在，获取文件所在目录或直接使用目录路径
+                if os.path.exists(decoded_path):
+                    if os.path.isfile(decoded_path):
+                        workshop_related_dir = os.path.dirname(decoded_path)
+                    else:
+                        workshop_related_dir = decoded_path
+                else:
+                    # 方法2：尝试从路径中提取创意工坊相关部分
+                    import re
+                    match = re.search(r'(.*?steamapps[/\\]workshop)', decoded_path, re.IGNORECASE)
+                    if match:
+                        workshop_related_dir = match.group(1)
+                
+                # 方法3：如果是Steam创意工坊内容路径，获取content目录
+                if not workshop_related_dir:
+                    content_match = re.search(r'(.*?steamapps[/\\]workshop[/\\]content)', decoded_path, re.IGNORECASE)
+                    if content_match:
+                        workshop_related_dir = content_match.group(1)
+                
+                # 如果找到了相关目录，添加到允许列表
+                if workshop_related_dir and os.path.exists(workshop_related_dir):
+                    real_workshop_dir = os.path.realpath(workshop_related_dir)
+                    if real_workshop_dir not in allowed_dirs:
+                        allowed_dirs.append(real_workshop_dir)
+                        logger.info(f"动态添加允许的创意工坊相关目录: {real_workshop_dir}")
+        except Exception as e:
+            logger.warning(f"动态添加创意工坊路径失败: {str(e)}")
         
         logger.info(f"当前允许的目录列表: {allowed_dirs}")
 
@@ -3382,7 +3420,7 @@ async def proxy_image(image_path: str):
         # 尝试相对于默认创意工坊目录的路径处理
         if final_path is None:
             try:
-                workshop_base_dir = os.path.abspath(os.path.normpath(get_default_workshop_folder()))
+                workshop_base_dir = os.path.abspath(os.path.normpath(get_workshop_path()))
                 
                 # 尝试将解码路径作为相对于创意工坊目录的路径
                 rel_workshop_path = os.path.join(workshop_base_dir, decoded_path)
@@ -3399,21 +3437,6 @@ async def proxy_image(image_path: str):
             except Exception as e:
                 logger.warning(f"处理相对于创意工坊目录的路径失败: {str(e)}")
         
-        # 特殊处理"我的文档/Xiao8"目录下的相对路径
-        if final_path is None and os.name == 'nt':
-            documents_path = os.path.join(os.path.expanduser('~'), 'Documents', 'Xiao8')
-            if os.path.exists(documents_path):
-                # 尝试将解码路径作为相对于"我的文档/Xiao8"的路径
-                rel_doc_path = os.path.join(documents_path, decoded_path)
-                rel_doc_path = os.path.normpath(rel_doc_path)
-                
-                logger.info(f"尝试相对于文档目录的路径: {rel_doc_path}")
-                
-                if os.path.exists(rel_doc_path) and os.path.isfile(rel_doc_path):
-                    real_path = os.path.realpath(rel_doc_path)
-                    if real_path.startswith(os.path.realpath(documents_path)):
-                        final_path = real_path
-                        logger.info(f"找到相对于文档目录的图片: {final_path}")
         
         # 如果仍未找到有效路径，返回错误
         if final_path is None:
@@ -3456,8 +3479,8 @@ async def get_local_workshop_item(item_id: str, folder_path: str = None):
         if not folder_path:
             return JSONResponse(content={"success": False, "error": "未提供文件夹路径"}, status_code=400)
         
-        # 安全检查：始终使用get_default_workshop_folder()作为基础目录
-        base_workshop_folder = os.path.abspath(os.path.normpath(get_default_workshop_folder()))
+        # 安全检查：始终使用get_workshop_path()作为基础目录
+        base_workshop_folder = os.path.abspath(os.path.normpath(get_workshop_path()))
         
         # Windows路径处理：确保路径分隔符正确
         if os.name == 'nt':  # Windows系统
@@ -3543,6 +3566,82 @@ async def get_local_workshop_item(item_id: str, folder_path: str = None):
     except Exception as e:
         logger.error(f"获取本地创意工坊物品失败: {e}")
         return JSONResponse(content={"success": False, "error": str(e)}, status_code=500)
+
+@app.get('/api/steam/workshop/check-upload-status')
+async def check_upload_status(item_path: str = None):
+    try:
+        # 验证路径参数
+        if not item_path:
+            return JSONResponse(content={
+                "success": False,
+                "error": "未提供物品文件夹路径"
+            }, status_code=400)
+        
+        # 安全检查：使用get_workshop_path()作为基础目录
+        base_workshop_folder = os.path.abspath(os.path.normpath(get_workshop_path()))
+        
+        # Windows路径处理：确保路径分隔符正确
+        if os.name == 'nt':  # Windows系统
+            # 解码并处理Windows路径
+            decoded_item_path = unquote(item_path)
+            # 替换斜杠为反斜杠，确保Windows路径格式正确
+            decoded_item_path = decoded_item_path.replace('/', '\\')
+            # 处理可能的双重编码问题
+            if decoded_item_path.startswith('\\\\'):
+                decoded_item_path = decoded_item_path[2:]  # 移除多余的反斜杠前缀
+        else:
+            decoded_item_path = unquote(item_path)
+        
+        # 将相对路径转换为基于基础目录的绝对路径
+        if not os.path.isabs(decoded_item_path):
+            full_path = os.path.join(base_workshop_folder, decoded_item_path)
+        else:
+            full_path = decoded_item_path
+            full_path = os.path.normpath(full_path)
+        
+        # 安全检查：验证路径是否在基础目录内
+        if not full_path.startswith(base_workshop_folder):
+            logger.warning(f'路径遍历尝试被拒绝: {item_path}')
+            return JSONResponse(content={"success": False, "error": "访问被拒绝: 路径不在允许的范围内"}, status_code=403)
+        
+        # 验证路径存在性
+        if not os.path.exists(full_path) or not os.path.isdir(full_path):
+            return JSONResponse(content={
+                "success": False,
+                "error": "无效的物品文件夹路径"
+            }, status_code=400)
+        
+        # 搜索以steam_workshop_id_开头的txt文件
+        import glob
+        import re
+        
+        upload_files = glob.glob(os.path.join(full_path, "steam_workshop_id_*.txt"))
+        
+        # 提取第一个找到的物品ID
+        published_file_id = None
+        if upload_files:
+            # 获取第一个文件
+            first_file = upload_files[0]
+            
+            # 从文件名提取ID
+            match = re.search(r'steam_workshop_id_(\d+)\.txt', os.path.basename(first_file))
+            if match:
+                published_file_id = match.group(1)
+        
+        # 返回检查结果
+        return JSONResponse(content={
+            "success": True,
+            "is_published": published_file_id is not None,
+            "published_file_id": published_file_id
+        })
+        
+    except Exception as e:
+        logger.error(f"检查上传状态失败: {e}")
+        return JSONResponse(content={
+            "success": False,
+            "error": str(e),
+            "message": "检查上传状态时发生错误"
+        }, status_code=500)
 
 @app.post('/api/steam/workshop/publish')
 async def publish_to_workshop(request: Request):
@@ -3708,6 +3807,30 @@ def _publish_workshop_item(steamworks, title, description, content_folder, previ
     """
     在单独的线程中执行Steam创意工坊发布操作
     """
+    # 在函数内部添加导入语句，确保枚举在函数作用域内可用
+    from steamworks.enums import EItemUpdateStatus
+    
+    # 检查是否存在现有的上传标记文件，避免重复上传
+    try:
+        if os.path.exists(content_folder) and os.path.isdir(content_folder):
+            # 查找以steam_workshop_id_开头的txt文件
+            import glob
+            marker_files = glob.glob(os.path.join(content_folder, "steam_workshop_id_*.txt"))
+            
+            if marker_files:
+                # 使用第一个找到的标记文件
+                marker_file = marker_files[0]
+                
+                # 从文件名中提取物品ID
+                import re
+                match = re.search(r'steam_workshop_id_([0-9]+)\.txt', marker_file)
+                if match:
+                    existing_item_id = int(match.group(1))
+                    logger.info(f"检测到物品已上传，找到标记文件: {marker_file}，物品ID: {existing_item_id}")
+                    return existing_item_id
+    except Exception as e:
+        logger.error(f"检查上传标记文件时出错: {e}")
+        # 即使检查失败，也继续尝试上传，不阻止功能
     try:
         # 再次验证内容文件夹，确保在多线程环境中仍然有效
         if not os.path.exists(content_folder) or not os.path.isdir(content_folder):
@@ -3955,6 +4078,19 @@ def _publish_workshop_item(steamworks, title, description, content_folder, previ
             raise Exception(error_msg)
         
         logger.info(f"创意工坊物品上传成功完成！物品ID: {created_item_id[0]}")
+        
+        # 在原文件夹创建带物品ID的txt文件，标记为已上传
+        try:
+            marker_file_path = os.path.join(content_folder, f"steam_workshop_id_{created_item_id[0]}.txt")
+            with open(marker_file_path, 'w', encoding='utf-8') as f:
+                f.write(f"Steam创意工坊物品ID: {created_item_id[0]}\n")
+                f.write(f"上传时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}\n")
+                f.write(f"物品标题: {title}\n")
+            logger.info(f"已在原文件夹创建上传标记文件: {marker_file_path}")
+        except Exception as e:
+            logger.error(f"创建上传标记文件失败: {e}")
+            # 即使创建标记文件失败，也不影响物品上传的成功返回
+        
         return created_item_id[0]
         
     except Exception as e:

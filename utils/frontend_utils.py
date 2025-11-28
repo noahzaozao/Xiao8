@@ -20,7 +20,7 @@ import json
 from pathlib import Path
 import requests
 
-from utils.workshop_utils import workshop_config
+from utils.workshop_utils import load_workshop_config
 
 
 
@@ -138,7 +138,7 @@ def is_only_punctuation(text):
 
 def find_models():
     """
-    递归扫描 'static' 文件夹和用户文档下的 'live2d' 文件夹，查找所有包含 '.model3.json' 文件的子目录。
+    递归扫描 'static' 文件夹、用户文档下的 'live2d' 文件夹和用户mod路径，查找所有包含 '.model3.json' 文件的子目录。
     """
     from utils.config_manager import get_config_manager
     
@@ -161,6 +161,16 @@ def find_models():
             search_dirs.append(('documents', docs_live2d_dir, '/user_live2d'))
     except Exception as e:
         logging.warning(f"无法访问用户文档live2d目录: {e}")
+    
+    # 添加用户mod路径
+    try:
+        config_mgr = get_config_manager()
+        user_mod_dir = config_mgr.get_workshop_path()
+        if os.path.exists(user_mod_dir):
+            search_dirs.append(('user_mods', user_mod_dir, '/user_mods'))
+            logging.info(f"已添加用户mod路径: {user_mod_dir}")
+    except Exception as e:
+        logging.warning(f"无法访问用户mod路径: {e}")
     
     # 遍历所有搜索目录
     for source, search_root_dir, url_prefix in search_dirs:
@@ -241,7 +251,8 @@ def find_model_directory(model_name: str):
     """
     from utils.config_manager import get_config_manager
     # 从配置文件获取WORKSHOP_PATH
-    WORKSHOP_SEARCH_DIR = workshop_config.get("WORKSHOP_PATH")
+    workshop_config_data = load_workshop_config()
+    WORKSHOP_SEARCH_DIR = workshop_config_data.get("WORKSHOP_PATH")
     # 首先尝试在用户文档目录
     try:
         config_mgr = get_config_manager()
@@ -278,6 +289,35 @@ def find_model_directory(model_name: str):
     except Exception as e:
         logging.warning(f"检查创意工坊目录模型时出错: {e}")
     
+    # 然后尝试用户mod路径
+    try:
+        config_mgr = get_config_manager()
+        user_mods_path = config_mgr.get_workshop_path()
+        if user_mods_path and os.path.exists(user_mods_path):
+            # 直接匹配（如果模型名称恰好与文件夹名相同）
+            user_mod_model_dir = os.path.join(user_mods_path, model_name)
+            if os.path.exists(user_mod_model_dir):
+                return (user_mod_model_dir, '/user_mods')
+            
+            # 递归搜索用户mod目录下的所有子文件夹
+            for mod_folder in os.listdir(user_mods_path):
+                mod_path = os.path.join(user_mods_path, mod_folder)
+                if os.path.isdir(mod_path):
+                    # 检查子文件夹中是否包含与模型名称匹配的文件夹
+                    potential_model_path = os.path.join(mod_path, model_name)
+                    if os.path.exists(potential_model_path):
+                        return (potential_model_path, '/user_mods')
+                    
+                    # 检查子文件夹本身是否就是模型目录（包含.model3.json文件）
+                    for file in os.listdir(mod_path):
+                        if file.endswith('.model3.json'):
+                            # 提取模型名称（不带后缀）
+                            potential_model_name = os.path.splitext(os.path.splitext(file)[0])[0]
+                            if potential_model_name == model_name:
+                                return (mod_path, '/user_mods')
+    except Exception as e:
+        logging.warning(f"检查用户mod目录模型时出错: {e}")
+    
     # 最后尝试static目录
     static_model_dir = os.path.join('static', model_name)
     if os.path.exists(static_model_dir):
@@ -298,6 +338,7 @@ def find_workshop_item_by_id(item_id: str) -> tuple:
     """
     try:
         # 从配置文件获取WORKSHOP_PATH，如果不存在则使用默认路径
+        workshop_config = load_workshop_config()
         workshop_dir = workshop_config.get("WORKSHOP_PATH", workshop_config.get("default_workshop_folder", "static"))
         
         # 如果路径不存在或为空，使用默认的static目录

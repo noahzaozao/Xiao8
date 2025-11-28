@@ -11,67 +11,20 @@ import pathlib
 import logging
 from typing import Optional, Dict, Any
 
-from utils.config_manager import get_config_manager, load_json_config, save_json_config
-
+# 初始化日志记录器
 logger = logging.getLogger(__name__)
 
-# 配置文件名（不是路径，路径由config_manager管理）
-WORKSHOP_CONFIG_FILENAME = 'workshop_config.json'
-
-# 默认配置数据
-DEFAULT_WORKSHOP_CONFIG = {
-    "default_workshop_folder": "",  # 空字符串表示使用 config_manager.live2d_dir
-    "auto_create_folder": True
-}
-
-
-def get_default_workshop_folder() -> str:
-    """
-    获取默认的创意工坊物品文件夹路径
-    从 config_manager 获取 live2d_dir 作为默认路径
-    """
-    config_manager = get_config_manager()
-    return str(config_manager.live2d_dir)
-
-
-def get_workshop_config() -> Dict[str, Any]:
-    """
-    获取创意工坊配置
-    
-    Returns:
-        dict: 创意工坊配置
-    """
-    try:
-        config = load_json_config(WORKSHOP_CONFIG_FILENAME, DEFAULT_WORKSHOP_CONFIG)
-        # 如果配置中的 default_workshop_folder 为空，使用 live2d_dir
-        if not config.get("default_workshop_folder"):
-            config["default_workshop_folder"] = get_default_workshop_folder()
-        return config
-    except Exception as e:
-        logger.error(f"加载创意工坊配置失败: {e}")
-        return {
-            "default_workshop_folder": get_default_workshop_folder(),
-            "auto_create_folder": True
-        }
-
-
-def save_workshop_config_data(config: Dict[str, Any]) -> None:
-    """
-    保存创意工坊配置
-    
-    Args:
-        config: 要保存的配置数据
-    """
-    try:
-        save_json_config(WORKSHOP_CONFIG_FILENAME, config)
-        logger.info(f"成功保存创意工坊配置: {config}")
-    except Exception as e:
-        logger.error(f"保存创意工坊配置失败: {e}")
-
+# 从config_manager导入workshop配置相关功能
+from utils.config_manager import (
+    load_workshop_config,
+    save_workshop_config,
+    save_workshop_path,
+    get_workshop_path
+)
 
 def ensure_workshop_folder_exists(folder_path: Optional[str] = None) -> bool:
     """
-    确保创意工坊文件夹存在，如果不存在则自动创建
+    确保本地mod文件夹（原创意工坊文件夹）存在，如果不存在则自动创建
     
     Args:
         folder_path: 指定的文件夹路径，如果为None则使用配置中的默认路径
@@ -79,10 +32,10 @@ def ensure_workshop_folder_exists(folder_path: Optional[str] = None) -> bool:
     Returns:
         bool: 文件夹是否存在或创建成功
     """
-    config = get_workshop_config()
-    
     # 确定目标文件夹路径
-    raw_folder = folder_path or config.get("default_workshop_folder") or get_default_workshop_folder()
+    config = load_workshop_config()
+    # 使用get_workshop_path()函数获取路径，该函数已更新为优先使用user_mod_folder
+    raw_folder = folder_path or get_workshop_path()
     
     # 确保路径是绝对路径，如果不是则转换
     if not os.path.isabs(raw_folder):
@@ -120,7 +73,7 @@ def ensure_workshop_folder_exists(folder_path: Optional[str] = None) -> bool:
 
 def get_workshop_root(globals_dict: Optional[Dict[str, Any]] = None) -> str:
     """
-    获取创意工坊根目录路径
+    获取创意工坊根目录路径，并将路径保存到配置文件中
     
     Args:
         globals_dict: 全局变量字典，用于访问get_subscribed_workshop_items函数
@@ -131,6 +84,8 @@ def get_workshop_root(globals_dict: Optional[Dict[str, Any]] = None) -> str:
     # 如果没有提供globals_dict，使用当前模块的globals
     if globals_dict is None:
         globals_dict = globals()
+    
+    workshop_path = None
     
     try:
         # 尝试获取get_subscribed_workshop_items函数引用
@@ -149,7 +104,7 @@ def get_workshop_root(globals_dict: Optional[Dict[str, Any]] = None) -> str:
                         p = pathlib.Path(WORKSHOP_PATH_FIRST)
                         # 确保目录存在
                         if p.parent.exists():
-                            return str(p.parent)
+                            workshop_path = str(p.parent)
                         else:
                             logger.warning(f"计算得到的创意工坊根目录不存在: {p.parent}")
                     else:
@@ -163,39 +118,18 @@ def get_workshop_root(globals_dict: Optional[Dict[str, Any]] = None) -> str:
     except Exception as e:
         logger.error(f"获取创意工坊物品列表时出错: {e}")
     
-    # 返回默认的创意工坊文件夹路径作为后备
-    config = get_workshop_config()
-    default_path = config.get("default_workshop_folder") or get_default_workshop_folder()
-    logger.info(f"使用默认创意工坊路径: {default_path}")
+    # 如果未能从创意工坊获取路径，使用get_workshop_path获取配置中的路径
+    if not workshop_path:
+        workshop_path = get_workshop_path()
+        logger.info(f"使用配置中的创意工坊路径: {workshop_path}")
     
-    # 确保默认路径存在
-    ensure_workshop_folder_exists(default_path)
-    return default_path
-
-
-# ============ 兼容性别名 ============
-# 为了向后兼容，保留旧的变量名和函数名
-
-# 配置数据 - 使用函数获取，不再是模块级常量
-workshop_config: Dict[str, Any] = {}
-
-
-def load_workshop_config() -> None:
-    """
-    加载创意工坊配置（兼容性函数）
-    """
-    global workshop_config
-    workshop_config = get_workshop_config()
-    logger.info(f'创意工坊配置已加载: {workshop_config}')
-
-
-def save_workshop_config() -> None:
-    """
-    保存创意工坊配置（兼容性函数）
-    """
-    global workshop_config
-    save_workshop_config_data(workshop_config)
-
-
-# 初始化时加载配置
-load_workshop_config()
+    # 将获取到的路径保存到配置文件中（使用config_manager的函数）
+    try:
+        save_workshop_path(workshop_path)
+    except Exception as e:
+        error_msg = f"保存创意工坊路径到配置文件失败: {e}"
+        logger.error(error_msg)
+    
+    # 确保路径存在
+    ensure_workshop_folder_exists(workshop_path)
+    return workshop_path
