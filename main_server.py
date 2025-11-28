@@ -16,7 +16,6 @@ from urllib.parse import quote, unquote
 
 # 导入创意工坊工具模块
 from utils.workshop_utils import (
-    WORKSHOP_CONFIG_FILE,
     workshop_config,
     load_workshop_config,
     save_workshop_config,
@@ -345,6 +344,54 @@ async def save_preferences(request: Request):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+
+@app.get("/api/steam_language")
+async def get_steam_language():
+    """获取 Steam 客户端的语言设置，用于前端 i18n 初始化"""
+    global steamworks
+    
+    # Steam 语言代码到 i18n 语言代码的映射
+    # 参考: https://partner.steamgames.com/doc/store/localization/languages
+    STEAM_TO_I18N_MAP = {
+        'schinese': 'zh-CN',      # 简体中文
+        'tchinese': 'zh-CN',      # 繁体中文（映射到简体中文，因为目前只支持 zh-CN）
+        'english': 'en',          # 英文
+        # 其他语言默认映射到英文
+    }
+    
+    try:
+        if steamworks is None:
+            return {
+                "success": False,
+                "error": "Steamworks 未初始化",
+                "steam_language": None,
+                "i18n_language": None
+            }
+        
+        # 获取 Steam 当前游戏语言
+        steam_language = steamworks.Apps.GetCurrentGameLanguage()
+        # Steam API 可能返回 bytes，需要解码为字符串
+        if isinstance(steam_language, bytes):
+            steam_language = steam_language.decode('utf-8')
+        
+        # 映射到 i18n 语言代码
+        i18n_language = STEAM_TO_I18N_MAP.get(steam_language, 'en')  # 默认英文
+        logger.info(f"[i18n] Steam 语言映射: '{steam_language}' -> '{i18n_language}'")
+        
+        return {
+            "success": True,
+            "steam_language": steam_language,
+            "i18n_language": i18n_language
+        }
+        
+    except Exception as e:
+        logger.error(f"获取 Steam 语言设置失败: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "steam_language": None,
+            "i18n_language": None
+        }
 
 
 @app.get("/api/live2d/models")

@@ -12,6 +12,13 @@ Live2DManager.prototype.setupHTMLLockIcon = function(model) {
         container.style.pointerEvents = 'auto';
         return;
     }
+    
+    // 在观看模式下不显示锁图标，但允许交互
+    if (window.isViewerMode) {
+        this.isLocked = false;
+        container.style.pointerEvents = 'auto';
+        return;
+    }
 
     const lockIcon = document.createElement('div');
     lockIcon.id = 'live2d-lock-icon';
@@ -76,6 +83,13 @@ Live2DManager.prototype.setupFloatingButtons = function(model) {
     
     // 在 l2d_manager 等页面不显示
     if (!document.getElementById('chat-container')) {
+        this.isLocked = false;
+        container.style.pointerEvents = 'auto';
+        return;
+    }
+    
+    // 在观看模式下不显示浮动按钮
+    if (window.isViewerMode) {
         this.isLocked = false;
         container.style.pointerEvents = 'auto';
         return;

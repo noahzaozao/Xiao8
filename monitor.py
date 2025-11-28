@@ -16,6 +16,7 @@ import uvicorn
 from fastapi.templating import Jinja2Templates
 from utils.frontend_utils import find_models, find_model_config_file, find_model_directory
 from utils.workshop_utils import get_default_workshop_folder
+from utils.preferences import load_user_preferences
 
 # Setup logger
 from utils.logger_config import setup_logging
@@ -88,6 +89,12 @@ async def get_page_config(lanlan_name: str = ""):
     except Exception as e:
         logger.error(f"获取页面配置失败: {e}")
         return {"success": False, "error": str(e)}
+
+@app.get("/api/preferences")
+async def get_preferences():
+    """获取用户偏好设置（与main_server.py保持一致）"""
+    preferences = load_user_preferences()
+    return preferences
 
 @app.get('/api/live2d/emotion_mapping/{model_name}')
 async def get_emotion_mapping(model_name: str):
