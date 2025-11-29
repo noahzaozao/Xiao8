@@ -970,6 +970,19 @@ window.renameCatgirl = async function(oldName) {
             localStorage.setItem(newStorageKey, savedState);
             localStorage.removeItem(oldStorageKey);
         }
+        
+        // 更新记忆文件中的角色名称
+        try {
+            await fetch('/api/memory/update_catgirl_name', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({old_name: oldName, new_name: newName})
+            });
+        } catch (error) {
+            console.error('更新记忆文件中的角色名称失败:', error);
+            // 不阻止主流程，继续加载数据
+        }
+        
         await loadCharacterData();
     } else {
         await showAlert(result.error || (window.t ? window.t('character.renameFailed') : '重命名失败'));
@@ -1203,7 +1216,31 @@ async function switchCatgirl(catgirlName) {
 
 
 // 页面加载时拉取数据
-loadCharacterData();
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadCharacterData);
+} else {
+    loadCharacterData();
+}
+
+// Electron白屏修复
+(function() {
+    const fixWhiteScreen = () => {
+        if (document.body) {
+            void document.body.offsetHeight;
+            const currentOpacity = document.body.style.opacity || '1';
+            document.body.style.opacity = '0.99';
+            requestAnimationFrame(() => {
+                document.body.style.opacity = currentOpacity;
+            });
+        }
+    };
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', fixWhiteScreen);
+    } else {
+        fixWhiteScreen();
+    }
+    window.addEventListener('load', fixWhiteScreen);
+})();
 
 // 监听语言切换事件，更新动态创建的文本
 window.addEventListener('localechange', () => {
