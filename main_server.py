@@ -3,11 +3,17 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Windows multiprocessing 支持：确保子进程不会重复执行模块级初始化
-from multiprocessing import freeze_support, current_process
+from multiprocessing import freeze_support
 freeze_support()
 
-# 检查是否是主进程（用于防止子进程重复初始化）
-_IS_MAIN_PROCESS = current_process().name == 'MainProcess'
+# 检查是否需要执行初始化（用于防止 Windows spawn 方式创建的子进程重复初始化）
+# 方案：首次导入时设置环境变量标记，子进程会继承这个标记从而跳过初始化
+_INIT_MARKER = '_NEKO_MAIN_SERVER_INITIALIZED'
+_IS_MAIN_PROCESS = _INIT_MARKER not in os.environ
+
+if _IS_MAIN_PROCESS:
+    # 立即设置标记，这样任何从此进程 spawn 的子进程都会继承此标记
+    os.environ[_INIT_MARKER] = '1'
 
 # 获取应用程序根目录（与 config_manager 保持一致）
 def _get_app_root():

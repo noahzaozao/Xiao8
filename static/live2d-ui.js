@@ -921,6 +921,12 @@ Live2DManager.prototype._createTaskCard = function(task) {
     let description = '';
     if (params.query) {
         description = params.query;
+    } else if (params.instruction) {
+        // computer_use 任务使用 instruction 字段
+        description = params.instruction;
+    } else if (task.original_query) {
+        // planner 任务使用 original_query 字段
+        description = task.original_query;
     } else if (params.tool_name) {
         description = params.tool_name;
     } else if (params.action) {
