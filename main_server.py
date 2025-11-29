@@ -9,9 +9,19 @@ freeze_support()
 # 检查是否是主进程（用于防止子进程重复初始化）
 _IS_MAIN_PROCESS = current_process().name == 'MainProcess'
 
+# 获取应用程序根目录（与 config_manager 保持一致）
+def _get_app_root():
+    if getattr(sys, 'frozen', False):
+        if hasattr(sys, '_MEIPASS'):
+            return sys._MEIPASS
+        else:
+            return os.path.dirname(sys.executable)
+    else:
+        return os.getcwd()
+
 # Only adjust DLL search path on Windows
 if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
-    os.add_dll_directory(os.getcwd())
+    os.add_dll_directory(_get_app_root())
     
 import mimetypes
 mimetypes.add_type("application/javascript", ".js")
@@ -25,23 +35,8 @@ import io
 import threading
 import time
 from urllib.parse import quote, unquote
-
-# 导入创意工坊工具模块
-from utils.workshop_utils import (
-    load_workshop_config,
-    save_workshop_config,
-    ensure_workshop_folder_exists,
-    get_workshop_root,
-    get_workshop_path
-)
-
-# 导入Steamworks异常类
 from steamworks.exceptions import SteamNotLoadedException
 from steamworks.enums import EWorkshopFileType, EItemUpdateStatus
-
-DEVELOPMENT_MODE = True
-
-
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, File, UploadFile, Form, Body
 from fastapi.staticfiles import StaticFiles
 from main_helper import core as core, cross_server as cross_server
@@ -62,19 +57,17 @@ from config import MAIN_SERVER_PORT, MONITOR_SERVER_PORT, MEMORY_SERVER_PORT, MO
 from config.prompts_sys import emotion_analysis_prompt, proactive_chat_prompt
 import glob
 from utils.config_manager import get_config_manager
+# 导入创意工坊工具模块
+from utils.workshop_utils import (
+    load_workshop_config,
+    save_workshop_config,
+    ensure_workshop_folder_exists,
+    get_workshop_root,
+    get_workshop_path
+)
 
-# 确定 templates 目录位置（支持 PyInstaller/Nuitka 打包）
-if getattr(sys, 'frozen', False):
-    # 打包后运行
-    if hasattr(sys, '_MEIPASS'):
-        # PyInstaller
-        template_dir = sys._MEIPASS
-    else:
-        # Nuitka
-        template_dir = os.path.dirname(os.path.abspath(__file__))
-else:
-    # 正常运行：当前目录
-    template_dir = "./"
+# 确定 templates 目录位置（使用 _get_app_root）
+template_dir = _get_app_root()
 
 templates = Jinja2Templates(directory=template_dir)
 
@@ -82,8 +75,9 @@ def initialize_steamworks():
     try:
         # 明确读取steam_appid.txt文件以获取应用ID
         app_id = None
-        if os.path.exists('steam_appid.txt'):
-            with open('steam_appid.txt', 'r') as f:
+        app_id_file = os.path.join(_get_app_root(), 'steam_appid.txt')
+        if os.path.exists(app_id_file):
+            with open(app_id_file, 'r') as f:
                 app_id = f.read().strip()
             print(f"从steam_appid.txt读取到应用ID: {app_id}")
         
@@ -341,18 +335,8 @@ class CustomStaticFiles(StaticFiles):
             response.headers['Content-Type'] = 'application/javascript'
         return response
 
-# 确定 static 目录位置（支持 PyInstaller/Nuitka 打包）
-if getattr(sys, 'frozen', False):
-    # 打包后运行
-    if hasattr(sys, '_MEIPASS'):
-        # PyInstaller
-        static_dir = os.path.join(sys._MEIPASS, 'static')
-    else:
-        # Nuitka
-        static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
-else:
-    # 正常运行：当前目录
-    static_dir = 'static'
+# 确定 static 目录位置（使用 _get_app_root）
+static_dir = os.path.join(_get_app_root(), 'static')
 
 app.mount("/static", CustomStaticFiles(directory=static_dir), name="static")
 
@@ -3426,7 +3410,7 @@ async def proxy_image(image_path: str):
             return JSONResponse(content={"success": False, "error": "暂不支持远程图片URL"}, status_code=400)
         
         # 获取基础目录和允许访问的目录列表
-        base_dir = os.path.dirname(os.path.abspath(__file__))
+        base_dir = _get_app_root()
         allowed_dirs = [
             os.path.realpath(os.path.join(base_dir, 'static')),
             os.path.realpath(os.path.join(base_dir, 'assets'))
@@ -4215,7 +4199,7 @@ async def check_file_exists(path: str = None):
             return JSONResponse(content={"exists": False}, status_code=400)
         
         # 获取基础目录和允许访问的目录列表
-        base_dir = os.path.dirname(os.path.abspath(__file__))
+        base_dir = _get_app_root()
         allowed_dirs = [
             os.path.realpath(os.path.join(base_dir, 'static')),
             os.path.realpath(os.path.join(base_dir, 'assets'))
@@ -4255,12 +4239,9 @@ async def find_first_image(folder: str = None):
     2. 防止路径遍历攻击
     3. 限制返回信息，避免泄露文件系统信息
     4. 记录可疑访问尝试
-    5. 此端点在非开发模式下被完全禁用
+    5. 只返回小于 1MB 的图片（Steam创意工坊预览图大小限制）
     """
-    # 开发模式检查 - 在非开发模式下完全禁用此端点
-    if not DEVELOPMENT_MODE:
-        logger.warning("预览图片查找端点在生产环境中已禁用")
-        return JSONResponse(content={"error": "此功能仅在开发模式下可用"}, status_code=403)
+    MAX_IMAGE_SIZE = 1 * 1024 * 1024  # 1MB
     
     try:
         # 检查参数有效性
@@ -4272,7 +4253,7 @@ async def find_first_image(folder: str = None):
         logger.warning(f"预览图片查找请求: {folder}")
         
         # 获取基础目录和允许访问的目录列表
-        base_dir = os.path.dirname(os.path.abspath(__file__))
+        base_dir = _get_app_root()
         allowed_dirs = [
             os.path.realpath(os.path.join(base_dir, 'static')),
             os.path.realpath(os.path.join(base_dir, 'assets'))
@@ -4333,6 +4314,12 @@ async def find_first_image(folder: str = None):
             try:
                 # 检查文件是否存在
                 if os.path.exists(image_path) and os.path.isfile(image_path):
+                    # 检查文件大小是否小于 1MB
+                    file_size = os.path.getsize(image_path)
+                    if file_size >= MAX_IMAGE_SIZE:
+                        logger.info(f"跳过大于1MB的图片: {image_name} ({file_size / 1024 / 1024:.2f}MB)")
+                        continue
+                    
                     # 再次验证图片文件路径是否在允许的目录内
                     real_image_path = os.path.realpath(image_path)
                     if any(real_image_path.startswith(allowed_dir) for allowed_dir in allowed_dirs):
@@ -4348,7 +4335,7 @@ async def find_first_image(folder: str = None):
                 logger.error(f"检查图片文件 {image_name} 失败: {e}")
                 continue
         
-        return JSONResponse(content={"success": False, "error": "未找到指定的预览图片文件"})
+        return JSONResponse(content={"success": False, "error": "未找到小于1MB的预览图片文件"})
         
     except Exception as e:
         logger.error(f"查找预览图片文件失败: {e}")
@@ -4386,7 +4373,8 @@ def find_preview_image_in_folder(folder_path):
 async def live2d_emotion_manager(request: Request):
     """Live2D情感映射管理器页面"""
     try:
-        with open('templates/live2d_emotion_manager.html', 'r', encoding='utf-8') as f:
+        template_path = os.path.join(_get_app_root(), 'templates', 'live2d_emotion_manager.html')
+        with open(template_path, 'r', encoding='utf-8') as f:
             content = f.read()
         return HTMLResponse(content=content)
     except Exception as e:
