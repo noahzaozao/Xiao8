@@ -2,6 +2,13 @@
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Windows multiprocessing 支持：确保子进程不会重复执行模块级初始化
+from multiprocessing import freeze_support, current_process
+freeze_support()
+
+# 检查是否是主进程（用于防止子进程重复初始化）
+_IS_MAIN_PROCESS = current_process().name == 'MainProcess'
+
 # Only adjust DLL search path on Windows
 if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
     os.add_dll_directory(os.getcwd())
@@ -131,9 +138,13 @@ def get_default_steam_info():
             logger.error(f"Error accessing Steamworks API: {e}")
 
 # 初始化Steamworks，但即使失败也继续启动服务
-steamworks = initialize_steamworks()
-# 尝试获取Steam信息，如果失败也不会阻止服务启动
-get_default_steam_info()
+# 只在主进程中初始化，防止子进程重复初始化
+if _IS_MAIN_PROCESS:
+    steamworks = initialize_steamworks()
+    # 尝试获取Steam信息，如果失败也不会阻止服务启动
+    get_default_steam_info()
+else:
+    steamworks = None
 
 
 # Configure logging
@@ -151,7 +162,11 @@ def cleanup():
         sync_message_queue[k].close()
         sync_message_queue[k].join_thread()
     logger.info("Cleanup completed")
-atexit.register(cleanup)
+
+# 只在主进程中注册 cleanup 函数，防止子进程退出时执行清理
+if _IS_MAIN_PROCESS:
+    atexit.register(cleanup)
+
 sync_message_queue = {}
 sync_shutdown_event = {}
 session_manager = {}
@@ -306,12 +321,14 @@ async def initialize_character_data():
     logger.info(f"角色配置加载完成，当前角色: {catgirl_names}，主人: {master_name}")
 
 # 初始化角色数据（使用asyncio.run在模块级别执行async函数）
-import asyncio as _init_asyncio
-try:
-    _init_asyncio.get_event_loop()
-except RuntimeError:
-    _init_asyncio.set_event_loop(_init_asyncio.new_event_loop())
-_init_asyncio.get_event_loop().run_until_complete(initialize_character_data())
+# 只在主进程中执行，防止 Windows 上子进程重复导入时再次启动子进程
+if _IS_MAIN_PROCESS:
+    import asyncio as _init_asyncio
+    try:
+        _init_asyncio.get_event_loop()
+    except RuntimeError:
+        _init_asyncio.set_event_loop(_init_asyncio.new_event_loop())
+    _init_asyncio.get_event_loop().run_until_complete(initialize_character_data())
 lock = asyncio.Lock()
 
 # --- FastAPI App Setup ---
