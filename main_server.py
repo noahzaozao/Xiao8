@@ -1,7 +1,11 @@
 # -*- coding: utf-8 -*-
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-os.add_dll_directory(os.getcwd())
+
+# Only adjust DLL search path on Windows
+if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
+    os.add_dll_directory(os.getcwd())
+    
 import mimetypes
 mimetypes.add_type("application/javascript", ".js")
 import asyncio
