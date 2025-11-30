@@ -30,7 +30,7 @@ function rewriteExternalImports(): Plugin {
 
 export default defineConfig({
   plugins: [
-    tsconfigPaths(), // 解析 TypeScript 路径别名（如 @xiao8/request）
+    tsconfigPaths(), // 解析 TypeScript 路径别名（如 @project_neko/request）
     rewriteExternalImports(),
   ],
   define: {

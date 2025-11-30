@@ -22,13 +22,13 @@ export function links() {
 
 export default function Main() {
   const scriptsLoadedRef = useRef(false);
+  
+  // API Base URL 配置（在组件顶层定义，供 JSX 使用）
+  const STATIC_SERVER_URL = (import.meta.env.VITE_STATIC_SERVER_URL as string) || "http://localhost:48911";
 
   useEffect(() => {
     if (scriptsLoadedRef.current) return;
     scriptsLoadedRef.current = true;
-
-    // API Base URL 配置
-    const STATIC_SERVER_URL = (import.meta.env.VITE_STATIC_SERVER_URL as string) || "http://localhost:48911";
 
     // 全局错误处理：忽略 static 相关的加载错误（仅在开发环境）
     const originalConsoleError = console.error;
@@ -122,6 +122,8 @@ export default function Main() {
 
     // 设置全局变量，供外部 JS 文件使用
     (window as any).STATIC_SERVER_URL = STATIC_SERVER_URL;
+    // 设置 API_BASE_URL（与 HTML 版本保持一致）
+    (window as any).API_BASE_URL = (window as any).API_BASE_URL || STATIC_SERVER_URL;
 
     // 拦截机制：在外部 JS 文件加载之前，设置路径拦截
     // 拦截所有以 /static/ 开头的路径，自动转换为使用 STATIC_SERVER_URL 的完整路径
@@ -263,8 +265,8 @@ export default function Main() {
           cubism4Model = data.model_path || "";
           window.cubism4Model = cubism4Model;
 
-          // 动态设置页面标题
-          document.title = `${lanlan_config.lanlan_name} Terminal - Project Lanlan`;
+          // 动态设置页面标题（与 HTML 版本保持一致）
+          document.title = `${lanlan_config.lanlan_name} Terminal - Project N.E.K.O.`;
 
           console.log("页面配置加载成功:", {
             lanlan_name: lanlan_config.lanlan_name,
@@ -406,55 +408,80 @@ export default function Main() {
 
       document.body.removeAttribute("data-ui-hidden");
 
-      // 检查模型是否需要重新加载
+      // 检查模型是否需要重新加载（弹出窗口可能修改了模型配置）
       try {
         console.log("检查模型配置是否有更新...");
-        // 访问全局变量示例：
-        // 方法1: window（类型安全，推荐）
-        const currentLanlanName = window.lanlan_config?.lanlan_name;
         
-        // 方法2: globalThis
-        // const currentLanlanName = globalThis.lanlan_config?.lanlan_name;
+        // 1. 获取当前角色名称
+        let currentLanlanName = window.lanlan_config?.lanlan_name;
+        console.log("BEFORE currentLanlanName: ", currentLanlanName);
         
-        // 方法3: 直接访问（如果已在 global.d.ts 中声明）
-        // const currentLanlanName = lanlan_config?.lanlan_name;
-        const charactersData = await request.get("/api/characters") as any;
+        // 2. 获取最新的角色配置（包含所有猫娘的完整配置）
+        // 使用 window.request 如果可用（与 HTML 版本保持一致），否则使用 request
+        let charactersData: any;
+        if ((window as any).request) {
+          const charResponse = await (window as any).request.get("/api/characters");
+          if (!charResponse.ok) {
+            console.warn("获取角色配置失败，跳过模型检查");
+            return;
+          }
+          charactersData = await charResponse.json();
+        } else {
+          charactersData = await request.get("/api/characters") as any;
+        }
+
+        // 确保 lanlan_config.lanlan_name 更新到 chara_manager.html 当前选中的猫娘
+        currentLanlanName = window.lanlan_config!.lanlan_name = charactersData["当前猫娘"];
+        console.log("AFTER currentLanlanName: ", currentLanlanName);
+        
+        // 检查角色名称是否有效
         if (!currentLanlanName) {
           console.warn("当前角色名称为空，跳过模型检查");
           return;
         }
+        
+        // 从猫娘配置中获取当前角色的 live2d 模型名称
         const catgirlConfig = charactersData["猫娘"]?.[currentLanlanName];
         if (!catgirlConfig) {
-          console.warn(
-            `未找到角色 ${currentLanlanName} 的配置，跳过模型检查`
-          );
+          console.warn(`未找到角色 ${currentLanlanName} 的配置，跳过模型检查`);
           return;
         }
         const newModelName = catgirlConfig.live2d || "mao_pro";
-        const models = await request.get("/api/live2d/models") as any;
+        console.log("AFTER newModelName: ", newModelName);
+        
+        // 3. 获取所有可用模型列表
+        let models: any;
+        if ((window as any).request) {
+          const modelsResponse = await (window as any).request.get("/api/live2d/models");
+          if (!modelsResponse.ok) {
+            console.warn("获取模型列表失败，跳过模型检查");
+            return;
+          }
+          models = await modelsResponse.json();
+        } else {
+          models = await request.get("/api/live2d/models") as any;
+        }
+        
+        // 4. 根据模型名称查找对应的模型路径
         const modelInfo = models.find((m: any) => m.name === newModelName);
         if (!modelInfo) {
           console.warn(`未找到模型 ${newModelName}，跳过模型检查`);
           return;
         }
         const newModelPath = modelInfo.path;
-        // 访问全局对象示例：
-        // 方法1: window（类型安全，推荐）
+        console.log("AFTER newModelPath: ", newModelPath);
+        
+        // 5. 检查当前加载的模型路径
         const currentModel = window.live2dManager?.getCurrentModel();
-        
-        // 方法2: globalThis
-        // const currentModel = globalThis.live2dManager?.getCurrentModel();
-        
-        // 方法3: 直接访问（如果已在 global.d.ts 中声明）
-        // const currentModel = live2dManager?.getCurrentModel();
         let currentModelPath = "";
         if (currentModel && currentModel.url) {
           currentModelPath = currentModel.url;
         } else if (window.live2dManager?.modelRootPath) {
+          // 备选方案：从 modelRootPath 推断
           currentModelPath = window.live2dManager.modelRootPath;
         }
-
-        // 调用全局对象的方法
+        
+        // 6. 总是重新加载用户偏好（位置、缩放等可能被修改）
         const preferences = await window.live2dManager?.loadUserPreferences();
         let modelPreferences = null;
         if (preferences && preferences.length > 0) {
@@ -462,7 +489,8 @@ export default function Main() {
             (p: any) => p && p.model_path === newModelPath
           );
         }
-
+        
+        // 7. 比较模型路径，判断是否需要完全重新加载模型
         const needReload =
           !currentModelPath ||
           !newModelPath.includes(
@@ -470,13 +498,17 @@ export default function Main() {
           );
 
         if (needReload) {
+          // 模型改变了，需要完全重新加载
           console.log(`检测到模型变化，重新加载: ${newModelPath}`);
+          console.log(`当前模型: ${currentModelPath}`);
+          console.log(`新模型: ${newModelPath}`);
+          
           await window.live2dManager?.loadModel(newModelPath, {
             preferences: modelPreferences,
             isMobile: window.innerWidth <= 768,
           });
 
-          // 访问和设置全局对象属性（类型安全）
+          // 更新全局引用
           if (window.LanLan1 && window.live2dManager) {
             window.LanLan1.live2dModel = window.live2dManager.getCurrentModel();
             window.LanLan1.currentModel = window.live2dManager.getCurrentModel();
@@ -485,13 +517,18 @@ export default function Main() {
 
           console.log("模型已重新加载");
         } else {
+          // 模型未变，但需要更新位置和缩放设置
           console.log("模型未改变，但重新应用用户偏好设置");
+          
           if (modelPreferences && currentModel) {
+            // 应用位置设置
             if (modelPreferences.position) {
               currentModel.x = modelPreferences.position.x || currentModel.x;
               currentModel.y = modelPreferences.position.y || currentModel.y;
               console.log("已应用位置设置:", modelPreferences.position);
             }
+            
+            // 应用缩放设置
             if (modelPreferences.scale) {
               currentModel.scale.set(
                 modelPreferences.scale.x || currentModel.scale.x,
@@ -499,6 +536,8 @@ export default function Main() {
               );
               console.log("已应用缩放设置:", modelPreferences.scale);
             }
+          } else {
+            console.log("无需应用偏好设置（未找到或模型未加载）");
           }
         }
       } catch (error) {
@@ -544,15 +583,26 @@ export default function Main() {
 
     // 使用统一的 request 模块（通过 exposeRequestToGlobal() 暴露到全局）
 
-    const scripts = [
-      `${STATIC_SERVER_URL}/static/libs/pixi.min.js`, // PixiJS v7
-      `${STATIC_SERVER_URL}/static/libs/live2d.min.js`, // Cubism 2.1核心库
-      `${STATIC_SERVER_URL}/static/libs/live2dcubismcore.min.js`, // Cubism 4核心库
-      `${STATIC_SERVER_URL}/static/libs/index.min.js`, // pixi-live2d-display（依赖 PixiJS）
-      `${STATIC_SERVER_URL}/static/live2d.js`, // 依赖前面的库
+    // 脚本加载顺序（与 HTML 版本保持一致）
+    const baseScripts = [
+      `${STATIC_SERVER_URL}/static/libs/live2dcubismcore.min.js`, // Cubism 4核心库（支持Cubism 3/4模型）
+      `${STATIC_SERVER_URL}/static/libs/live2d.min.js`, // Cubism 2.1核心库（支持旧模型）
+      `${STATIC_SERVER_URL}/static/libs/pixi.min.js`, // PixiJS v7 CDN
+      `${STATIC_SERVER_URL}/static/libs/index.min.js`, // pixi-live2d-display v0.5.0-ls-6（RaSan147 fork，支持v7）
       `${STATIC_SERVER_URL}/static/common_ui.js`, // 依赖前面的库
-      `${STATIC_SERVER_URL}/static/app.js`, // 依赖前面的库
     ];
+
+    // live2d 模块（按顺序加载拆分后的文件，与 HTML 版本保持一致）
+    const live2dModules = [
+      `${STATIC_SERVER_URL}/static/live2d-core.js`,
+      `${STATIC_SERVER_URL}/static/live2d-emotion.js`,
+      `${STATIC_SERVER_URL}/static/live2d-model.js`,
+      `${STATIC_SERVER_URL}/static/live2d-interaction.js`,
+      `${STATIC_SERVER_URL}/static/live2d-ui.js`,
+      `${STATIC_SERVER_URL}/static/live2d-init.js`,
+    ];
+
+    const appScript = `${STATIC_SERVER_URL}/static/app.js`; // 依赖前面的库
 
     // 对话区提示框逻辑
     const initChatTooltip = () => {
@@ -623,10 +673,20 @@ export default function Main() {
         // 等待配置加载完成
         await (window as any).pageConfigReady;
 
-        // 按顺序加载所有脚本
-        for (const src of scripts) {
+        // 按顺序加载基础脚本
+        for (const src of baseScripts) {
           await loadScript(src);
         }
+        console.log("基础脚本加载完成");
+
+        // 按顺序加载 live2d 模块（与 HTML 版本保持一致）
+        for (const src of live2dModules) {
+          await loadScript(src);
+        }
+        console.log("Live2D 模块加载完成");
+
+        // 等待 live2d 模块加载完成后再加载 app.js
+        await loadScript(appScript);
         console.log("所有脚本加载完成");
 
         // app.js 现在会在脚本加载时自动检查 DOM 状态并初始化
@@ -753,6 +813,9 @@ export default function Main() {
             <button id="resetSessionButton" className="side-btn">
               👋 请她离开
             </button>
+            <button id="returnSessionButton" className="side-btn">
+              🫴 请她回来
+            </button>
             <div id="status"></div>
           </div>
         </div>
@@ -766,7 +829,11 @@ export default function Main() {
             <span id="chat-title">💬 对话</span>
           </div>
           <button id="toggle-chat-btn" title="最小化">
-            —
+            <img 
+              src={`${STATIC_SERVER_URL}/static/icons/minimize_icon.png`} 
+              alt="最小化" 
+              style={{ width: "24px", height: "24px", objectFit: "contain", pointerEvents: "none" }}
+            />
           </button>
           <div id="chat-tooltip">✨ 对话区</div>
           <div id="chat-content-wrapper">
@@ -789,10 +856,22 @@ export default function Main() {
                 tabIndex={0}
               ></textarea>
               <div id="button-group">
-                <button id="textSendButton">📤 发送</button>
+                <button id="textSendButton">
+                  <img 
+                    src={`${STATIC_SERVER_URL}/static/icons/send_icon.png`} 
+                    alt=""
+                    style={{ width: "22px", height: "22px", objectFit: "contain", pointerEvents: "none" }}
+                  />
+                  <span>发送</span>
+                </button>
                 <button id="screenshotButton">
-                  <span className="desktop-text">📸 截图</span>
-                  <span className="mobile-text">📷 拍照</span>
+                  <img 
+                    src={`${STATIC_SERVER_URL}/static/icons/screenshot_icon.png`} 
+                    alt=""
+                    style={{ width: "22px", height: "22px", objectFit: "contain", pointerEvents: "none" }}
+                  />
+                  <span className="desktop-text">截图</span>
+                  <span className="mobile-text">拍照</span>
                 </button>
               </div>
             </div>

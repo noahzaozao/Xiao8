@@ -1,9 +1,9 @@
 /**
  * 请求客户端配置
- * 使用 @xiao8/request 包提供的统一请求库
+ * 使用 @project_neko/request 包提供的统一请求库
  */
 
-import { createRequestClient, WebTokenStorage } from '@xiao8/request';
+import { createRequestClient, WebTokenStorage } from '@project_neko/request';
 
 /**
  * 获取 API 基础 URL
@@ -47,7 +47,7 @@ export const request = createRequestClient({
 });
 
 // 导出类型
-export type { RequestClientConfig, TokenStorage, TokenRefreshFn } from '@xiao8/request';
+export type { RequestClientConfig, TokenStorage, TokenRefreshFn } from '@project_neko/request';
 
 /**
  * 获取静态资源服务器 URL

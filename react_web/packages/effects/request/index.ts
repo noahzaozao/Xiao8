@@ -21,7 +21,7 @@ export { WebTokenStorage, NativeTokenStorage } from './src/request-client/tokenS
 // 导出存储抽象
 export { default as webStorage } from './src/storage/webStorage';
 // nativeStorage 使用动态导入，避免在 Web 环境中加载 React Native 依赖
-// 如需使用，请使用: const nativeStorage = await import('@xiao8/request').then(m => m.nativeStorage);
+// 如需使用，请使用: const nativeStorage = await import('@project_neko/request').then(m => m.nativeStorage);
 export { default as storage } from './src/storage/index';
 export type { Storage } from './src/storage/types';
 

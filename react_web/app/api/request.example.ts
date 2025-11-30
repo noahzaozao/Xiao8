@@ -1,5 +1,5 @@
 /**
- * @xiao8/request 使用示例
+ * @project_neko/request 使用示例
  * 
  * 这个文件展示了如何在 react_web 项目中使用 request 包
  */
@@ -159,7 +159,7 @@ export async function loadPageConfig(lanlanName?: string) {
  * 手动设置 Token（登录后）
  */
 export async function setAuthTokens(accessToken: string, refreshToken: string) {
-  const { WebTokenStorage } = await import('@xiao8/request');
+  const { WebTokenStorage } = await import('@project_neko/request');
   const storage = new WebTokenStorage();
   await storage.setAccessToken(accessToken);
   await storage.setRefreshToken(refreshToken);
@@ -169,7 +169,7 @@ export async function setAuthTokens(accessToken: string, refreshToken: string) {
  * 清除 Token（登出）
  */
 export async function clearAuthTokens() {
-  const { WebTokenStorage } = await import('@xiao8/request');
+  const { WebTokenStorage } = await import('@project_neko/request');
   const storage = new WebTokenStorage();
   await storage.clearTokens();
 }

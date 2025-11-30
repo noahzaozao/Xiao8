@@ -1,4 +1,4 @@
-# @xiao8/request
+# @project_neko/request
 
 真正可直接用于 **React Web + React Native** 的统一请求库，提供 `@vben/request` 等价功能。
 
@@ -49,7 +49,7 @@ try {
 
 ```typescript
 // app/api/request.ts
-import { createRequestClient, WebTokenStorage } from '@xiao8/request';
+import { createRequestClient, WebTokenStorage } from '@project_neko/request';
 
 export const request = createRequestClient({
     baseURL: '/api',
@@ -73,7 +73,7 @@ export const request = createRequestClient({
 
 ```typescript
 // index.native.ts
-import { createRequestClient, NativeTokenStorage } from '@xiao8/request';
+import { createRequestClient, NativeTokenStorage } from '@project_neko/request';
 
 export const request = createRequestClient({
     baseURL: 'https://api.yourserver.com',
@@ -102,7 +102,7 @@ export const request = createRequestClient({
 {
   "compilerOptions": {
     "paths": {
-      "@xiao8/request": ["./packages/effects/request/index.web"]
+      "@project_neko/request": ["./packages/effects/request/index.web"]
     }
   }
 }
@@ -278,7 +278,7 @@ interface TokenStorage {
 ### 自定义 Token 存储
 
 ```typescript
-import { TokenStorage } from '@xiao8/request';
+import { TokenStorage } from '@project_neko/request';
 
 class CustomTokenStorage implements TokenStorage {
     async getAccessToken() {
@@ -339,7 +339,7 @@ const request = createRequestClient({
 ### Token 管理
 
 ```typescript
-import { WebTokenStorage } from '@xiao8/request';
+import { WebTokenStorage } from '@project_neko/request';
 
 const storage = new WebTokenStorage();
 
@@ -370,7 +370,7 @@ await storage.clearTokens();
 
 ## 🎯 与 @vben/request 的对比
 
-| 特性 | @vben/request | @xiao8/request |
+| 特性 | @vben/request | @project_neko/request |
 |------|--------------|----------------|
 | React Web | ✅ | ✅ |
 | React Native | ❌ | ✅ |
@@ -391,7 +391,7 @@ import type {
     TokenRefreshFn,
     TokenRefreshResult,
     QueuedRequest,
-} from '@xiao8/request';
+} from '@project_neko/request';
 ```
 
 ## ⚠️ 注意事项

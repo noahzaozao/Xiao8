@@ -19,7 +19,7 @@
 1. **React Router v7 SPA 应用** - `react_web/`
    - ✅ 项目基础架构（SPA 模式）
    - ✅ Lanlan Terminal 主界面 (`app/routes/main.tsx`)
-   - ✅ 统一的 Request 模块 (`@xiao8/request` + `request.global.js`)
+   - ✅ 统一的 Request 模块 (`@project_neko/request` + `request.global.js`)
    - ✅ 与 static/ 资源的桥接
    - ✅ 环境变量配置系统
    - ✅ 纯客户端渲染，无需 Node SSR 服务器
@@ -136,7 +136,7 @@ react_web/
 - ✅ 无需 Node SSR 服务器，部署简单
 
 **为什么选择 SPA 而不是 SSR？**
-1. **简化部署** - Xiao8 是桌面应用，不需要 SEO
+1. **简化部署** - N.E.K.O 是桌面应用，不需要 SEO
 2. **降低复杂度** - 无需维护 Node SSR 服务器
 3. **更好的集成** - 与现有 FastAPI 后端更容易集成
 4. **开发效率** - 减少服务端/客户端状态同步问题
@@ -379,7 +379,7 @@ react_web/
 ### 1. 环境准备
 
 ```bash
-cd /Users/noahwang/projects/Xiao8/react_web
+cd /Users/noahwang/projects/N.E.K.O/react_web
 npm install
 ```
 

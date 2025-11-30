@@ -1,5 +1,5 @@
 {
-  "name": "@xiao8/request",
+  "name": "@project_neko/request",
   "version": "1.0.0",
   "description": "统一请求库，支持 React Web + React Native，提供 Axios、Token 刷新、请求队列等功能",
   "main": "index.ts",

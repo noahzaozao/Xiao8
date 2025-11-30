@@ -16,7 +16,7 @@
     "baseUrl": ".",
     "paths": {
       "~/*": ["./app/*"],
-      "@xiao8/request": ["./packages/effects/request/index.web"]
+      "@project_neko/request": ["./packages/effects/request/index.web"]
     },
     "esModuleInterop": true,
     "verbatimModuleSyntax": true,

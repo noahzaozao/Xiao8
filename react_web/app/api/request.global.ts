@@ -3,7 +3,7 @@
  * 用于在静态 HTML 中独立使用，打包成 request.global.js
  */
 
-import { createRequestClient, WebTokenStorage } from '@xiao8/request';
+import { createRequestClient, WebTokenStorage } from '@project_neko/request';
 
 /**
  * 获取 API 基础 URL（从 window 或默认值）

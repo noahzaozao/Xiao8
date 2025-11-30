@@ -1,6 +1,6 @@
-## Xiao8 / Project N.E.K.O. React Web 前端
+## N.E.K.O React Web 前端
 
-这是 Xiao8 / Project N.E.K.O. 的 **React Web 前端**，采用 **混合架构**：
+这是 N.E.K.O 的 **React Web 前端**，采用 **混合架构**：
 
 ### 🏗️ 双轨架构
 
@@ -62,10 +62,10 @@ react_web/
 
 ---
 
-## 与主项目 Xiao8 的集成关系
+## 与主项目 N.E.K.O 的集成关系
 
-- **此目录位置**：`Xiao8/react_web`
-- **静态资源来源**：依赖根项目的 `static/` 目录（`Xiao8/static`）
+- **此目录位置**：`N.E.K.O/react_web`
+- **静态资源来源**：依赖根项目的 `static/` 目录（`N.E.K.O/static`）
 - **脚本依赖**：`static/request.global.js`, `static/common_ui.js`, `static/app.js`, `static/libs/*.js`, `static/live2d.js` 等
 - **API 地址**：通过环境变量 `VITE_API_BASE_URL` 统一配置，默认 `http://localhost:48911`
 - **静态资源服务器地址**：通过 `VITE_STATIC_SERVER_URL` 配置，默认 `http://localhost:48911`
@@ -77,7 +77,7 @@ react_web/
 ### 两套前端架构
 
 **1. React Web (`react_web/`)**
-- ✅ 使用统一的 `@xiao8/request` 模块
+- ✅ 使用统一的 `@project_neko/request` 模块
 - 在 `app/api/request.ts` 中创建请求客户端实例
 - 通过 `exposeRequestToGlobal()` 暴露到全局：
   - `window.request` - 统一的请求实例（基于 Axios）
@@ -133,7 +133,7 @@ npm run build:request
 可通过 `.env` 或命令行注入以下变量（Vite / React Router 标准）：
 
 - **`VITE_API_BASE_URL`**  
-  - 用途：指向 Xiao8 后端 API 根地址  
+  - 用途：指向 N.E.K.O 后端 API 根地址  
   - 默认值：`http://localhost:48911`
   - 影响位置：`app/root.tsx`、`app/routes/main.tsx` 里设置 `window.API_BASE_URL` 与 `fetchWithBaseUrl`
 
@@ -212,7 +212,7 @@ npm run preview
 - Nginx / Apache 等静态文件服务器
 - Vercel / Netlify / GitHub Pages
 - CDN + 对象存储（OSS）
-- Xiao8 主项目的静态文件服务（集成模式）
+- N.E.K.O 主项目的静态文件服务（集成模式）
 
 ---
 
@@ -850,7 +850,7 @@ useEffect(() => {
 
 ### 为什么选择 SPA 而不是 SSR？
 
-1. **简化部署** - Xiao8 是桌面应用，不需要 SEO
+1. **简化部署** - N.E.K.O 是桌面应用，不需要 SEO
 2. **降低复杂度** - 无需维护 Node SSR 服务器
 3. **更好的集成** - 与现有 FastAPI 后端更容易集成
 4. **开发效率** - 减少服务端/客户端状态同步问题
