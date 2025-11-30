@@ -53,7 +53,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from urllib.parse import unquote
 from utils.preferences import load_user_preferences, update_model_preferences, validate_model_preferences, move_model_to_top
 from utils.frontend_utils import find_models, find_model_config_file, find_model_directory, find_model_by_workshop_item_id, find_workshop_item_by_id
-from multiprocessing import Process, Queue, Event
+from threading import Thread, Event as ThreadEvent
+from queue import Queue
 import atexit
 import dashscope
 from dashscope.audio.tts_v2 import VoiceEnrollmentService
@@ -159,10 +160,12 @@ _config_manager = get_config_manager()
 def cleanup():
     logger.info("Starting cleanup process")
     for k in sync_message_queue:
-        while sync_message_queue[k] and not sync_message_queue[k].empty():
-            sync_message_queue[k].get_nowait()
-        sync_message_queue[k].close()
-        sync_message_queue[k].join_thread()
+        # 清空队列（queue.Queue 没有 close/join_thread 方法）
+        try:
+            while sync_message_queue[k] and not sync_message_queue[k].empty():
+                sync_message_queue[k].get_nowait()
+        except:
+            pass
     logger.info("Cleanup completed")
 
 # 只在主进程中注册 cleanup 函数，防止子进程退出时执行清理
@@ -209,7 +212,7 @@ async def initialize_character_data():
         is_new_character = False
         if k not in sync_message_queue:
             sync_message_queue[k] = Queue()
-            sync_shutdown_event[k] = Event()
+            sync_shutdown_event[k] = ThreadEvent()
             session_id[k] = None
             sync_process[k] = None
             logger.info(f"为角色 {k} 初始化新资源")
@@ -280,70 +283,68 @@ async def initialize_character_data():
                     session_manager[k].websocket = old_websocket
                     logger.info(f"已恢复 {k} 的WebSocket连接")
         
-        # 检查并启动同步连接器进程
-        # 如果是新角色，或者进程不存在/已停止，需要启动进程
+        # 检查并启动同步连接器线程
+        # 如果是新角色，或者线程不存在/已停止，需要启动线程
         if k not in sync_process:
             sync_process[k] = None
         
-        need_start_process = False
+        need_start_thread = False
         if is_new_character:
-            # 新角色，需要启动进程
-            need_start_process = True
+            # 新角色，需要启动线程
+            need_start_thread = True
         elif sync_process[k] is None:
-            # 进程为None，需要启动
-            need_start_process = True
+            # 线程为None，需要启动
+            need_start_thread = True
         elif hasattr(sync_process[k], 'is_alive') and not sync_process[k].is_alive():
-            # 进程已停止，需要重启
-            need_start_process = True
+            # 线程已停止，需要重启
+            need_start_thread = True
             try:
                 sync_process[k].join(timeout=0.1)
             except:
                 pass
         
-        if need_start_process:
+        if need_start_thread:
             try:
-                sync_process[k] = Process(
+                sync_process[k] = Thread(
                     target=cross_server.sync_connector_process,
-                    args=(sync_message_queue[k], sync_shutdown_event[k], k, f"ws://localhost:{MONITOR_SERVER_PORT}", {'bullet': False, 'monitor': True})
+                    args=(sync_message_queue[k], sync_shutdown_event[k], k, f"ws://localhost:{MONITOR_SERVER_PORT}", {'bullet': False, 'monitor': True}),
+                    daemon=True,
+                    name=f"SyncConnector-{k}"
                 )
                 sync_process[k].start()
-                logger.info(f"✅ 已为角色 {k} 启动同步连接器进程 (PID: {sync_process[k].pid})")
-                await asyncio.sleep(0.2)
+                logger.info(f"✅ 已为角色 {k} 启动同步连接器线程 ({sync_process[k].name})")
+                await asyncio.sleep(0.1)  # 线程启动更快，减少等待时间
                 if not sync_process[k].is_alive():
-                    logger.error(f"❌ 同步连接器进程 {k} (PID: {sync_process[k].pid}) 启动后立即退出！退出码: {sync_process[k].exitcode}")
+                    logger.error(f"❌ 同步连接器线程 {k} ({sync_process[k].name}) 启动后立即退出！")
                 else:
-                    logger.info(f"✅ 同步连接器进程 {k} (PID: {sync_process[k].pid}) 正在运行")
+                    logger.info(f"✅ 同步连接器线程 {k} ({sync_process[k].name}) 正在运行")
             except Exception as e:
-                logger.error(f"❌ 启动角色 {k} 的同步连接器进程失败: {e}", exc_info=True)
+                logger.error(f"❌ 启动角色 {k} 的同步连接器线程失败: {e}", exc_info=True)
     
     # 清理已删除角色的资源
     removed_names = [k for k in session_manager.keys() if k not in catgirl_names]
     for k in removed_names:
         logger.info(f"清理已删除角色 {k} 的资源")
         
-        # 先停止同步连接器进程
+        # 先停止同步连接器线程（线程只能协作式终止，不能强制kill）
         if k in sync_process and sync_process[k] is not None:
             try:
-                logger.info(f"正在停止已删除角色 {k} 的同步连接器进程...")
+                logger.info(f"正在停止已删除角色 {k} 的同步连接器线程...")
                 if k in sync_shutdown_event:
                     sync_shutdown_event[k].set()
-                sync_process[k].join(timeout=3)
+                sync_process[k].join(timeout=3)  # 等待线程正常结束
                 if sync_process[k].is_alive():
-                    sync_process[k].terminate()
-                    sync_process[k].join(timeout=1)
-                    if sync_process[k].is_alive():
-                        sync_process[k].kill()
-                logger.info(f"✅ 已停止角色 {k} 的同步连接器进程")
+                    logger.warning(f"⚠️ 同步连接器线程 {k} 未能在超时内停止，将作为daemon线程自动清理")
+                else:
+                    logger.info(f"✅ 已停止角色 {k} 的同步连接器线程")
             except Exception as e:
-                logger.warning(f"停止角色 {k} 的同步连接器进程时出错: {e}")
+                logger.warning(f"停止角色 {k} 的同步连接器线程时出错: {e}")
         
-        # 清理队列
+        # 清理队列（queue.Queue 没有 close/join_thread 方法）
         if k in sync_message_queue:
             try:
                 while not sync_message_queue[k].empty():
                     sync_message_queue[k].get_nowait()
-                sync_message_queue[k].close()
-                sync_message_queue[k].join_thread()
             except:
                 pass
             del sync_message_queue[k]
@@ -882,32 +883,34 @@ async def startup_event():
     # 路径由 utils 层管理并持久化到 config 层
     await _init_and_mount_workshop()
     
-    # ========== 启动同步连接器进程 ==========
-    logger.info("Starting sync connector processes")
-    # 启动同步连接器进程（确保所有角色都有进程）
+    # ========== 启动同步连接器线程 ==========
+    logger.info("Starting sync connector threads")
+    # 启动同步连接器线程（确保所有角色都有线程）
     for k in list(sync_message_queue.keys()):
         if k not in sync_process or sync_process[k] is None or (hasattr(sync_process.get(k), 'is_alive') and not sync_process[k].is_alive()):
             if k in sync_process and sync_process[k] is not None:
-                # 清理已停止的进程
+                # 清理已停止的线程
                 try:
                     sync_process[k].join(timeout=0.1)
                 except:
                     pass
             try:
-                sync_process[k] = Process(
+                sync_process[k] = Thread(
                     target=cross_server.sync_connector_process,
-                    args=(sync_message_queue[k], sync_shutdown_event[k], k, f"ws://localhost:{MONITOR_SERVER_PORT}", {'bullet': False, 'monitor': True})
+                    args=(sync_message_queue[k], sync_shutdown_event[k], k, f"ws://localhost:{MONITOR_SERVER_PORT}", {'bullet': False, 'monitor': True}),
+                    daemon=True,
+                    name=f"SyncConnector-{k}"
                 )
                 sync_process[k].start()
-                logger.info(f"✅ 同步连接器进程已启动 (PID: {sync_process[k].pid}) for {k}")
-                # 检查进程是否成功启动
-                await asyncio.sleep(0.2)
+                logger.info(f"✅ 同步连接器线程已启动 ({sync_process[k].name}) for {k}")
+                # 检查线程是否成功启动
+                await asyncio.sleep(0.1)  # 线程启动更快
                 if not sync_process[k].is_alive():
-                    logger.error(f"❌ 同步连接器进程 {k} (PID: {sync_process[k].pid}) 启动后立即退出！退出码: {sync_process[k].exitcode}")
+                    logger.error(f"❌ 同步连接器线程 {k} ({sync_process[k].name}) 启动后立即退出！")
                 else:
-                    logger.info(f"✅ 同步连接器进程 {k} (PID: {sync_process[k].pid}) 正在运行")
+                    logger.info(f"✅ 同步连接器线程 {k} ({sync_process[k].name}) 正在运行")
             except Exception as e:
-                logger.error(f"❌ 启动角色 {k} 的同步连接器进程失败: {e}", exc_info=True)
+                logger.error(f"❌ 启动角色 {k} 的同步连接器线程失败: {e}", exc_info=True)
     
     # 如果启用了浏览器模式，在服务器启动完成后打开浏览器
     current_config = get_start_config()
@@ -936,15 +939,15 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """应用关闭时执行"""
-    logger.info("Shutting down sync connector processes")
-    # 关闭同步服务器连接
+    logger.info("Shutting down sync connector threads")
+    # 关闭同步服务器连接（线程只能协作式终止）
     for k in sync_process:
         if sync_process[k] is not None:
             sync_shutdown_event[k].set()
-            sync_process[k].join(timeout=3)  # 等待进程正常结束
+            sync_process[k].join(timeout=3)  # 等待线程正常结束
             if sync_process[k].is_alive():
-                sync_process[k].terminate()  # 如果超时，强制终止
-    logger.info("同步连接器进程已停止")
+                logger.warning(f"⚠️ 同步连接器线程 {k} 未能在超时内停止，将作为daemon线程随主进程退出")
+    logger.info("同步连接器线程已停止")
     
     # 向memory_server发送关闭信号
     try:
