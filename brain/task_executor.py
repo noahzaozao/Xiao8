@@ -9,7 +9,7 @@ import asyncio
 import logging
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
-from openai import AsyncOpenAI, RateLimitError, APIError
+from openai import AsyncOpenAI, APIConnectionError, InternalServerError, RateLimitError
 from config import MODELS_WITH_EXTRA_BODY
 from utils.config_manager import get_config_manager
 from .mcp_client import McpRouterClient, McpToolCatalog
@@ -193,7 +193,7 @@ OUTPUT FORMAT (strict JSON):
                     reason=decision.get('reason', '')
                 )
                 
-            except (RateLimitError, APIError) as e:
+            except (APIConnectionError, InternalServerError, RateLimitError) as e:
                 if attempt < max_retries - 1:
                     wait_time = retry_delays[attempt]
                     logger.warning(f"[MCP Assessment] 调用失败 (尝试 {attempt + 1}/{max_retries})，{wait_time}秒后重试: {e}")
@@ -284,7 +284,7 @@ OUTPUT FORMAT (strict JSON):
                     reason=decision.get('reason', '')
                 )
                 
-            except (RateLimitError, APIError) as e:
+            except (APIConnectionError, InternalServerError, RateLimitError) as e:
                 if attempt < max_retries - 1:
                     wait_time = retry_delays[attempt]
                     logger.warning(f"[ComputerUse Assessment] 调用失败 (尝试 {attempt + 1}/{max_retries})，{wait_time}秒后重试: {e}")

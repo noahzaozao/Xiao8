@@ -3,7 +3,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from langchain_openai import ChatOpenAI
-from openai import RateLimitError
+from openai import APIConnectionError, InternalServerError, RateLimitError
 from config import MODELS_WITH_EXTRA_BODY
 from utils.config_manager import get_config_manager
 from .mcp_client import McpRouterClient, McpToolCatalog
@@ -90,7 +90,7 @@ class TaskPlanner:
                 except Exception:
                     mcp = {"can_execute": False, "reason": "LLM parse error", "server_id": None, "steps": []}
                 break  # 成功则退出重试循环
-            except RateLimitError as e:
+            except (APIConnectionError, InternalServerError, RateLimitError) as e:
                 if attempt < max_retries - 1:
                     wait_time = retry_delays[attempt]
                     logger.warning(f"[Planner MCP] LLM调用失败 (尝试 {attempt + 1}/{max_retries})，{wait_time}秒后重试: {e}")
@@ -146,7 +146,7 @@ class TaskPlanner:
                         except Exception:
                             cu_decision = {"use_computer": False, "reason": "LLM parse error"}
                         break  # 成功则退出重试循环
-                    except RateLimitError as e:
+                    except (APIConnectionError, InternalServerError, RateLimitError) as e:
                         if attempt < max_retries - 1:
                             wait_time = retry_delays[attempt]
                             logger.warning(f"[Planner ComputerUse] LLM调用失败 (尝试 {attempt + 1}/{max_retries})，{wait_time}秒后重试: {e}")

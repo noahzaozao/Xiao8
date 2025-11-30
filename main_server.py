@@ -1157,7 +1157,7 @@ async def proactive_chat(request: Request):
             # 直接使用langchain ChatOpenAI发送请求
             from langchain_openai import ChatOpenAI
             from langchain_core.messages import SystemMessage
-            from openai import RateLimitError, APIError
+            from openai import APIConnectionError, InternalServerError, RateLimitError
             
             llm = ChatOpenAI(
                 model=core_config['CORRECTION_MODEL'],
@@ -1181,7 +1181,7 @@ async def proactive_chat(request: Request):
                     )
                     response_text = response.content.strip()
                     break  # 成功则退出重试循环
-                except (RateLimitError, APIError) as e:
+                except (APIConnectionError, InternalServerError, RateLimitError) as e:
                     if attempt < max_retries - 1:
                         wait_time = retry_delays[attempt]
                         logger.warning(f"[{lanlan_name}] 主动搭话LLM调用失败 (尝试 {attempt + 1}/{max_retries})，{wait_time}秒后重试: {e}")

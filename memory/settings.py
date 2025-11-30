@@ -1,7 +1,7 @@
 import json
 import asyncio
 from langchain_openai import ChatOpenAI
-from openai import RateLimitError
+from openai import APIConnectionError, InternalServerError, RateLimitError
 from config import SETTING_PROPOSER_MODEL, SETTING_VERIFIER_MODEL
 from utils.config_manager import get_config_manager
 from config.prompts_sys import settings_extractor_prompt, settings_verifier_prompt
@@ -59,7 +59,7 @@ class ImportantSettingsManager:
                 result = response.content
                 if result.startswith("```"):
                     result = result .replace("```json", "").replace("```", "").strip()
-            except RateLimitError as e:
+            except (APIConnectionError, InternalServerError, RateLimitError) as e:
                 retries += 1
                 if retries >= max_retries:
                     print(f"❌ Setting resolver query失败，已达到最大重试次数: {e}")
@@ -108,7 +108,7 @@ class ImportantSettingsManager:
             try:
                 proposer = self._get_proposer()
                 response = await proposer.ainvoke(prompt)
-            except RateLimitError as e:
+            except (APIConnectionError, InternalServerError, RateLimitError) as e:
                 retries += 1
                 if retries >= max_retries:
                     print(f"❌ Setting LLM query失败，已达到最大重试次数: {e}")

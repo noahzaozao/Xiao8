@@ -1,7 +1,7 @@
 from typing import List, Dict, Any, Optional, Tuple
 import asyncio
 from langchain_openai import ChatOpenAI
-from openai import RateLimitError
+from openai import APIConnectionError, InternalServerError, RateLimitError
 from config import MODELS_WITH_EXTRA_BODY
 from utils.config_manager import get_config_manager
 import logging
@@ -76,7 +76,7 @@ class TaskDeduper:
                     return {"duplicate": False, "matched_id": None}
                 except Exception:
                     return {"duplicate": False, "matched_id": None}
-            except RateLimitError as e:
+            except (APIConnectionError, InternalServerError, RateLimitError) as e:
                 if attempt < max_retries - 1:
                     wait_time = retry_delays[attempt]
                     logger.warning(f"[Deduper] LLM调用失败 (尝试 {attempt + 1}/{max_retries})，{wait_time}秒后重试: {e}")

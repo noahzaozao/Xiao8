@@ -7,7 +7,7 @@ import json
 import os
 import asyncio
 import logging
-from openai import RateLimitError
+from openai import APIConnectionError, InternalServerError, RateLimitError
 
 from config.prompts_sys import recent_history_manager_prompt, detailed_recent_history_manager_prompt, further_summarize_prompt, history_review_prompt
 
@@ -184,7 +184,7 @@ class CompressedRecentHistoryManager:
                 else:
                     print('💥 摘要failed: ', response_content)
                     retries += 1
-            except RateLimitError as e:
+            except (APIConnectionError, InternalServerError, RateLimitError) as e:
                 retries += 1
                 if retries >= max_retries:
                     print(f'❌ 摘要模型失败，已达到最大重试次数: {e}')
@@ -221,7 +221,7 @@ class CompressedRecentHistoryManager:
                 else:
                     print('💥 第二轮摘要failed: ', response_content)
                     retries += 1
-            except RateLimitError as e:
+            except (APIConnectionError, InternalServerError, RateLimitError) as e:
                 retries += 1
                 if retries >= max_retries:
                     print(f'❌ 第二轮摘要模型失败，已达到最大重试次数: {e}')
@@ -402,7 +402,7 @@ class CompressedRecentHistoryManager:
                     print(f"❌ 审阅响应格式错误：{response_content}")
                     return False
                     
-            except RateLimitError as e:
+            except (APIConnectionError, InternalServerError, RateLimitError) as e:
                 retries += 1
                 if retries >= max_retries:
                     print(f'❌ 记忆整理失败，已达到最大重试次数: {e}')

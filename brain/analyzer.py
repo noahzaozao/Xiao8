@@ -1,7 +1,7 @@
 from typing import Dict, Any, List
 import logging
 import asyncio
-from openai import AsyncOpenAI, RateLimitError, APIError
+from openai import AsyncOpenAI, APIConnectionError, InternalServerError, RateLimitError
 from config import MODELS_WITH_EXTRA_BODY
 from utils.config_manager import get_config_manager
 
@@ -40,7 +40,7 @@ class ConversationAnalyzer:
         
         prompt = self._build_prompt(messages)
         
-        # Retry策略：重试2次，间隔1秒、2秒
+        # Retry策略：重试2次，每次间隔1秒
         max_retries = 3
         retry_delays = [1, 1]  # 第1次重试等1秒，第2次重试等1秒
         
@@ -69,7 +69,7 @@ class ConversationAnalyzer:
                 logger.debug(f"[Analyzer] Raw response: {text[:200]}...")
                 break  # 成功则退出重试循环
                 
-            except (RateLimitError, APIError) as e:
+            except (APIConnectionError, InternalServerError, RateLimitError) as e:
                 if attempt < max_retries - 1:
                     wait_time = retry_delays[attempt]
                     logger.warning(f"[Analyzer] LLM调用失败 (尝试 {attempt + 1}/{max_retries})，{wait_time}秒后重试: {e}")

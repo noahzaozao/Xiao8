@@ -7,7 +7,7 @@ import logging
 from typing import Optional, Callable, Dict, Any, Awaitable
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
-from openai import RateLimitError, APIError
+from openai import APIConnectionError, InternalServerError, RateLimitError
 from config import MODELS_WITH_EXTRA_BODY
 
 # Setup logger for this module
@@ -185,7 +185,6 @@ class OmniOfflineClient:
         max_retries = 3
         retry_delays = [1, 2]
         assistant_message = ""
-        success = False
         
         try:
             self._is_responding = True
@@ -222,12 +221,9 @@ class OmniOfflineClient:
                     # Add assistant response to history
                     if assistant_message:
                         self._conversation_history.append(AIMessage(content=assistant_message))
-                    
-                    # 成功则退出重试循环
-                    success = True
                     break
                             
-                except (RateLimitError, APIError) as e:
+                except (APIConnectionError, InternalServerError, RateLimitError) as e:
                     if attempt < max_retries - 1:
                         wait_time = retry_delays[attempt]
                         logger.warning(f"OmniOfflineClient: LLM调用失败 (尝试 {attempt + 1}/{max_retries})，{wait_time}秒后重试: {e}")
