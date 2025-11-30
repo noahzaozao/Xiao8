@@ -137,13 +137,13 @@ class OmniOfflineClient:
             else:
                 return
         
-        # Check if we need to temporarily switch to vision model
+        # Check if we need to switch to vision model
         has_images = len(self._pending_images) > 0
-        original_model = self.model
         
         # Prepare user message content
         if has_images:
-            # Temporarily switch to vision model for this turn
+            # Switch to vision model permanently for this session
+            # (cannot switch back because image data remains in conversation history)
             if self.vision_model and self.vision_model != self.model:
                 logger.info(f"🖼️ Temporarily switching to vision model: {self.vision_model} (from {self.model})")
                 self.switch_model(self.vision_model)
