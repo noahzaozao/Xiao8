@@ -191,7 +191,7 @@ class CompressedRecentHistoryManager:
                     break
                 # 指数退避: 1, 2, 4 秒
                 wait_time = 2 ** (retries - 1)
-                print(f'⚠️ 遇到429错误，等待 {wait_time} 秒后重试 (第 {retries}/{max_retries} 次)')
+                print(f'⚠️ 遇到网络或429错误，等待 {wait_time} 秒后重试 (第 {retries}/{max_retries} 次)')
                 await asyncio.sleep(wait_time)
             except Exception as e:
                 print(f'❌ 摘要模型失败：{e}')
@@ -228,7 +228,7 @@ class CompressedRecentHistoryManager:
                     return None
                 # 指数退避: 1, 2, 4 秒
                 wait_time = 2 ** (retries - 1)
-                print(f'⚠️ 遇到429错误，等待 {wait_time} 秒后重试 (第 {retries}/{max_retries} 次)')
+                print(f'⚠️ 遇到网络或429错误，等待 {wait_time} 秒后重试 (第 {retries}/{max_retries} 次)')
                 await asyncio.sleep(wait_time)
             except Exception as e:
                 print(f'❌ 第二轮摘要模型失败：{e}')
@@ -409,7 +409,7 @@ class CompressedRecentHistoryManager:
                     return False
                 # 指数退避: 1, 2, 4 秒
                 wait_time = 2 ** (retries - 1)
-                print(f'⚠️ 遇到429错误，等待 {wait_time} 秒后重试 (第 {retries}/{max_retries} 次)')
+                print(f'⚠️ 遇到网络或429错误，等待 {wait_time} 秒后重试 (第 {retries}/{max_retries} 次)')
                 await asyncio.sleep(wait_time)
                 # 检查是否被取消
                 if cancel_event and cancel_event.is_set():

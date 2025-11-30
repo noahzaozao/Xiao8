@@ -1857,9 +1857,13 @@ async def _init_and_mount_workshop():
         # 降级：确保至少有一个默认路径可用
         workshop_path = get_workshop_path()
         logger.info(f"使用配置中的默认路径: {workshop_path}")
-
-
-
+        if workshop_path and os.path.exists(workshop_path) and os.path.isdir(workshop_path):
+            try:
+                app.mount("/workshop", StaticFiles(directory=workshop_path), name="workshop")
+                logger.info(f"✅ 降级模式下成功挂载创意工坊目录: {workshop_path}")
+            except Exception as mount_err:
+                logger.error(f"降级模式挂载创意工坊目录仍然失败: {mount_err}")
+                
 @app.get('/api/steam/workshop/item/{item_id}/path')
 async def get_workshop_item_path(item_id: str):
     """

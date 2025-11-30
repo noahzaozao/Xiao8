@@ -5,6 +5,7 @@ from openai import APIConnectionError, InternalServerError, RateLimitError
 from config import MODELS_WITH_EXTRA_BODY
 from utils.config_manager import get_config_manager
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,6 @@ class TaskDeduper:
                     {"role": "user", "content": prompt},
                 ])
                 text = (resp.content or "").strip()
-                import json
                 try:
                     if text.startswith("```"):
                         text = text.replace("```json", "").replace("```", "").strip()
@@ -87,7 +87,5 @@ class TaskDeduper:
             except Exception as e:
                 logger.error(f"[Deduper] LLM调用失败: {e}")
                 return {"duplicate": False, "matched_id": None}
-        
-        return {"duplicate": False, "matched_id": None}
 
 

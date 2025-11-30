@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import json
+import uuid
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from langchain_openai import ChatOpenAI
@@ -82,7 +84,6 @@ class TaskPlanner:
                     {"role": "user", "content": mcp_user},
                 ])
                 text1 = resp1.content.strip()
-                import json, uuid
                 try:
                     if text1.startswith("```"):
                         text1 = text1.replace("```json", "").replace("```", "").strip()

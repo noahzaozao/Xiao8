@@ -66,7 +66,7 @@ class ImportantSettingsManager:
                     return old_settings
                 # 指数退避: 1, 2, 4 秒
                 wait_time = 2 ** (retries - 1)
-                print(f'⚠️ 遇到429错误，等待 {wait_time} 秒后重试 (第 {retries}/{max_retries} 次)')
+                print(f'⚠️ 遇到网络或429错误，等待 {wait_time} 秒后重试 (第 {retries}/{max_retries} 次)')
                 await asyncio.sleep(wait_time)
                 continue
             except Exception as e:
@@ -115,7 +115,7 @@ class ImportantSettingsManager:
                     return
                 # 指数退避: 1, 2, 4 秒
                 wait_time = 2 ** (retries - 1)
-                print(f'⚠️ 遇到429错误，等待 {wait_time} 秒后重试 (第 {retries}/{max_retries} 次)')
+                print(f'⚠️ 遇到网络或429错误，等待 {wait_time} 秒后重试 (第 {retries}/{max_retries} 次)')
                 await asyncio.sleep(wait_time)
                 continue
             except Exception as e:
