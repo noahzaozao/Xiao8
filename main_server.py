@@ -70,7 +70,8 @@ from utils.workshop_utils import (
     save_workshop_config,
     ensure_workshop_folder_exists,
     get_workshop_root,
-    get_workshop_path
+    get_workshop_path,
+    extract_workshop_root_from_items
 )
 
 # 确定 templates 目录位置（使用 _get_app_root）
@@ -874,6 +875,15 @@ async def update_core_config(request: Request):
 @app.on_event("startup")
 async def startup_event():
     global sync_process
+    logger.info("Starting main server...")
+    
+    # ========== 初始化创意工坊目录 ==========
+    # 依赖方向: main_server → utils → config (单向)
+    # main 层只负责调用 utils，不维护任何 workshop 状态
+    # 路径由 utils 层管理并持久化到 config 层
+    await _init_and_mount_workshop()
+    
+    # ========== 启动同步连接器进程 ==========
     logger.info("Starting sync connector processes")
     # 启动同步连接器进程（确保所有角色都有进程）
     for k in list(sync_message_queue.keys()):
@@ -1787,29 +1797,41 @@ async def get_subscribed_workshop_items():
             "error": f"获取订阅物品失败: {str(e)}"
         }, status_code=500)
 
-# 使用get_subscribed_workshop_items获取第一个物品的installedFolder
-# 使用从文件开头导入的get_workshop_root函数
-# 调用时传入当前模块的globals()，以便在workshop_utils中访问get_subscribed_workshop_items函数
-WORKSHOP_PATH = get_workshop_root(globals())
-
-# 确保WORKSHOP_PATH是有效路径后再挂载
-if os.path.exists(WORKSHOP_PATH) and os.path.isdir(WORKSHOP_PATH):
+async def _init_and_mount_workshop():
+    """
+    初始化并挂载创意工坊目录
+    
+    设计原则：
+    - main 层只负责调用，不维护状态
+    - 路径由 utils 层计算并持久化到 config 层
+    - 其他代码需要路径时调用 get_workshop_path() 获取
+    """
     try:
-        # 直接挂载，不使用嵌套函数装饰器
-        workshop_mount = app.mount("/workshop", StaticFiles(directory=WORKSHOP_PATH), name="workshop")
-        logger.info(f"成功挂载创意工坊目录: {WORKSHOP_PATH}")
+        # 1. 获取订阅的创意工坊物品列表
+        workshop_items_result = await get_subscribed_workshop_items()
         
-        # 保存WORKSHOP_PATH到配置文件
-        from utils.workshop_utils import save_workshop_config, load_workshop_config
-        workshop_config_data = load_workshop_config()
-        workshop_config_data["WORKSHOP_PATH"] = WORKSHOP_PATH
-        save_workshop_config(workshop_config_data)
-        logger.info(f"已保存WORKSHOP_PATH到配置文件: {WORKSHOP_PATH}")
+        # 2. 提取物品列表传给 utils 层
+        subscribed_items = []
+        if isinstance(workshop_items_result, dict) and workshop_items_result.get('success', False):
+            subscribed_items = workshop_items_result.get('items', [])
         
+        # 3. 调用 utils 层函数获取/计算路径（路径会被持久化到 config）
+        workshop_path = get_workshop_root(subscribed_items)
+        
+        # 4. 挂载静态文件目录
+        if workshop_path and os.path.exists(workshop_path) and os.path.isdir(workshop_path):
+            try:
+                app.mount("/workshop", StaticFiles(directory=workshop_path), name="workshop")
+                logger.info(f"✅ 成功挂载创意工坊目录: {workshop_path}")
+            except Exception as e:
+                logger.error(f"挂载创意工坊目录失败: {e}")
+        else:
+            logger.warning(f"创意工坊目录不存在或不是有效的目录: {workshop_path}，跳过挂载")
     except Exception as e:
-        logger.error(f"挂载创意工坊目录失败: {e}")
-else:
-    logger.warning(f"创意工坊目录不存在或不是有效的目录: {WORKSHOP_PATH}，跳过挂载")
+        logger.error(f"初始化创意工坊目录时出错: {e}")
+        # 降级：确保至少有一个默认路径可用
+        workshop_path = get_workshop_path()
+        logger.info(f"使用配置中的默认路径: {workshop_path}")
 
 
 
