@@ -55,7 +55,6 @@ from multiprocessing import Process, Queue, Event
 import atexit
 import dashscope
 from dashscope.audio.tts_v2 import VoiceEnrollmentService
-import requests
 import httpx
 import pathlib, wave
 from openai import AsyncOpenAI
@@ -900,14 +899,14 @@ async def shutdown_event():
     
     # 向memory_server发送关闭信号
     try:
-        import requests
         from config import MEMORY_SERVER_PORT
         shutdown_url = f"http://localhost:{MEMORY_SERVER_PORT}/shutdown"
-        response = requests.post(shutdown_url, timeout=2)
-        if response.status_code == 200:
-            logger.info("已向memory_server发送关闭信号")
-        else:
-            logger.warning(f"向memory_server发送关闭信号失败，状态码: {response.status_code}")
+        async with httpx.AsyncClient(timeout=2) as client:
+            response = await client.post(shutdown_url)
+            if response.status_code == 200:
+                logger.info("已向memory_server发送关闭信号")
+            else:
+                logger.warning(f"向memory_server发送关闭信号失败，状态码: {response.status_code}")
     except Exception as e:
         logger.warning(f"向memory_server发送关闭信号时出错: {e}")
 
@@ -2531,48 +2530,49 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
         }
         
         logger.info(f"正在上传文件到tfLink，文件名: {file.filename}, 大小: {file_size} bytes, MIME类型: {mime_type}")
-        resp = requests.post('http://47.101.214.205:8000/api/upload', files=files, headers=headers, timeout=60)
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post('http://47.101.214.205:8000/api/upload', files=files, headers=headers)
 
-        # 检查响应状态
-        if resp.status_code != 200:
-            logger.error(f"上传到tfLink失败，状态码: {resp.status_code}, 响应内容: {resp.text}")
-            return JSONResponse({'error': f'上传到tfLink失败，状态码: {resp.status_code}, 详情: {resp.text[:200]}'}, status_code=500)
+            # 检查响应状态
+            if resp.status_code != 200:
+                logger.error(f"上传到tfLink失败，状态码: {resp.status_code}, 响应内容: {resp.text}")
+                return JSONResponse({'error': f'上传到tfLink失败，状态码: {resp.status_code}, 详情: {resp.text[:200]}'}, status_code=500)
             
-        try:
-            # 解析JSON响应
-            data = resp.json()
-            logger.info(f"tfLink原始响应: {data}")
-            
-            # 获取下载链接
-            tmp_url = None
-            possible_keys = ['downloadLink', 'download_link', 'url', 'direct_link', 'link', 'download_url']
-            for key in possible_keys:
-                if key in data:
-                    tmp_url = data[key]
-                    logger.info(f"找到下载链接键: {key}")
-                    break
-            
-            if not tmp_url:
-                logger.error(f"无法从响应中提取URL: {data}")
-                return JSONResponse({'error': f'上传成功但无法从响应中提取URL'}, status_code=500)
-            
-            # 确保URL有效
-            if not tmp_url.startswith(('http://', 'https://')):
-                logger.error(f"无效的URL格式: {tmp_url}")
-                return JSONResponse({'error': f'无效的URL格式: {tmp_url}'}, status_code=500)
+            try:
+                # 解析JSON响应
+                data = resp.json()
+                logger.info(f"tfLink原始响应: {data}")
                 
-            # 测试URL是否可访问
-            test_resp = requests.head(tmp_url, timeout=10)
-            if test_resp.status_code >= 400:
-                logger.error(f"生成的URL无法访问: {tmp_url}, 状态码: {test_resp.status_code}")
-                return JSONResponse({'error': f'生成的临时URL无法访问，请重试'}, status_code=500)
+                # 获取下载链接
+                tmp_url = None
+                possible_keys = ['downloadLink', 'download_link', 'url', 'direct_link', 'link', 'download_url']
+                for key in possible_keys:
+                    if key in data:
+                        tmp_url = data[key]
+                        logger.info(f"找到下载链接键: {key}")
+                        break
                 
-            logger.info(f"成功获取临时URL并验证可访问性: {tmp_url}")
+                if not tmp_url:
+                    logger.error(f"无法从响应中提取URL: {data}")
+                    return JSONResponse({'error': f'上传成功但无法从响应中提取URL'}, status_code=500)
                 
-        except ValueError:
-            raw_text = resp.text
-            logger.error(f"上传成功但响应格式无法解析: {raw_text}")
-            return JSONResponse({'error': f'上传成功但响应格式无法解析: {raw_text[:200]}'}, status_code=500)
+                # 确保URL有效
+                if not tmp_url.startswith(('http://', 'https://')):
+                    logger.error(f"无效的URL格式: {tmp_url}")
+                    return JSONResponse({'error': f'无效的URL格式: {tmp_url}'}, status_code=500)
+                    
+                # 测试URL是否可访问
+                test_resp = await client.head(tmp_url, timeout=10)
+                if test_resp.status_code >= 400:
+                    logger.error(f"生成的URL无法访问: {tmp_url}, 状态码: {test_resp.status_code}")
+                    return JSONResponse({'error': f'生成的临时URL无法访问，请重试'}, status_code=500)
+                    
+                logger.info(f"成功获取临时URL并验证可访问性: {tmp_url}")
+                
+            except ValueError:
+                raw_text = resp.text
+                logger.error(f"上传成功但响应格式无法解析: {raw_text}")
+                return JSONResponse({'error': f'上传成功但响应格式无法解析: {raw_text[:200]}'}, status_code=500)
         
         # 3. 用直链注册音色
         core_config = _config_manager.get_core_config()
@@ -2803,14 +2803,14 @@ async def shutdown_server_async():
         
         # 向memory_server发送关闭信号
         try:
-            import requests
             from config import MEMORY_SERVER_PORT
             shutdown_url = f"http://localhost:{MEMORY_SERVER_PORT}/shutdown"
-            response = requests.post(shutdown_url, timeout=1)
-            if response.status_code == 200:
-                logger.info("已向memory_server发送关闭信号")
-            else:
-                logger.warning(f"向memory_server发送关闭信号失败，状态码: {response.status_code}")
+            async with httpx.AsyncClient(timeout=1) as client:
+                response = await client.post(shutdown_url)
+                if response.status_code == 200:
+                    logger.info("已向memory_server发送关闭信号")
+                else:
+                    logger.warning(f"向memory_server发送关闭信号失败，状态码: {response.status_code}")
         except Exception as e:
             logger.warning(f"向memory_server发送关闭信号时出错: {e}")
         
