@@ -8,7 +8,6 @@ import json
 import struct  # For packing audio data
 import threading
 import re
-import requests
 import logging
 import time
 from datetime import datetime
@@ -502,7 +501,15 @@ class LLMSessionManager:
         self.openrouter_url = core_config['OPENROUTER_URL']
         self.openrouter_api_key = core_config['OPENROUTER_API_KEY']
         self.audio_api_key = core_config['AUDIO_API_KEY']
-        logger.info(f"📌 已重新加载配置: core_api={self.core_api_type}, model={self.model}, text_model={self.text_model}, vision_model={self.vision_model}")
+        
+        # 重新读取角色配置以获取最新的voice_id（支持角色切换后的音色热更新）
+        _,_,_,lanlan_basic_config_updated,_,_,_,_,_,_ = self._config_manager.get_character_data()
+        old_voice_id = self.voice_id
+        self.voice_id = lanlan_basic_config_updated.get(self.lanlan_name, {}).get('voice_id', '')
+        if old_voice_id != self.voice_id:
+            logger.info(f"🔄 voice_id已更新: '{old_voice_id}' -> '{self.voice_id}'")
+        
+        logger.info(f"📌 已重新加载配置: core_api={self.core_api_type}, model={self.model}, text_model={self.text_model}, vision_model={self.vision_model}, voice_id={self.voice_id}")
         
         # 重置TTS缓存状态
         async with self.tts_cache_lock:
@@ -636,7 +643,9 @@ class LLMSessionManager:
             """异步创建并连接 LLM Session"""
             # 获取初始 prompt
             initial_prompt = (f"你是一个角色扮演大师，并且精通电脑操作。请按要求扮演以下角色（{self.lanlan_name}），并在对方请求时、回答'我试试'并尝试操纵电脑。" if self._is_agent_enabled() else f"你是一个角色扮演大师。请按要求扮演以下角色（{self.lanlan_name}）。") + self.lanlan_prompt
-            initial_prompt += requests.get(f"http://localhost:{self.memory_server_port}/new_dialog/{self.lanlan_name}").text
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(f"http://localhost:{self.memory_server_port}/new_dialog/{self.lanlan_name}")
+                initial_prompt += resp.text
             
             logger.info(f"🤖 开始创建 LLM Session (input_mode={input_mode})")
             
@@ -843,7 +852,15 @@ class LLMSessionManager:
             self.openrouter_url = core_config['OPENROUTER_URL']
             self.openrouter_api_key = core_config['OPENROUTER_API_KEY']
             self.audio_api_key = core_config['AUDIO_API_KEY']
-            logger.info(f"🔄 热切换准备: 已重新加载配置")
+            
+            # 重新读取角色配置以获取最新的voice_id（支持角色切换后的音色热更新）
+            _,_,_,lanlan_basic_config_updated,_,_,_,_,_,_ = self._config_manager.get_character_data()
+            old_voice_id = self.voice_id
+            self.voice_id = lanlan_basic_config_updated.get(self.lanlan_name, {}).get('voice_id', '')
+            if old_voice_id != self.voice_id:
+                logger.info(f"🔄 热切换准备: voice_id已更新: '{old_voice_id}' -> '{self.voice_id}'")
+            
+            logger.info(f"🔄 热切换准备: 已重新加载配置, voice_id={self.voice_id}")
             
             # 创建新的pending session
             self.pending_session = OmniRealtimeClient(

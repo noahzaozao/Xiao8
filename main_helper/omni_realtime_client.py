@@ -217,7 +217,7 @@ class OmniRealtimeClient:
                         "prefix_padding_ms":300,
                         "silence_duration_ms": 500
                     },
-                    "temperature": 0.4
+                    "temperature": 1.0
                 })
             elif "gpt" in self.model:
                 await self.update_session({
