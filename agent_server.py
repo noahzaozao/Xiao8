@@ -635,7 +635,8 @@ async def mcp_availability():
     if not Modules.planner:
         raise HTTPException(503, "Planner not ready")
     try:
-        caps = await Modules.planner.refresh_capabilities()
+        # 使用缓存检查可用性，避免每次都请求 MCP Router（缓存 TTL 10秒）
+        caps = await Modules.planner.refresh_capabilities(force_refresh=False)
         count = len(caps or {})
         ready = count > 0
         reasons = [] if ready else ["MCP router unreachable or no servers discovered"]

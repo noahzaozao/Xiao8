@@ -607,6 +607,11 @@ HTTPX_SUPPRESSED_PATTERNS = [
     "/mcp/availability",
 ]
 
+# HTTPX 客户端的速率限制配置（每 N 秒显示一次）
+HTTPX_RATE_LIMITED_PATTERNS = [
+    "/mcp",  # MCP 相关请求日志限流
+]
+
 
 def create_main_server_filter() -> RateLimitedEndpointFilter:
     """创建 Main Server 的日志过滤器"""
@@ -630,7 +635,7 @@ def create_httpx_filter() -> RateLimitedEndpointFilter:
     """创建 HTTPX 客户端的日志过滤器"""
     return RateLimitedEndpointFilter(
         suppressed_endpoints=HTTPX_SUPPRESSED_PATTERNS,
-        rate_limited_endpoints=[],
+        rate_limited_endpoints=HTTPX_RATE_LIMITED_PATTERNS,
         rate_limit_interval=15.0
     )
 
@@ -649,6 +654,7 @@ __all__ = [
     'AGENT_SERVER_SUPPRESSED_ENDPOINTS',
     'AGENT_SERVER_RATE_LIMITED_ENDPOINTS',
     'HTTPX_SUPPRESSED_PATTERNS',
+    'HTTPX_RATE_LIMITED_PATTERNS',
     # 工厂函数
     'create_main_server_filter',
     'create_agent_server_filter',
