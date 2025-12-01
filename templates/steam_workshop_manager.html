@@ -1545,7 +1545,7 @@
                         </button>
                         <div class="help-text" style="margin-top: 10px; font-size: 12px; color: #666;">
                             点击"上传"即表示您同意 Steam 创意工坊服务条款，包括创意工坊法律协议：
-                            <a href="https://store.steampowered.com/workshopeula/4099310" target="_blank" style="color: #44b7fe;">https://store.steampowered.com/workshopeula/4099310</a>
+                            <a href="https://steamcommunity.com/sharedfiles/workshoplegalagreement" target="_blank" style="color: #44b7fe;">https://steamcommunity.com/sharedfiles/workshoplegalagreement</a>
                         </div>
                     </div>
                 </div>
@@ -1660,7 +1660,7 @@
                 </div>
                 <div class="help-text" style="margin-top: 10px; font-size: 12px; color: #666;">
                     点击"上传"即表示您同意 Steam 创意工坊服务条款，包括创意工坊法律协议：
-                    <a href="https://steamcommunity.com/sharedfiles/workshopopts" target="_blank" style="color: #44b7fe;">https://steamcommunity.com/sharedfiles/workshopopts</a>
+                    <a href="https://steamcommunity.com/sharedfiles/workshoplegalagreement" target="_blank" style="color: #44b7fe;">https://steamcommunity.com/sharedfiles/workshoplegalagreement</a>
                 </div>
             </div>
             </div>
@@ -2644,12 +2644,12 @@ showMessage(errorMessage, 'error', 3000);
                 isValid = false;
             } else {
                 // 简单的路径格式验证
-                if (!contentFolder.match(/^[a-zA-Z]:\\/)) {
-                    errorMessages.push('内容文件夹路径格式不正确，应为D:\\\Projects\\\\MyMod格式');
+                if (/^[a-zA-Z]:\\/.test(contentFolder) || /^\//.test(contentFolder) || /^\.\.?[\\\/]/.test(contentFolder)) {
+                    document.getElementById('content-folder').classList.remove('error');
+                } else {
+                    errorMessages.push(window.t ? window.t('invalidFolderFormat') : '内容文件夹路径格式不正确');
                     document.getElementById('content-folder').classList.add('error');
                     isValid = false;
-                } else {
-                    document.getElementById('content-folder').classList.remove('error');
                 }
             }
             
@@ -3022,14 +3022,14 @@ showMessage(errorMessage, 'error', 3000);
                     
                 // 确定状态类和文本
                 let statusClass = 'status-subscribed';
-                let statusText = window.t ? window.t('steam.status.installed') : '已订阅';
+                let statusText = window.t ? window.t('steam.status.subscribed') : '已订阅';
                 
                 if (formattedItem.state.downloading) {
                     statusClass = 'status-downloading';
-                    statusText = window.t ? window.t('steam.status.installed') : '下载中';
+                    statusText = window.t ? window.t('steam.status.downloading') : '下载中';
                 } else if (formattedItem.state.needsUpdate) {
                     statusClass = 'status-needs-update';
-                    statusText = window.t ? window.t('steam.status.installed') : '需要更新';
+                    statusText = window.t ? window.t('steam.status.needsUpdate') : '需要更新';
                 } else if (formattedItem.state.installed) {
                     statusClass = 'status-installed';
                     statusText = window.t ? window.t('steam.status.installed') : '已安装';
