@@ -8,19 +8,17 @@ import json
 import struct  # For packing audio data
 import threading
 import re
-import requests
 import logging
 import time
 from datetime import datetime
 from websockets import exceptions as web_exceptions
 from fastapi import WebSocket, WebSocketDisconnect
-from utils.frontend_utils import contains_chinese, replace_blank, replace_corner_mark, remove_bracket, spell_out_number, \
+from utils.frontend_utils import contains_chinese, replace_blank, replace_corner_mark, remove_bracket, \
     is_only_punctuation, split_paragraph
 from utils.audio import make_wav_header
 from main_helper.omni_realtime_client import OmniRealtimeClient
 from main_helper.omni_offline_client import OmniOfflineClient
 from main_helper.tts_helper import get_tts_worker
-import inflect
 import base64
 from io import BytesIO
 from PIL import Image
@@ -29,7 +27,7 @@ from utils.config_manager import get_config_manager
 from multiprocessing import Process, Queue as MPQueue
 from uuid import uuid4
 import numpy as np
-from librosa import resample
+import soxr
 import httpx 
 
 # Setup logger for this module
@@ -53,7 +51,6 @@ class LLMSessionManager:
         self.lock = asyncio.Lock()  # 使用异步锁替代同步锁
         self.websocket_lock = None  # websocket操作的共享锁，由main_server设置
         self.current_speech_id = None
-        self.inflect_parser = inflect.engine()
         self.emoji_pattern = re.compile(r'[^\w\u4e00-\u9fff\s>][^\w\u4e00-\u9fff\s]{2,}[^\w\u4e00-\u9fff\s<]', flags=re.UNICODE)
         self.emoji_pattern2 = re.compile("["
         u"\U0001F600-\U0001F64F"  # emoticons
@@ -278,7 +275,7 @@ class LLMSessionManager:
             if self.websocket and hasattr(self.websocket, 'client_state') and self.websocket.client_state == self.websocket.client_state.CONNECTED:
                 # 这里假设audio_data为PCM16字节流，直接推送
                 audio = np.frombuffer(audio_data, dtype=np.int16)
-                audio = (resample(audio.astype(np.float32) / 32768.0, orig_sr=24000, target_sr=48000)*32767.).clip(-32768, 32767).astype(np.int16)
+                audio = (soxr.resample(audio.astype(np.float32) / 32768.0, 24000, 48000, quality='HQ')*32767.).clip(-32768, 32767).astype(np.int16)
 
                 await self.send_speech(audio.tobytes())
                 # 你可以根据需要加上格式、isNewMessage等标记
@@ -474,7 +471,6 @@ class LLMSessionManager:
             text = re.sub(r'[，、]+$', '。', text)
         else:
             text = remove_bracket(text)
-            text = spell_out_number(text, self.inflect_parser)
         text = self.emoji_pattern2.sub('', text)
         text = self.emoji_pattern.sub('', text)
         if is_only_punctuation(text) and text not in ['<', '>']:
@@ -505,7 +501,15 @@ class LLMSessionManager:
         self.openrouter_url = core_config['OPENROUTER_URL']
         self.openrouter_api_key = core_config['OPENROUTER_API_KEY']
         self.audio_api_key = core_config['AUDIO_API_KEY']
-        logger.info(f"📌 已重新加载配置: core_api={self.core_api_type}, model={self.model}, text_model={self.text_model}, vision_model={self.vision_model}")
+        
+        # 重新读取角色配置以获取最新的voice_id（支持角色切换后的音色热更新）
+        _,_,_,lanlan_basic_config_updated,_,_,_,_,_,_ = self._config_manager.get_character_data()
+        old_voice_id = self.voice_id
+        self.voice_id = lanlan_basic_config_updated.get(self.lanlan_name, {}).get('voice_id', '')
+        if old_voice_id != self.voice_id:
+            logger.info(f"🔄 voice_id已更新: '{old_voice_id}' -> '{self.voice_id}'")
+        
+        logger.info(f"📌 已重新加载配置: core_api={self.core_api_type}, model={self.model}, text_model={self.text_model}, vision_model={self.vision_model}, voice_id={self.voice_id}")
         
         # 重置TTS缓存状态
         async with self.tts_cache_lock:
@@ -639,7 +643,9 @@ class LLMSessionManager:
             """异步创建并连接 LLM Session"""
             # 获取初始 prompt
             initial_prompt = (f"你是一个角色扮演大师，并且精通电脑操作。请按要求扮演以下角色（{self.lanlan_name}），并在对方请求时、回答'我试试'并尝试操纵电脑。" if self._is_agent_enabled() else f"你是一个角色扮演大师。请按要求扮演以下角色（{self.lanlan_name}）。") + self.lanlan_prompt
-            initial_prompt += requests.get(f"http://localhost:{self.memory_server_port}/new_dialog/{self.lanlan_name}").text
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(f"http://localhost:{self.memory_server_port}/new_dialog/{self.lanlan_name}")
+                initial_prompt += resp.text
             
             logger.info(f"🤖 开始创建 LLM Session (input_mode={input_mode})")
             
@@ -846,7 +852,15 @@ class LLMSessionManager:
             self.openrouter_url = core_config['OPENROUTER_URL']
             self.openrouter_api_key = core_config['OPENROUTER_API_KEY']
             self.audio_api_key = core_config['AUDIO_API_KEY']
-            logger.info(f"🔄 热切换准备: 已重新加载配置")
+            
+            # 重新读取角色配置以获取最新的voice_id（支持角色切换后的音色热更新）
+            _,_,_,lanlan_basic_config_updated,_,_,_,_,_,_ = self._config_manager.get_character_data()
+            old_voice_id = self.voice_id
+            self.voice_id = lanlan_basic_config_updated.get(self.lanlan_name, {}).get('voice_id', '')
+            if old_voice_id != self.voice_id:
+                logger.info(f"🔄 热切换准备: voice_id已更新: '{old_voice_id}' -> '{self.voice_id}'")
+            
+            logger.info(f"🔄 热切换准备: 已重新加载配置, voice_id={self.voice_id}")
             
             # 创建新的pending session
             self.pending_session = OmniRealtimeClient(

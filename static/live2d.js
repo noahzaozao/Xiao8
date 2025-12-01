@@ -1092,8 +1092,8 @@ class Live2DManager {
                     (window.innerWidth * 0.6) / 7000
                 );
                 model.scale.set(scale);
-                model.x = this.pixi_app.renderer.width;
-                model.y = this.pixi_app.renderer.height;
+                model.x = this.pixi_app.renderer.width * 0.5;
+                model.y = this.pixi_app.renderer.height * 0.5;
             }
             model.anchor.set(0.65, 0.75);
         }
@@ -1525,28 +1525,7 @@ class Live2DManager {
                     
                     // 实现互斥逻辑：如果有exclusive配置，关闭对方
                     if (!isPopupVisible && config.exclusive) {
-                        const exclusiveBtn = this._floatingButtons[config.exclusive];
-                        if (exclusiveBtn) {
-                            const exclusivePopup = document.getElementById(`live2d-popup-${config.exclusive}`);
-                            if (exclusivePopup && exclusivePopup.style.display === 'flex') {
-                                // 关闭对方的弹出框
-                                exclusivePopup.style.opacity = '0';
-                                exclusivePopup.style.transform = 'translateX(-10px)';
-                                setTimeout(() => {
-                                    exclusivePopup.style.display = 'none';
-                                }, 200);
-                                // 对方按钮恢复白色（通过移除激活状态）
-                                exclusiveBtn.button.dataset.active = 'false';
-                                // 恢复白色背景
-                                exclusiveBtn.button.style.background = 'rgba(255, 255, 255, 0.7)';
-                                
-                                // 更新对方按钮的图标状态（显示off图标）
-                                if (exclusiveBtn.imgOff && exclusiveBtn.imgOn) {
-                                    exclusiveBtn.imgOff.style.opacity = '1';
-                                    exclusiveBtn.imgOn.style.opacity = '0';
-                                }
-                            }
-                        }
+                        this.closePopupById(config.exclusive);
                     }
                     
                     // 切换弹出框
@@ -1576,8 +1555,34 @@ class Live2DManager {
                 
                 btn.addEventListener('click', (e) => {
                     e.stopPropagation();
+                    
+                    // 对于麦克风按钮，在计算状态之前就检查 micButton 的状态
+                    if (config.id === 'mic') {
+                        const micButton = document.getElementById('micButton');
+                        if (micButton && micButton.classList.contains('active')) {
+                            // 检查是否正在录音：如果 isRecording 为 true，说明已经启动成功，允许点击退出
+                            // 如果 isRecording 为 false，说明正在启动过程中，阻止点击
+                            const isRecording = window.isRecording || false; // 从全局获取 isRecording 状态
+                            
+                            if (!isRecording) {
+                                // 正在启动过程中，强制保持激活状态，不切换
+                                // 确保浮动按钮状态与 micButton 同步
+                                if (btn.dataset.active !== 'true') {
+                                    btn.dataset.active = 'true';
+                                    if (imgOff && imgOn) {
+                                        imgOff.style.opacity = '0';
+                                        imgOn.style.opacity = '1';
+                                    }
+                                }
+                                return; // 直接返回，不执行任何状态切换或事件触发
+                            }
+                            // 如果 isRecording 为 true，说明已经启动成功，允许继续执行（可以退出）
+                        }
+                    }
+                    
                     const isActive = btn.dataset.active === 'true';
                     const newActive = !isActive;
+                    
                     btn.dataset.active = newActive.toString();
                     
                     // 更新图标状态
@@ -2026,12 +2031,46 @@ class Live2DManager {
                     toggleItem.style.background = 'transparent';
                 });
                 
+                // 存储 _updateStyle 供外部调用（与 live2d-ui.js 保持一致）
+                checkbox._updateStyle = updateStyle;
+                
                 // 点击切换（点击整个项目都可以切换）
+                // 添加防抖机制防止频繁点击导致状态混乱
                 toggleItem.addEventListener('click', (e) => {
                     if (checkbox.disabled) return;
+                    
+                    // 防止重复点击：使用防抖时间来适应异步操作
+                    if (checkbox._processing) {
+                        const elapsed = Date.now() - (checkbox._processingTime || 0);
+                        if (elapsed < 500) {  // 500ms 防抖，防止频繁点击
+                            console.log('[Live2D] Agent开关正在处理中，忽略重复点击:', toggle.id, '已过', elapsed, 'ms');
+                            e?.preventDefault();
+                            e?.stopPropagation();
+                            return;
+                        }
+                        // 超过500ms但仍在processing，可能是上次操作卡住了，允许新操作
+                        console.log('[Live2D] Agent开关上次操作可能超时，允许新操作:', toggle.id);
+                    }
+                    
+                    // 立即设置处理中标志
+                    checkbox._processing = true;
+                    checkbox._processingTime = Date.now();
+                    
                     checkbox.checked = !checkbox.checked;
                     checkbox.dispatchEvent(new Event('change', { bubbles: true }));
                     updateStyle();
+                    
+                    // 备用清除机制（增加超时时间以适应网络延迟）
+                    setTimeout(() => {
+                        if (checkbox._processing && Date.now() - checkbox._processingTime > 5000) {
+                            console.log('[Live2D] Agent开关备用清除机制触发:', toggle.id);
+                            checkbox._processing = false;
+                            checkbox._processingTime = null;
+                        }
+                    }, 5500);
+                    
+                    e?.preventDefault();
+                    e?.stopPropagation();
                 });
             });
         } else if (buttonId === 'settings') {
@@ -2232,7 +2271,8 @@ class Live2DManager {
 					{ id: 'api-keys', label: window.t ? window.t('settings.menu.apiKeys') : 'API密钥', labelKey: 'settings.menu.apiKeys', icon: '/static/icons/api_key_icon.png', action: 'navigate', url: '/api_key' },
 					{ id: 'character', label: window.t ? window.t('settings.menu.characterManage') : '角色管理', labelKey: 'settings.menu.characterManage', icon: '/static/icons/character_icon.png', action: 'navigate', url: '/chara_manager' },
 					{ id: 'voice-clone', label: window.t ? window.t('settings.menu.voiceClone') : '声音克隆', labelKey: 'settings.menu.voiceClone', icon: '/static/icons/voice_clone_icon.png', action: 'navigate', url: '/voice_clone' },
-					{ id: 'memory', label: window.t ? window.t('settings.menu.memoryBrowser') : '记忆浏览', labelKey: 'settings.menu.memoryBrowser', icon: '/static/icons/memory_icon.png', action: 'navigate', url: '/memory_browser' }
+					{ id: 'memory', label: window.t ? window.t('settings.menu.memoryBrowser') : '记忆浏览', labelKey: 'settings.menu.memoryBrowser', icon: '/static/icons/memory_icon.png', action: 'navigate', url: '/memory_browser' },
+                { id: 'steam-workshop', label: window.t ? window.t('steam.workshop') : '创意工坊', labelKey: 'steam.workshop', icon: '/static/icons/Steam_icon_logo.png', action: 'navigate', url: '/steam_workshop_manager' },
 				];
 				
 				settingsItems.forEach(item => {
@@ -2326,6 +2366,9 @@ class Live2DManager {
 									}
 								}
 								
+								// 打开新的弹窗前关闭其他已打开的设置窗口，实现全局互斥
+								this.closeAllSettingsWindows();
+								
 								// 打开新窗口并保存引用
 								const newWindow = window.open(finalUrl, '_blank', 'width=1000,height=800,menubar=no,toolbar=no,location=no,status=no');
 								if (newWindow) {
@@ -2346,6 +2389,9 @@ class Live2DManager {
 										delete this._openSettingsWindows[finalUrl];
 									}
 								}
+								
+								// 打开新的弹窗前关闭其他已打开的设置窗口，实现全局互斥
+								this.closeAllSettingsWindows();
 								
 								// 打开新窗口并保存引用
 								const newWindow = window.open(finalUrl, '_blank', 'width=1000,height=800,menubar=no,toolbar=no,location=no,status=no');
@@ -2372,6 +2418,67 @@ class Live2DManager {
         return popup;
     }
 
+    // 关闭指定按钮对应的弹出框，并恢复按钮状态
+    closePopupById(buttonId) {
+        if (!buttonId) return false;
+        const popup = document.getElementById(`live2d-popup-${buttonId}`);
+        if (!popup || popup.style.display !== 'flex') {
+            return false;
+        }
+
+        popup.style.opacity = '0';
+        popup.style.transform = 'translateX(-10px)';
+        setTimeout(() => {
+            popup.style.display = 'none';
+        }, 200);
+
+        const buttonEntry = this._floatingButtons[buttonId];
+        if (buttonEntry && buttonEntry.button) {
+            buttonEntry.button.dataset.active = 'false';
+            buttonEntry.button.style.background = 'rgba(255, 255, 255, 0.7)';
+
+            if (buttonEntry.imgOff && buttonEntry.imgOn) {
+                buttonEntry.imgOff.style.opacity = '1';
+                buttonEntry.imgOn.style.opacity = '0';
+            }
+        }
+
+        if (this._popupTimers[buttonId]) {
+            clearTimeout(this._popupTimers[buttonId]);
+            this._popupTimers[buttonId] = null;
+        }
+
+        return true;
+    }
+
+    // 关闭除当前按钮之外的所有弹出框
+    closeAllPopupsExcept(currentButtonId) {
+        const popups = document.querySelectorAll('[id^="live2d-popup-"]');
+        popups.forEach(popup => {
+            const popupId = popup.id.replace('live2d-popup-', '');
+            if (popupId !== currentButtonId && popup.style.display === 'flex') {
+                this.closePopupById(popupId);
+            }
+        });
+    }
+
+    // 关闭所有通过 window.open 打开的设置窗口，可选保留特定 URL
+    closeAllSettingsWindows(exceptUrl = null) {
+        if (!this._openSettingsWindows) return;
+        Object.keys(this._openSettingsWindows).forEach(url => {
+            if (exceptUrl && url === exceptUrl) return;
+            const winRef = this._openSettingsWindows[url];
+            try {
+                if (winRef && !winRef.closed) {
+                    winRef.close();
+                }
+            } catch (_) {
+                // 忽略跨域导致的 close 异常
+            }
+            delete this._openSettingsWindows[url];
+        });
+    }
+
     // 显示弹出框（1秒后自动隐藏），支持点击切换
     showPopup(buttonId, popup) {
         // 检查当前状态
@@ -2388,12 +2495,69 @@ class Live2DManager {
             const focusCheckbox = popup.querySelector('#live2d-focus-mode');
             const proactiveChatCheckbox = popup.querySelector('#live2d-proactive-chat');
             
+            // 辅助函数：更新 checkbox 的视觉样式
+            const updateCheckboxStyle = (checkbox) => {
+                if (!checkbox) return;
+                // toggleItem 是 checkbox 的父元素
+                const toggleItem = checkbox.parentElement;
+                if (!toggleItem) return;
+                
+                // indicator 是 toggleItem 的第二个子元素（第一个是 checkbox，第二个是 indicator）
+                const indicator = toggleItem.children[1];
+                if (!indicator) return;
+                
+                // checkmark 是 indicator 的第一个子元素
+                const checkmark = indicator.firstElementChild;
+                
+                if (checkbox.checked) {
+                    // 选中状态：蓝色填充，蓝色边框，显示对勾，背景颜色突出
+                    indicator.style.backgroundColor = '#44b7fe';
+                    indicator.style.borderColor = '#44b7fe';
+                    if (checkmark) checkmark.style.opacity = '1';
+                    toggleItem.style.background = 'rgba(68, 183, 254, 0.1)';
+                } else {
+                    // 未选中状态：灰色边框，透明填充，隐藏对勾，无背景
+                    indicator.style.backgroundColor = 'transparent';
+                    indicator.style.borderColor = '#ccc';
+                    if (checkmark) checkmark.style.opacity = '0';
+                    toggleItem.style.background = 'transparent';
+                }
+            };
+            
+            // 更新 focus mode checkbox 状态和视觉样式
             if (focusCheckbox && typeof window.focusModeEnabled !== 'undefined') {
                 // "允许打断"按钮值与 focusModeEnabled 相反
-                focusCheckbox.checked = !window.focusModeEnabled;
+                const newChecked = !window.focusModeEnabled;
+                // 只在状态改变时更新，避免不必要的 DOM 操作
+                if (focusCheckbox.checked !== newChecked) {
+                    focusCheckbox.checked = newChecked;
+                    // 使用 requestAnimationFrame 确保 DOM 已更新后再更新样式
+                    requestAnimationFrame(() => {
+                        updateCheckboxStyle(focusCheckbox);
+                    });
+                } else {
+                    // 即使状态相同，也确保视觉样式正确（处理概率性问题）
+                    requestAnimationFrame(() => {
+                        updateCheckboxStyle(focusCheckbox);
+                    });
+                }
             }
+            
+            // 更新 proactive chat checkbox 状态和视觉样式
             if (proactiveChatCheckbox && typeof window.proactiveChatEnabled !== 'undefined') {
-                proactiveChatCheckbox.checked = window.proactiveChatEnabled;
+                const newChecked = window.proactiveChatEnabled;
+                // 只在状态改变时更新，避免不必要的 DOM 操作
+                if (proactiveChatCheckbox.checked !== newChecked) {
+                    proactiveChatCheckbox.checked = newChecked;
+                    requestAnimationFrame(() => {
+                        updateCheckboxStyle(proactiveChatCheckbox);
+                    });
+                } else {
+                    // 即使状态相同，也确保视觉样式正确（处理概率性问题）
+                    requestAnimationFrame(() => {
+                        updateCheckboxStyle(proactiveChatCheckbox);
+                    });
+                }
             }
         }
         
@@ -2416,6 +2580,9 @@ class Live2DManager {
                 }
             }, 200);
         } else {
+            // 全局互斥：打开前关闭其他弹出框
+            this.closeAllPopupsExcept(buttonId);
+
             // 如果隐藏，则显示
             popup.style.display = 'flex';
             // 先让弹出框可见但透明，以便计算尺寸
@@ -2743,7 +2910,8 @@ window.LanLan1.clearExpression = () => window.live2dManager.clearExpression();
 window.LanLan1.setMouth = (value) => window.live2dManager.setMouth(value);
 
 // 自动初始化（如果存在 cubism4Model 变量）
-if (typeof cubism4Model !== 'undefined' && cubism4Model) {
+const targetModelPath = (typeof cubism4Model !== 'undefined' ? cubism4Model : (window.cubism4Model || ''));
+if (targetModelPath) {
     (async function() {
         try {
             // 初始化 PIXI 应用
@@ -2755,7 +2923,7 @@ if (typeof cubism4Model !== 'undefined' && cubism4Model) {
             // 根据模型路径找到对应的偏好设置
             let modelPreferences = null;
             if (preferences && preferences.length > 0) {
-                modelPreferences = preferences.find(p => p && p.model_path === cubism4Model);
+                modelPreferences = preferences.find(p => p && p.model_path === targetModelPath);
                 if (modelPreferences) {
                     console.log('找到模型偏好设置:', modelPreferences);
                 } else {
@@ -2764,7 +2932,7 @@ if (typeof cubism4Model !== 'undefined' && cubism4Model) {
             }
             
             // 加载模型
-            await window.live2dManager.loadModel(cubism4Model, {
+            await window.live2dManager.loadModel(targetModelPath, {
                 preferences: modelPreferences,
                 isMobile: window.innerWidth <= 768
             });

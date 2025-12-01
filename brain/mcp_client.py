@@ -1,13 +1,18 @@
 import asyncio
 import logging
+import time
 from typing import Dict, Any, List, Optional
 import httpx
 from cachetools import TTLCache
 from config import MCP_ROUTER_URL
 from utils.config_manager import get_config_manager
+from utils.logger_config import ThrottledLogger
 import uuid
 
 logger = logging.getLogger(__name__)
+
+# 使用统一的速率限制日志记录器
+_throttled_logger = ThrottledLogger(logger, interval=10.0)
 
 
 class McpRouterClient:
@@ -42,8 +47,11 @@ class McpRouterClient:
         
         self.http = httpx.AsyncClient(timeout=timeout, headers=headers)
         
-        # Cache tools listing for 10 seconds
-        self._tools_cache: TTLCache[str, Any] = TTLCache(maxsize=1, ttl=10)
+        # Cache tools listing for 3 seconds (成功时缓存)
+        self._tools_cache: TTLCache[str, Any] = TTLCache(maxsize=1, ttl=3)
+        # 失败冷却时间（避免频繁重试）
+        self._last_failure_time: float = 0
+        self._failure_cooldown: float = 1.0  # 失败后 1 秒内不重试
         
     def _next_request_id(self) -> int:
         """生成下一个请求ID"""
@@ -120,10 +128,12 @@ class McpRouterClient:
                 return result.get("result")
                 
         except httpx.HTTPStatusError as e:
-            logger.error(f"[MCP] HTTP error {e.response.status_code}: {e.response.text}")
+            # 使用统一的速率限制日志记录器（HTTP错误可能频繁发生）
+            _throttled_logger.error(f"mcp_http_error_{method}", f"[MCP] HTTP error {e.response.status_code}: {e.response.text}")
             return None
         except Exception as e:
-            logger.error(f"[MCP] Request failed for {method}: {e}")
+            # 使用统一的速率限制日志记录器
+            _throttled_logger.debug(f"mcp_request_{method}", f"[MCP] Request failed for {method}: {e}")
             return None
     
     async def initialize(self) -> bool:
@@ -135,7 +145,7 @@ class McpRouterClient:
             "protocolVersion": "2024-11-05",
             "capabilities": {},
             "clientInfo": {
-                "name": "Xiao8-MCP-Client",
+                "name": "PROJECT-NEKO-MCP-Client",
                 "version": "1.0.0"
             }
         })
@@ -145,7 +155,7 @@ class McpRouterClient:
             logger.info(f"[MCP] Initialized successfully: {result.get('serverInfo', {}).get('name', 'Unknown')}")
             return True
         else:
-            logger.warning("[MCP] Initialization failed")
+            # Throttled in _mcp_request, no need to log again here
             return False
 
     async def list_tools(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
@@ -156,11 +166,20 @@ class McpRouterClient:
         Args:
             force_refresh: 如果为True，忽略缓存强制刷新
         """
+        import time
+        
         # 检查缓存（除非强制刷新）
         if not force_refresh and 'tools' in self._tools_cache:
             cached_tools = self._tools_cache['tools']
             logger.debug(f"[MCP] Using cached tools: {len(cached_tools)} tools")
             return cached_tools
+        
+        # 检查失败冷却时间（避免频繁重试）
+        if not force_refresh and self._last_failure_time > 0:
+            elapsed = time.time() - self._last_failure_time
+            if elapsed < self._failure_cooldown:
+                logger.debug(f"[MCP] In failure cooldown, {self._failure_cooldown - elapsed:.1f}s remaining")
+                return []
         
         # 确保已初始化
         if not self._initialized:
@@ -171,13 +190,14 @@ class McpRouterClient:
         
         if result and "tools" in result:
             tools = result["tools"]
-            # 只缓存成功的结果
+            # 成功：缓存结果，重置失败时间
             self._tools_cache['tools'] = tools
+            self._last_failure_time = 0
             logger.info(f"[MCP] Discovered {len(tools)} tools")
             return tools
         else:
-            logger.warning("[MCP] Failed to list tools - not caching empty result")
-            # ⚠️ 失败时不缓存，下次会重试
+            # 失败：记录失败时间，进入冷却期
+            self._last_failure_time = time.time()
             return []
     
     async def list_servers(self) -> List[Dict[str, Any]]:

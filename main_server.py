@@ -1,6 +1,34 @@
 # -*- coding: utf-8 -*-
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Windows multiprocessing 支持：确保子进程不会重复执行模块级初始化
+from multiprocessing import freeze_support
+freeze_support()
+
+# 检查是否需要执行初始化（用于防止 Windows spawn 方式创建的子进程重复初始化）
+# 方案：首次导入时设置环境变量标记，子进程会继承这个标记从而跳过初始化
+_INIT_MARKER = '_NEKO_MAIN_SERVER_INITIALIZED'
+_IS_MAIN_PROCESS = _INIT_MARKER not in os.environ
+
+if _IS_MAIN_PROCESS:
+    # 立即设置标记，这样任何从此进程 spawn 的子进程都会继承此标记
+    os.environ[_INIT_MARKER] = '1'
+
+# 获取应用程序根目录（与 config_manager 保持一致）
+def _get_app_root():
+    if getattr(sys, 'frozen', False):
+        if hasattr(sys, '_MEIPASS'):
+            return sys._MEIPASS
+        else:
+            return os.path.dirname(sys.executable)
+    else:
+        return os.getcwd()
+
+# Only adjust DLL search path on Windows
+if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
+    os.add_dll_directory(_get_app_root())
+    
 import mimetypes
 mimetypes.add_type("application/javascript", ".js")
 import asyncio
@@ -10,20 +38,27 @@ import logging
 from datetime import datetime
 import webbrowser
 import io
+import threading
+import time
+from urllib.parse import quote, unquote
+from steamworks.exceptions import SteamNotLoadedException
+from steamworks.enums import EWorkshopFileType, EItemUpdateStatus
+
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, File, UploadFile, Form, Body
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from main_helper import core as core, cross_server as cross_server
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
+from urllib.parse import unquote
 from utils.preferences import load_user_preferences, update_model_preferences, validate_model_preferences, move_model_to_top
-from utils.frontend_utils import find_models, find_model_config_file, find_model_directory
-from multiprocessing import Process, Queue, Event
+from utils.frontend_utils import find_models, find_model_config_file, find_model_directory, find_model_by_workshop_item_id, find_workshop_item_by_id
+from threading import Thread, Event as ThreadEvent
+from queue import Queue
 import atexit
 import dashscope
 from dashscope.audio.tts_v2 import VoiceEnrollmentService
-import requests
 import httpx
 import pathlib, wave
 from openai import AsyncOpenAI
@@ -31,33 +66,113 @@ from config import MAIN_SERVER_PORT, MONITOR_SERVER_PORT, MEMORY_SERVER_PORT, MO
 from config.prompts_sys import emotion_analysis_prompt, proactive_chat_prompt
 import glob
 from utils.config_manager import get_config_manager
+# 导入创意工坊工具模块
+from utils.workshop_utils import (
+    load_workshop_config,
+    save_workshop_config,
+    ensure_workshop_folder_exists,
+    get_workshop_root,
+    get_workshop_path,
+    extract_workshop_root_from_items
+)
 
-# 确定 templates 目录位置（支持 PyInstaller 打包）
-if getattr(sys, 'frozen', False):
-    # 打包后运行：从 _MEIPASS 读取
-    template_dir = sys._MEIPASS
-else:
-    # 正常运行：当前目录
-    template_dir = "./"
+# 确定 templates 目录位置（使用 _get_app_root）
+template_dir = _get_app_root()
 
 templates = Jinja2Templates(directory=template_dir)
 
-# Configure logging
+def initialize_steamworks():
+    try:
+        # 明确读取steam_appid.txt文件以获取应用ID
+        app_id = None
+        app_id_file = os.path.join(_get_app_root(), 'steam_appid.txt')
+        if os.path.exists(app_id_file):
+            with open(app_id_file, 'r') as f:
+                app_id = f.read().strip()
+            print(f"从steam_appid.txt读取到应用ID: {app_id}")
+        
+        # 创建并初始化Steamworks实例
+        from steamworks import STEAMWORKS
+        from steamworks.exceptions import SteamNotLoadedException
+        steamworks = STEAMWORKS()
+        # 显示Steamworks初始化过程的详细日志
+        print("正在初始化Steamworks...")
+        steamworks.initialize()
+        
+        # 初始化后再次获取应用ID以确认
+        actual_app_id = steamworks.app_id
+        print(f"Steamworks初始化完成，实际使用的应用ID: {actual_app_id}")
+        
+        # 检查全局logger是否已初始化，如果已初始化则记录成功信息
+        if 'logger' in globals():
+            logger.info(f"Steamworks初始化成功，应用ID: {actual_app_id}")
+            logger.info(f"Steam客户端运行状态: {steamworks.IsSteamRunning()}")
+            logger.info(f"Steam覆盖层启用状态: {steamworks.IsOverlayEnabled()}")
+        
+        return steamworks
+    except Exception as e:
+        # 检查全局logger是否已初始化，如果已初始化则记录错误，否则使用print
+        error_msg = f"初始化Steamworks失败: {e}"
+        if 'logger' in globals():
+            logger.error(error_msg)
+        else:
+            print(error_msg)
+        return None
+
+def get_default_steam_info():
+    global steamworks
+    # 检查steamworks是否初始化成功
+    if steamworks is None:
+        print("Steamworks not initialized. Skipping Steam functionality.")
+        if 'logger' in globals():
+            logger.info("Steamworks not initialized. Skipping Steam functionality.")
+        return
+    
+    try:
+        my_steam64 = steamworks.Users.GetSteamID()
+        my_steam_level = steamworks.Users.GetPlayerSteamLevel()
+        subscribed_apps = steamworks.Workshop.GetNumSubscribedItems()
+        print(f'Subscribed apps: {subscribed_apps}')
+
+        print(f'Logged on as {my_steam64}, level: {my_steam_level}')
+        print('Is subscribed to current app?', steamworks.Apps.IsSubscribed())
+    except Exception as e:
+        print(f"Error accessing Steamworks API: {e}")
+        if 'logger' in globals():
+            logger.error(f"Error accessing Steamworks API: {e}")
+
+# 初始化Steamworks，但即使失败也继续启动服务
+# 只在主进程中初始化，防止子进程重复初始化
+if _IS_MAIN_PROCESS:
+    steamworks = initialize_steamworks()
+    # 尝试获取Steam信息，如果失败也不会阻止服务启动
+    get_default_steam_info()
+else:
+    steamworks = None
+
+
+# Configure logging (子进程静默初始化，避免重复打印初始化消息)
 from utils.logger_config import setup_logging
 
-logger, log_config = setup_logging(service_name="Main", log_level=logging.INFO)
+logger, log_config = setup_logging(service_name="Main", log_level=logging.INFO, silent=not _IS_MAIN_PROCESS)
 
 _config_manager = get_config_manager()
 
 def cleanup():
     logger.info("Starting cleanup process")
     for k in sync_message_queue:
-        while sync_message_queue[k] and not sync_message_queue[k].empty():
-            sync_message_queue[k].get_nowait()
-        sync_message_queue[k].close()
-        sync_message_queue[k].join_thread()
+        # 清空队列（queue.Queue 没有 close/join_thread 方法）
+        try:
+            while sync_message_queue[k] and not sync_message_queue[k].empty():
+                sync_message_queue[k].get_nowait()
+        except:
+            pass
     logger.info("Cleanup completed")
-atexit.register(cleanup)
+
+# 只在主进程中注册 cleanup 函数，防止子进程退出时执行清理
+if _IS_MAIN_PROCESS:
+    atexit.register(cleanup)
+
 sync_message_queue = {}
 sync_shutdown_event = {}
 session_manager = {}
@@ -95,12 +210,14 @@ async def initialize_character_data():
     
     # 为新增的角色初始化资源
     for k in catgirl_names:
+        is_new_character = False
         if k not in sync_message_queue:
             sync_message_queue[k] = Queue()
-            sync_shutdown_event[k] = Event()
+            sync_shutdown_event[k] = ThreadEvent()
             session_id[k] = None
             sync_process[k] = None
             logger.info(f"为角色 {k} 初始化新资源")
+            is_new_character = True
         
         # 确保该角色有websocket锁
         if k not in websocket_locks:
@@ -115,31 +232,120 @@ async def initialize_character_data():
                 old_websocket = session_manager[k].websocket
                 logger.info(f"保留 {k} 的现有WebSocket连接")
             
-            session_manager[k] = core.LLMSessionManager(
-                sync_message_queue[k],
-                k,
-                lanlan_prompt[k].replace('{LANLAN_NAME}', k).replace('{MASTER_NAME}', master_name)
-            )
+            # 注意：不在这里清理旧session，因为：
+            # 1. 切换当前角色音色时，已在API层面关闭了session
+            # 2. 切换其他角色音色时，已跳过重新加载
+            # 3. 其他场景不应该影响正在使用的session
+            # 如果旧session_manager有活跃session，保留它，只更新配置相关的字段
             
-            # 将websocket锁存储到session manager中，供cleanup()使用
-            session_manager[k].websocket_lock = websocket_locks[k]
+            # 先检查会话状态（在锁内检查避免竞态条件）
+            has_active_session = k in session_manager and session_manager[k].is_active
             
-            # 恢复websocket引用（如果存在）
-            if old_websocket:
-                session_manager[k].websocket = old_websocket
-                logger.info(f"已恢复 {k} 的WebSocket连接")
+            if has_active_session:
+                # 有活跃session，不重新创建session_manager，只更新配置
+                # 这是为了防止重新创建session_manager时破坏正在运行的session
+                try:
+                    old_mgr = session_manager[k]
+                    # 更新prompt
+                    old_mgr.lanlan_prompt = lanlan_prompt[k].replace('{LANLAN_NAME}', k).replace('{MASTER_NAME}', master_name)
+                    # 重新读取角色配置以更新voice_id等字段
+                    (
+                        _,
+                        _,
+                        _,
+                        lanlan_basic_config_updated,
+                        _,
+                        _,
+                        _,
+                        _,
+                        _,
+                        _
+                    ) = _config_manager.get_character_data()
+                    # 更新voice_id（这是切换音色时需要的）
+                    old_mgr.voice_id = lanlan_basic_config_updated[k].get('voice_id', '')
+                    logger.info(f"{k} 有活跃session，只更新配置，不重新创建session_manager")
+                except Exception as e:
+                    logger.error(f"更新 {k} 的活跃session配置失败: {e}", exc_info=True)
+                    # 配置更新失败，但为了不影响正在运行的session，继续使用旧配置
+                    # 如果确实需要更新配置，可以考虑在下次session重启时再应用
+            else:
+                # 没有活跃session，可以安全地重新创建session_manager
+                session_manager[k] = core.LLMSessionManager(
+                    sync_message_queue[k],
+                    k,
+                    lanlan_prompt[k].replace('{LANLAN_NAME}', k).replace('{MASTER_NAME}', master_name)
+                )
+                
+                # 将websocket锁存储到session manager中，供cleanup()使用
+                session_manager[k].websocket_lock = websocket_locks[k]
+                
+                # 恢复websocket引用（如果存在）
+                if old_websocket:
+                    session_manager[k].websocket = old_websocket
+                    logger.info(f"已恢复 {k} 的WebSocket连接")
+        
+        # 检查并启动同步连接器线程
+        # 如果是新角色，或者线程不存在/已停止，需要启动线程
+        if k not in sync_process:
+            sync_process[k] = None
+        
+        need_start_thread = False
+        if is_new_character:
+            # 新角色，需要启动线程
+            need_start_thread = True
+        elif sync_process[k] is None:
+            # 线程为None，需要启动
+            need_start_thread = True
+        elif hasattr(sync_process[k], 'is_alive') and not sync_process[k].is_alive():
+            # 线程已停止，需要重启
+            need_start_thread = True
+            try:
+                sync_process[k].join(timeout=0.1)
+            except:
+                pass
+        
+        if need_start_thread:
+            try:
+                sync_process[k] = Thread(
+                    target=cross_server.sync_connector_process,
+                    args=(sync_message_queue[k], sync_shutdown_event[k], k, f"ws://localhost:{MONITOR_SERVER_PORT}", {'bullet': False, 'monitor': True}),
+                    daemon=True,
+                    name=f"SyncConnector-{k}"
+                )
+                sync_process[k].start()
+                logger.info(f"✅ 已为角色 {k} 启动同步连接器线程 ({sync_process[k].name})")
+                await asyncio.sleep(0.1)  # 线程启动更快，减少等待时间
+                if not sync_process[k].is_alive():
+                    logger.error(f"❌ 同步连接器线程 {k} ({sync_process[k].name}) 启动后立即退出！")
+                else:
+                    logger.info(f"✅ 同步连接器线程 {k} ({sync_process[k].name}) 正在运行")
+            except Exception as e:
+                logger.error(f"❌ 启动角色 {k} 的同步连接器线程失败: {e}", exc_info=True)
     
     # 清理已删除角色的资源
     removed_names = [k for k in session_manager.keys() if k not in catgirl_names]
     for k in removed_names:
         logger.info(f"清理已删除角色 {k} 的资源")
-        # 清理队列
+        
+        # 先停止同步连接器线程（线程只能协作式终止，不能强制kill）
+        if k in sync_process and sync_process[k] is not None:
+            try:
+                logger.info(f"正在停止已删除角色 {k} 的同步连接器线程...")
+                if k in sync_shutdown_event:
+                    sync_shutdown_event[k].set()
+                sync_process[k].join(timeout=3)  # 等待线程正常结束
+                if sync_process[k].is_alive():
+                    logger.warning(f"⚠️ 同步连接器线程 {k} 未能在超时内停止，将作为daemon线程自动清理")
+                else:
+                    logger.info(f"✅ 已停止角色 {k} 的同步连接器线程")
+            except Exception as e:
+                logger.warning(f"停止角色 {k} 的同步连接器线程时出错: {e}")
+        
+        # 清理队列（queue.Queue 没有 close/join_thread 方法）
         if k in sync_message_queue:
             try:
                 while not sync_message_queue[k].empty():
                     sync_message_queue[k].get_nowait()
-                sync_message_queue[k].close()
-                sync_message_queue[k].join_thread()
             except:
                 pass
             del sync_message_queue[k]
@@ -157,12 +363,14 @@ async def initialize_character_data():
     logger.info(f"角色配置加载完成，当前角色: {catgirl_names}，主人: {master_name}")
 
 # 初始化角色数据（使用asyncio.run在模块级别执行async函数）
-import asyncio as _init_asyncio
-try:
-    _init_asyncio.get_event_loop()
-except RuntimeError:
-    _init_asyncio.set_event_loop(_init_asyncio.new_event_loop())
-_init_asyncio.get_event_loop().run_until_complete(initialize_character_data())
+# 只在主进程中执行，防止 Windows 上子进程重复导入时再次启动子进程
+if _IS_MAIN_PROCESS:
+    import asyncio as _init_asyncio
+    try:
+        _init_asyncio.get_event_loop()
+    except RuntimeError:
+        _init_asyncio.set_event_loop(_init_asyncio.new_event_loop())
+    _init_asyncio.get_event_loop().run_until_complete(initialize_character_data())
 lock = asyncio.Lock()
 
 # --- FastAPI App Setup ---
@@ -184,23 +392,24 @@ class CustomStaticFiles(StaticFiles):
             response.headers['Content-Type'] = 'application/javascript'
         return response
 
-# 确定 static 目录位置（支持 PyInstaller 打包）
-if getattr(sys, 'frozen', False):
-    # 打包后运行：从 _MEIPASS 读取（onedir 模式下是 _internal）
-    static_dir = os.path.join(sys._MEIPASS, 'static')
-else:
-    # 正常运行：当前目录
-    static_dir = 'static'
+# 确定 static 目录位置（使用 _get_app_root）
+static_dir = os.path.join(_get_app_root(), 'static')
 
 app.mount("/static", CustomStaticFiles(directory=static_dir), name="static")
 
-# 挂载用户文档下的live2d目录
-_config_manager.ensure_live2d_directory()
-user_live2d_path = str(_config_manager.live2d_dir)
-if os.path.exists(user_live2d_path):
-    app.mount("/user_live2d", CustomStaticFiles(directory=user_live2d_path), name="user_live2d")
-    logger.info(f"已挂载用户Live2D目录: {user_live2d_path}")
+# 挂载用户文档下的live2d目录（只在主进程中执行，子进程不提供HTTP服务）
+if _IS_MAIN_PROCESS:
+    _config_manager.ensure_live2d_directory()
+    user_live2d_path = str(_config_manager.live2d_dir)
+    if os.path.exists(user_live2d_path):
+        app.mount("/user_live2d", CustomStaticFiles(directory=user_live2d_path), name="user_live2d")
+        logger.info(f"已挂载用户Live2D目录: {user_live2d_path}")
 
+    # 挂载用户mod路径
+    user_mod_path = _config_manager.get_workshop_path()
+    if os.path.exists(user_mod_path) and os.path.isdir(user_mod_path):
+        app.mount("/user_mods", CustomStaticFiles(directory=user_mod_path), name="user_mods")
+        logger.info(f"已挂载用户mod路径: {user_mod_path}")
 # 使用 FastAPI 的 app.state 来管理启动配置
 def get_start_config():
     """从 app.state 获取启动配置"""
@@ -251,6 +460,55 @@ async def save_preferences(request: Request):
         return {"success": False, "error": str(e)}
 
 
+@app.get("/api/steam_language")
+async def get_steam_language():
+    """获取 Steam 客户端的语言设置，用于前端 i18n 初始化"""
+    global steamworks
+    
+    # Steam 语言代码到 i18n 语言代码的映射
+    # 参考: https://partner.steamgames.com/doc/store/localization/languages
+    STEAM_TO_I18N_MAP = {
+        'schinese': 'zh-CN',      # 简体中文
+        'tchinese': 'zh-CN',      # 繁体中文（映射到简体中文，因为目前只支持 zh-CN）
+        'english': 'en',          # 英文
+        # 其他语言默认映射到英文
+    }
+    
+    try:
+        if steamworks is None:
+            return {
+                "success": False,
+                "error": "Steamworks 未初始化",
+                "steam_language": None,
+                "i18n_language": None
+            }
+        
+        # 获取 Steam 当前游戏语言
+        steam_language = steamworks.Apps.GetCurrentGameLanguage()
+        # Steam API 可能返回 bytes，需要解码为字符串
+        if isinstance(steam_language, bytes):
+            steam_language = steam_language.decode('utf-8')
+        
+        # 映射到 i18n 语言代码
+        i18n_language = STEAM_TO_I18N_MAP.get(steam_language, 'en')  # 默认英文
+        logger.info(f"[i18n] Steam 语言映射: '{steam_language}' -> '{i18n_language}'")
+        
+        return {
+            "success": True,
+            "steam_language": steam_language,
+            "i18n_language": i18n_language
+        }
+        
+    except Exception as e:
+        logger.error(f"获取 Steam 语言设置失败: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "steam_language": None,
+            "i18n_language": None
+        }
+
+
 @app.get("/api/live2d/models")
 async def get_live2d_models(simple: bool = False):
     """
@@ -259,7 +517,67 @@ async def get_live2d_models(simple: bool = False):
         simple: 如果为True，只返回模型名称列表；如果为False，返回完整的模型信息
     """
     try:
+        # 先获取本地模型
         models = find_models()
+        
+        # 再获取Steam创意工坊模型
+        try:
+            workshop_items_result = await get_subscribed_workshop_items()
+            
+            # 处理响应结果
+            if isinstance(workshop_items_result, dict) and workshop_items_result.get('success', False):
+                items = workshop_items_result.get('items', [])
+                logger.info(f"获取到{len(items)}个订阅的创意工坊物品")
+                
+                # 遍历所有物品，提取已安装的模型
+                for item in items:
+                    # 直接使用get_subscribed_workshop_items返回的installedFolder
+                    installed_folder = item.get('installedFolder')
+                    # 从publishedFileId字段获取物品ID，而不是item_id
+                    item_id = item.get('publishedFileId')
+                    
+                    if installed_folder and os.path.exists(installed_folder) and os.path.isdir(installed_folder) and item_id:
+                        # 检查安装目录下是否有.model3.json文件
+                        for filename in os.listdir(installed_folder):
+                            if filename.endswith('.model3.json'):
+                                model_name = os.path.splitext(os.path.splitext(filename)[0])[0]
+                                
+                                # 避免重复添加
+                                if model_name not in [m['name'] for m in models]:
+                                    # 构建正确的/workshop URL路径，确保没有多余的引号
+                                    path_value = f'/workshop/{item_id}/{filename}'
+                                    logger.debug(f"添加模型路径: {path_value!r}, item_id类型: {type(item_id)}, filename类型: {type(filename)}")
+                                    # 移除可能的额外引号
+                                    path_value = path_value.strip('"')
+                                    models.append({
+                                        'name': model_name,
+                                        'path': path_value,
+                                        'source': 'steam_workshop',
+                                        'item_id': item_id
+                                    })
+                            
+                        # 检查安装目录下的子目录
+                        for subdir in os.listdir(installed_folder):
+                            subdir_path = os.path.join(installed_folder, subdir)
+                            if os.path.isdir(subdir_path):
+                                model_name = subdir
+                                json_file = os.path.join(subdir_path, f'{model_name}.model3.json')
+                                if os.path.exists(json_file):
+                                    # 避免重复添加
+                                    if model_name not in [m['name'] for m in models]:
+                                        # 构建正确的/workshop URL路径，确保没有多余的引号
+                                        path_value = f'/workshop/{item_id}/{model_name}/{model_name}.model3.json'
+                                        logger.debug(f"添加子目录模型路径: {path_value!r}, item_id类型: {type(item_id)}, model_name类型: {type(model_name)}")
+                                        # 移除可能的额外引号
+                                        path_value = path_value.strip('"')
+                                        models.append({
+                                            'name': model_name,
+                                            'path': path_value,
+                                            'source': 'steam_workshop',
+                                            'item_id': item_id
+                                        })
+        except Exception as e:
+            logger.error(f"获取创意工坊模型时出错: {e}")
         
         if simple:
             # 只返回模型名称列表
@@ -274,6 +592,7 @@ async def get_live2d_models(simple: bool = False):
             return {"success": False, "error": str(e)}
         else:
             return []
+
 
 @app.get("/api/models")
 async def get_models_legacy():
@@ -308,14 +627,21 @@ async def get_page_config(lanlan_name: str = ""):
         # 如果提供了 lanlan_name 参数，使用它；否则使用当前角色
         target_name = lanlan_name if lanlan_name else her_name
         
-        # 获取 live2d 字段
+        # 获取 live2d 和 live2d_item_id 字段
         live2d = lanlan_basic_config.get(target_name, {}).get('live2d', 'mao_pro')
+        live2d_item_id = lanlan_basic_config.get(target_name, {}).get('live2d_item_id', '')
         
-        # 查找所有模型
-        models = find_models()
+        logger.debug(f"获取页面配置 - 角色: {target_name}, 模型: {live2d}, item_id: {live2d_item_id}")
         
-        # 根据 live2d 字段查找对应的 model path
-        model_path = next((m["path"] for m in models if m["name"] == live2d), find_model_config_file(live2d))
+        # 使用 get_current_live2d_model 函数获取正确的模型信息
+        # 第一个参数是角色名称，第二个参数是item_id
+        model_response = await get_current_live2d_model(target_name, live2d_item_id)
+        # 提取JSONResponse中的内容
+        model_data = model_response.body.decode('utf-8')
+        import json
+        model_json = json.loads(model_data)
+        model_info = model_json.get('model_info', {})
+        model_path = model_info.get('path', '')
         
         return {
             "success": True,
@@ -559,16 +885,42 @@ async def update_core_config(request: Request):
 @app.on_event("startup")
 async def startup_event():
     global sync_process
-    logger.info("Starting sync connector processes")
-    # 启动同步连接器进程
-    for k in sync_process:
-        if sync_process[k] is None:
-            sync_process[k] = Process(
-                target=cross_server.sync_connector_process,
-                args=(sync_message_queue[k], sync_shutdown_event[k], k, f"ws://localhost:{MONITOR_SERVER_PORT}", {'bullet': False, 'monitor': True})
-            )
-            sync_process[k].start()
-            logger.info(f"同步连接器进程已启动 (PID: {sync_process[k].pid})")
+    logger.info("Starting main server...")
+    
+    # ========== 初始化创意工坊目录 ==========
+    # 依赖方向: main_server → utils → config (单向)
+    # main 层只负责调用 utils，不维护任何 workshop 状态
+    # 路径由 utils 层管理并持久化到 config 层
+    await _init_and_mount_workshop()
+    
+    # ========== 启动同步连接器线程 ==========
+    logger.info("Starting sync connector threads")
+    # 启动同步连接器线程（确保所有角色都有线程）
+    for k in list(sync_message_queue.keys()):
+        if k not in sync_process or sync_process[k] is None or (hasattr(sync_process.get(k), 'is_alive') and not sync_process[k].is_alive()):
+            if k in sync_process and sync_process[k] is not None:
+                # 清理已停止的线程
+                try:
+                    sync_process[k].join(timeout=0.1)
+                except:
+                    pass
+            try:
+                sync_process[k] = Thread(
+                    target=cross_server.sync_connector_process,
+                    args=(sync_message_queue[k], sync_shutdown_event[k], k, f"ws://localhost:{MONITOR_SERVER_PORT}", {'bullet': False, 'monitor': True}),
+                    daemon=True,
+                    name=f"SyncConnector-{k}"
+                )
+                sync_process[k].start()
+                logger.info(f"✅ 同步连接器线程已启动 ({sync_process[k].name}) for {k}")
+                # 检查线程是否成功启动
+                await asyncio.sleep(0.1)  # 线程启动更快
+                if not sync_process[k].is_alive():
+                    logger.error(f"❌ 同步连接器线程 {k} ({sync_process[k].name}) 启动后立即退出！")
+                else:
+                    logger.info(f"✅ 同步连接器线程 {k} ({sync_process[k].name}) 正在运行")
+            except Exception as e:
+                logger.error(f"❌ 启动角色 {k} 的同步连接器线程失败: {e}", exc_info=True)
     
     # 如果启用了浏览器模式，在服务器启动完成后打开浏览器
     current_config = get_start_config()
@@ -597,26 +949,26 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """应用关闭时执行"""
-    logger.info("Shutting down sync connector processes")
-    # 关闭同步服务器连接
+    logger.info("Shutting down sync connector threads")
+    # 关闭同步服务器连接（线程只能协作式终止）
     for k in sync_process:
         if sync_process[k] is not None:
             sync_shutdown_event[k].set()
-            sync_process[k].join(timeout=3)  # 等待进程正常结束
+            sync_process[k].join(timeout=3)  # 等待线程正常结束
             if sync_process[k].is_alive():
-                sync_process[k].terminate()  # 如果超时，强制终止
-    logger.info("同步连接器进程已停止")
+                logger.warning(f"⚠️ 同步连接器线程 {k} 未能在超时内停止，将作为daemon线程随主进程退出")
+    logger.info("同步连接器线程已停止")
     
     # 向memory_server发送关闭信号
     try:
-        import requests
         from config import MEMORY_SERVER_PORT
         shutdown_url = f"http://localhost:{MEMORY_SERVER_PORT}/shutdown"
-        response = requests.post(shutdown_url, timeout=2)
-        if response.status_code == 200:
-            logger.info("已向memory_server发送关闭信号")
-        else:
-            logger.warning(f"向memory_server发送关闭信号失败，状态码: {response.status_code}")
+        async with httpx.AsyncClient(timeout=2) as client:
+            response = await client.post(shutdown_url)
+            if response.status_code == 200:
+                logger.info("已向memory_server发送关闭信号")
+            else:
+                logger.warning(f"向memory_server发送关闭信号失败，状态码: {response.status_code}")
     except Exception as e:
         logger.warning(f"向memory_server发送关闭信号时出错: {e}")
 
@@ -624,6 +976,30 @@ async def shutdown_event():
 @app.websocket("/ws/{lanlan_name}")
 async def websocket_endpoint(websocket: WebSocket, lanlan_name: str):
     await websocket.accept()
+    
+    # 检查角色是否存在，如果不存在则通知前端并关闭连接
+    if lanlan_name not in session_manager:
+        logger.warning(f"❌ 角色 {lanlan_name} 不存在，当前可用角色: {list(session_manager.keys())}")
+        # 获取当前正确的角色名
+        current_catgirl = None
+        if session_manager:
+            current_catgirl = list(session_manager.keys())[0]
+        # 通知前端切换到正确的角色
+        if current_catgirl:
+            try:
+                await websocket.send_text(json.dumps({
+                    "type": "catgirl_switched",
+                    "new_catgirl": current_catgirl,
+                    "old_catgirl": lanlan_name
+                }))
+                logger.info(f"已通知前端切换到正确的角色: {current_catgirl}")
+                # 等待一下让客户端有时间处理消息，避免 onclose 在 onmessage 之前触发
+                await asyncio.sleep(0.5)
+            except Exception as e:
+                logger.warning(f"通知前端失败: {e}")
+        await websocket.close()
+        return
+    
     this_session_id = uuid.uuid4()
     async with lock:
         global session_id
@@ -632,15 +1008,17 @@ async def websocket_endpoint(websocket: WebSocket, lanlan_name: str):
     
     # 立即设置websocket到session manager，以支持主动搭话
     # 注意：这里设置后，即使cleanup()被调用，websocket也会在start_session时重新设置
-    if lanlan_name in session_manager:
-        session_manager[lanlan_name].websocket = websocket
-        logger.info(f"✅ 已设置 {lanlan_name} 的WebSocket连接")
-    else:
-        logger.error(f"❌ 错误：{lanlan_name} 不在session_manager中！当前session_manager: {list(session_manager.keys())}")
+    session_manager[lanlan_name].websocket = websocket
+    logger.info(f"✅ 已设置 {lanlan_name} 的WebSocket连接")
 
     try:
         while True:
             data = await websocket.receive_text()
+            # 安全检查：如果角色已被重命名或删除，lanlan_name 可能不再存在
+            if lanlan_name not in session_id or lanlan_name not in session_manager:
+                logger.info(f"角色 {lanlan_name} 已被重命名或删除，关闭旧连接")
+                await websocket.close()
+                break
             if session_id[lanlan_name] != this_session_id:
                 await session_manager[lanlan_name].send_status(f"切换至另一个终端...")
                 await websocket.close()
@@ -685,16 +1063,19 @@ async def websocket_endpoint(websocket: WebSocket, lanlan_name: str):
         error_message = f"WebSocket handler error: {e}"
         logger.error(f"💥 {error_message}")
         try:
-            await session_manager[lanlan_name].send_status(f"Server error: {e}")
+            if lanlan_name in session_manager:
+                await session_manager[lanlan_name].send_status(f"Server error: {e}")
         except:
             pass
     finally:
         logger.info(f"Cleaning up WebSocket resources: {websocket.client}")
-        await session_manager[lanlan_name].cleanup()
-        # 注意：cleanup() 会清空 websocket，但只在连接真正断开时调用
-        # 如果连接还在，websocket应该保持设置
-        if session_manager[lanlan_name].websocket == websocket:
-            session_manager[lanlan_name].websocket = None
+        # 安全检查：如果角色已被重命名或删除，lanlan_name 可能不再存在
+        if lanlan_name in session_manager:
+            await session_manager[lanlan_name].cleanup()
+            # 注意：cleanup() 会清空 websocket，但只在连接真正断开时调用
+            # 如果连接还在，websocket应该保持设置
+            if session_manager[lanlan_name].websocket == websocket:
+                session_manager[lanlan_name].websocket = None
 
 @app.post('/api/notify_task_result')
 async def notify_task_result(request: Request):
@@ -789,6 +1170,7 @@ async def proactive_chat(request: Request):
             # 直接使用langchain ChatOpenAI发送请求
             from langchain_openai import ChatOpenAI
             from langchain_core.messages import SystemMessage
+            from openai import APIConnectionError, InternalServerError, RateLimitError
             
             llm = ChatOpenAI(
                 model=core_config['CORRECTION_MODEL'],
@@ -798,13 +1180,38 @@ async def proactive_chat(request: Request):
                 streaming=False  # 不需要流式，直接获取完整响应
             )
             
-            # 发送请求获取AI决策
+            # 发送请求获取AI决策 - Retry策略：重试2次，间隔1秒、2秒
             print(system_prompt)
-            response = await asyncio.wait_for(
-                llm.ainvoke([SystemMessage(content=system_prompt)]),
-                timeout=10.0
-            )
-            response_text = response.content.strip()
+            max_retries = 3
+            retry_delays = [1, 2]
+            response_text = ""
+            
+            for attempt in range(max_retries):
+                try:
+                    response = await asyncio.wait_for(
+                        llm.ainvoke([SystemMessage(content=system_prompt)]),
+                        timeout=10.0
+                    )
+                    response_text = response.content.strip()
+                    break  # 成功则退出重试循环
+                except (APIConnectionError, InternalServerError, RateLimitError) as e:
+                    if attempt < max_retries - 1:
+                        wait_time = retry_delays[attempt]
+                        logger.warning(f"[{lanlan_name}] 主动搭话LLM调用失败 (尝试 {attempt + 1}/{max_retries})，{wait_time}秒后重试: {e}")
+                        # 向前端发送状态提示
+                        if mgr.websocket:
+                            try:
+                                await mgr.send_status(f"正在重试中...（第{attempt + 1}次）")
+                            except:
+                                pass
+                        await asyncio.sleep(wait_time)
+                    else:
+                        logger.error(f"[{lanlan_name}] 主动搭话LLM调用失败，已达到最大重试次数: {e}")
+                        return JSONResponse({
+                            "success": False,
+                            "error": f"AI调用失败，已重试{max_retries}次",
+                            "detail": str(e)
+                        }, status_code=503)
             
             logger.info(f"[{lanlan_name}] AI决策结果: {response_text[:100]}...")
             
@@ -920,8 +1327,13 @@ async def get_l2d_manager(request: Request):
     })
 
 @app.get('/api/characters/current_live2d_model')
-async def get_current_live2d_model(catgirl_name: str = ""):
-    """获取指定角色或当前角色的Live2D模型信息"""
+async def get_current_live2d_model(catgirl_name: str = "", item_id: str = ""):
+    """获取指定角色或当前角色的Live2D模型信息
+    
+    Args:
+        catgirl_name: 角色名称
+        item_id: 可选的物品ID，用于直接指定模型
+    """
     try:
         characters = _config_manager.load_characters()
         
@@ -933,26 +1345,84 @@ async def get_current_live2d_model(catgirl_name: str = ""):
         live2d_model_name = None
         model_info = None
         
-        # 在猫娘列表中查找
-        if '猫娘' in characters and catgirl_name in characters['猫娘']:
-            catgirl_data = characters['猫娘'][catgirl_name]
-            live2d_model_name = catgirl_data.get('live2d')
+        # 首先尝试通过item_id查找模型
+        if item_id:
+            try:
+                logger.debug(f"尝试通过item_id {item_id} 查找模型")
+                # 获取所有模型
+                all_models = find_models()
+                # 查找匹配item_id的模型
+                matching_model = next((m for m in all_models if m.get('item_id') == item_id), None)
+                
+                if matching_model:
+                    logger.debug(f"通过item_id找到模型: {matching_model['name']}")
+                    # 复制模型信息
+                    model_info = matching_model.copy()
+                    live2d_model_name = model_info['name']
+            except Exception as e:
+                logger.warning(f"通过item_id查找模型失败: {e}")
+        
+        # 如果没有通过item_id找到模型，再通过角色名称查找
+        if not model_info and catgirl_name:
+            # 在猫娘列表中查找
+            if '猫娘' in characters and catgirl_name in characters['猫娘']:
+                catgirl_data = characters['猫娘'][catgirl_name]
+                live2d_model_name = catgirl_data.get('live2d')
+                
+                # 检查是否有保存的item_id
+                saved_item_id = catgirl_data.get('live2d_item_id')
+                if saved_item_id:
+                    logger.debug(f"发现角色 {catgirl_name} 保存的item_id: {saved_item_id}")
+                    try:
+                        # 尝试通过保存的item_id查找模型
+                        all_models = find_models()
+                        matching_model = next((m for m in all_models if m.get('item_id') == saved_item_id), None)
+                        if matching_model:
+                            logger.debug(f"通过保存的item_id找到模型: {matching_model['name']}")
+                            model_info = matching_model.copy()
+                            live2d_model_name = model_info['name']
+                    except Exception as e:
+                        logger.warning(f"通过保存的item_id查找模型失败: {e}")
         
         # 如果找到了模型名称，获取模型信息
         if live2d_model_name:
             try:
-                # 使用 find_model_directory 查找模型目录（支持 static 和用户文档目录）
-                model_dir, url_prefix = find_model_directory(live2d_model_name)
-                if os.path.exists(model_dir):
-                    # 查找模型配置文件
-                    model_files = [f for f in os.listdir(model_dir) if f.endswith('.model3.json')]
-                    if model_files:
-                        model_file = model_files[0]
-                        model_path = f'{url_prefix}/{live2d_model_name}/{model_file}'
-                        model_info = {
-                            'name': live2d_model_name,
-                            'path': model_path
-                        }
+                # 先从完整的模型列表中查找，这样可以获取到item_id等完整信息
+                all_models = find_models()
+                # 查找匹配的模型
+                matching_model = next((m for m in all_models if m['name'] == live2d_model_name), None)
+                
+                if matching_model:
+                    # 使用完整的模型信息，包含item_id
+                    model_info = matching_model.copy()
+                    logger.debug(f"从完整模型列表获取模型信息: {model_info}")
+                else:
+                    # 如果在完整列表中找不到，回退到原来的逻辑
+                    model_dir, url_prefix = find_model_directory(live2d_model_name)
+                    if os.path.exists(model_dir):
+                        # 查找模型配置文件
+                        model_files = [f for f in os.listdir(model_dir) if f.endswith('.model3.json')]
+                        if model_files:
+                            model_file = model_files[0]
+                            
+                            # 使用保存的item_id构建model_path
+                            # 从之前的逻辑中获取saved_item_id
+                            saved_item_id = catgirl_data.get('live2d_item_id', '') if 'catgirl_data' in locals() else ''
+                            
+                            # 如果有保存的item_id，使用它构建路径
+                            if saved_item_id:
+                                model_path = f'{url_prefix}/{saved_item_id}/{model_file}'
+                                logger.debug(f"使用保存的item_id构建模型路径: {model_path}")
+                            else:
+                                # 原始路径构建逻辑
+                                model_path = f'{url_prefix}/{live2d_model_name}/{model_file}'
+                                logger.debug(f"使用模型名称构建路径: {model_path}")
+                            
+                            model_info = {
+                                'name': live2d_model_name,
+                                'item_id': saved_item_id,
+                                'path': model_path
+                            }
             except Exception as e:
                 logger.warning(f"获取模型信息失败: {e}")
         
@@ -961,18 +1431,26 @@ async def get_current_live2d_model(catgirl_name: str = ""):
             logger.info(f"猫娘 {catgirl_name} 未设置Live2D模型，回退到默认模型 mao_pro")
             live2d_model_name = 'mao_pro'
             try:
-                # 查找mao_pro模型
-                model_dir, url_prefix = find_model_directory('mao_pro')
-                if os.path.exists(model_dir):
-                    model_files = [f for f in os.listdir(model_dir) if f.endswith('.model3.json')]
-                    if model_files:
-                        model_file = model_files[0]
-                        model_path = f'{url_prefix}/mao_pro/{model_file}'
-                        model_info = {
-                            'name': 'mao_pro',
-                            'path': model_path,
-                            'is_fallback': True  # 标记这是回退模型
-                        }
+                # 先从完整的模型列表中查找mao_pro
+                all_models = find_models()
+                matching_model = next((m for m in all_models if m['name'] == 'mao_pro'), None)
+                
+                if matching_model:
+                    model_info = matching_model.copy()
+                    model_info['is_fallback'] = True
+                else:
+                    # 如果找不到，回退到原来的逻辑
+                    model_dir, url_prefix = find_model_directory('mao_pro')
+                    if os.path.exists(model_dir):
+                        model_files = [f for f in os.listdir(model_dir) if f.endswith('.model3.json')]
+                        if model_files:
+                            model_file = model_files[0]
+                            model_path = f'{url_prefix}/mao_pro/{model_file}'
+                            model_info = {
+                                'name': 'mao_pro',
+                                'path': model_path,
+                                'is_fallback': True  # 标记这是回退模型
+                            }
             except Exception as e:
                 logger.error(f"获取默认模型mao_pro失败: {e}")
         
@@ -1010,6 +1488,649 @@ async def api_key_settings(request: Request):
 async def get_characters():
     return JSONResponse(content=_config_manager.load_characters())
 
+@app.get('/steam_workshop_manager', response_class=HTMLResponse)
+async def steam_workshop_manager_page(request: Request, lanlan_name: str = ""):
+    return templates.TemplateResponse("templates/steam_workshop_manager.html", {"request": request, "lanlan_name": lanlan_name})
+
+@app.get('/api/steam/workshop/subscribed-items')
+async def get_subscribed_workshop_items():
+    """
+    获取用户订阅的Steam创意工坊物品列表
+    返回包含物品ID、基本信息和状态的JSON数据
+    """
+    global steamworks
+    
+    # 检查Steamworks是否初始化成功
+    if steamworks is None:
+        return JSONResponse({
+            "success": False,
+            "error": "Steamworks未初始化",
+            "message": "请确保Steam客户端已运行且已登录"
+        }, status_code=503)
+    
+    try:
+        # 获取订阅物品数量
+        num_subscribed_items = steamworks.Workshop.GetNumSubscribedItems()
+        logger.info(f"获取到 {num_subscribed_items} 个订阅的创意工坊物品")
+        
+        # 如果没有订阅物品，返回空列表
+        if num_subscribed_items == 0:
+            return {
+                "success": True,
+                "items": [],
+                "total": 0
+            }
+        
+        # 获取订阅物品ID列表
+        subscribed_items = steamworks.Workshop.GetSubscribedItems()
+        logger.info(f'获取到 {len(subscribed_items)} 个订阅的创意工坊物品')
+        
+        # 存储处理后的物品信息
+        items_info = []
+        
+        # 为每个物品获取基本信息和状态
+        for item_id in subscribed_items:
+            try:
+                # 确保item_id是整数类型
+                if isinstance(item_id, str):
+                    try:
+                        item_id = int(item_id)
+                    except ValueError:
+                        logger.error(f"无效的物品ID: {item_id}")
+                        continue
+                
+                logger.info(f'正在处理物品ID: {item_id}')
+                
+                # 获取物品状态
+                item_state = steamworks.Workshop.GetItemState(item_id)
+                logger.debug(f'物品 {item_id} 状态: {item_state}')
+                
+                # 初始化基本物品信息（确保所有字段都有默认值）
+                # 确保publishedFileId始终为字符串类型，避免前端toString()错误
+                item_info = {
+                    "publishedFileId": str(item_id),
+                    "title": f"未知物品_{item_id}",
+                    "description": "无法获取详细描述",
+                    "tags": [],
+                    "state": {
+                        "subscribed": bool(item_state & 1),  # EItemState.SUBSCRIBED
+                        "legacyItem": bool(item_state & 2),
+                        "installed": False,
+                        "needsUpdate": bool(item_state & 8),  # EItemState.NEEDS_UPDATE
+                        "downloading": False,
+                        "downloadPending": bool(item_state & 32),  # EItemState.DOWNLOAD_PENDING
+                        "isWorkshopItem": bool(item_state & 128)  # EItemState.IS_WORKSHOP_ITEM
+                    },
+                    "installedFolder": None,
+                    "fileSizeOnDisk": 0,
+                    "downloadProgress": {
+                        "bytesDownloaded": 0,
+                        "bytesTotal": 0,
+                        "percentage": 0
+                    },
+                    # 添加额外的时间戳信息 - 使用datetime替代time模块避免命名冲突
+                    "timeAdded": int(datetime.now().timestamp()),
+                    "timeUpdated": int(datetime.now().timestamp())
+                }
+                
+                # 尝试获取物品安装信息（如果已安装）
+                try:
+                    logger.debug(f'获取物品 {item_id} 的安装信息')
+                    result = steamworks.Workshop.GetItemInstallInfo(item_id)
+                    
+                    # 检查返回值的结构 - 支持字典格式（根据日志显示）
+                    if isinstance(result, dict):
+                        logger.debug(f'物品 {item_id} 安装信息字典: {result}')
+                        
+                        # 从字典中提取信息
+                        item_info["state"]["installed"] = True  # 如果返回字典，假设已安装
+                        # 获取安装路径 - workshop.py中已经将folder解码为字符串
+                        folder_path = result.get('folder', '')
+                        item_info["installedFolder"] = str(folder_path) if folder_path else None
+                        logger.debug(f'物品 {item_id} 的安装路径: {item_info["installedFolder"]}')
+                        
+                        # 处理磁盘大小 - GetItemInstallInfo返回的disk_size是普通整数
+                        disk_size = result.get('disk_size', 0)
+                        item_info["fileSizeOnDisk"] = int(disk_size) if isinstance(disk_size, (int, float)) else 0
+                    # 也支持元组格式作为备选
+                    elif isinstance(result, tuple) and len(result) >= 3:
+                        installed, folder, size = result
+                        logger.debug(f'物品 {item_id} 安装状态: 已安装={installed}, 路径={folder}, 大小={size}')
+                        
+                        # 安全的类型转换
+                        item_info["state"]["installed"] = bool(installed)
+                        item_info["installedFolder"] = str(folder) if folder and isinstance(folder, (str, bytes)) else None
+                        
+                        # 处理大小值
+                        if isinstance(size, (int, float)):
+                            item_info["fileSizeOnDisk"] = int(size)
+                        else:
+                            item_info["fileSizeOnDisk"] = 0
+                    else:
+                        logger.warning(f'物品 {item_id} 的安装信息返回格式未知: {type(result)} - {result}')
+                        item_info["state"]["installed"] = False
+                except Exception as e:
+                    logger.warning(f'获取物品 {item_id} 安装信息失败: {e}')
+                    item_info["state"]["installed"] = False
+                
+                # 尝试获取物品下载信息（如果正在下载）
+                try:
+                    logger.debug(f'获取物品 {item_id} 的下载信息')
+                    result = steamworks.Workshop.GetItemDownloadInfo(item_id)
+                    
+                    # 检查返回值的结构 - 支持字典格式（与安装信息保持一致）
+                    if isinstance(result, dict):
+                        logger.debug(f'物品 {item_id} 下载信息字典: {result}')
+                        
+                        # 使用正确的键名获取下载信息
+                        downloaded = result.get('downloaded', 0)
+                        total = result.get('total', 0)
+                        progress = result.get('progress', 0.0)
+                        
+                        # 根据total和downloaded确定是否正在下载
+                        item_info["state"]["downloading"] = total > 0 and downloaded < total
+                        
+                        # 设置下载进度信息
+                        if downloaded > 0 or total > 0:
+                            item_info["downloadProgress"] = {
+                                "bytesDownloaded": int(downloaded),
+                                "bytesTotal": int(total),
+                                "percentage": progress * 100 if isinstance(progress, (int, float)) else 0
+                            }
+                    # 也支持元组格式作为备选
+                    elif isinstance(result, tuple) and len(result) >= 3:
+                        # 元组中应该包含下载状态、已下载字节数和总字节数
+                        downloaded, total, progress = result if len(result) >= 3 else (0, 0, 0.0)
+                        logger.debug(f'物品 {item_id} 下载状态: 已下载={downloaded}, 总计={total}, 进度={progress}')
+                        
+                        # 根据total和downloaded确定是否正在下载
+                        item_info["state"]["downloading"] = total > 0 and downloaded < total
+                        
+                        # 设置下载进度信息
+                        if downloaded > 0 or total > 0:
+                            # 处理可能的类型转换
+                            try:
+                                downloaded_value = int(downloaded.value) if hasattr(downloaded, 'value') else int(downloaded)
+                                total_value = int(total.value) if hasattr(total, 'value') else int(total)
+                                progress_value = float(progress.value) if hasattr(progress, 'value') else float(progress)
+                            except:
+                                downloaded_value, total_value, progress_value = 0, 0, 0.0
+                                
+                            item_info["downloadProgress"] = {
+                                "bytesDownloaded": downloaded_value,
+                                "bytesTotal": total_value,
+                                "percentage": progress_value * 100
+                            }
+                    else:
+                        logger.warning(f'物品 {item_id} 的下载信息返回格式未知: {type(result)} - {result}')
+                        item_info["state"]["downloading"] = False
+                except Exception as e:
+                    logger.warning(f'获取物品 {item_id} 下载信息失败: {e}')
+                    item_info["state"]["downloading"] = False
+                
+                # 尝试获取物品详细信息（标题、描述等）- 使用官方推荐的方式
+                try:
+                    # 使用官方推荐的CreateQueryUGCDetailsRequest和SendQueryUGCRequest方法
+                    logger.debug(f'使用官方推荐方法获取物品 {item_id} 的详细信息')
+                    
+                    # 创建UGC详情查询请求
+                    query_handle = steamworks.Workshop.CreateQueryUGCDetailsRequest([item_id])
+                    
+                    if query_handle:
+                        # 设置回调函数
+                        details_received = False
+                        
+                        def query_completed_callback(result):
+                            nonlocal details_received
+                            details_received = True
+                            # 回调结果会在主线程中通过GetQueryUGCResult获取
+                            pass
+                        
+                        # 设置回调
+                        steamworks.Workshop.SetQueryUGCRequestCallback(query_completed_callback)
+                        
+                        # 发送查询请求
+                        steamworks.Workshop.SendQueryUGCRequest(query_handle)
+                        
+                        # 等待查询完成（简单的轮询方式）
+                        import time
+                        timeout = 2  # 2秒超时
+                        start_time = time.time()
+                        
+                        # 由于这是异步回调，我们简单地等待一小段时间让查询有机会完成
+                        time.sleep(0.5)  # 等待0.5秒
+                        
+                        try:
+                            # 尝试获取查询结果
+                            result = steamworks.Workshop.GetQueryUGCResult(query_handle, 0)
+                            if result:
+                                # 从结果中提取信息
+                                if hasattr(result, 'title') and result.title:
+                                    item_info['title'] = result.title.decode('utf-8', errors='replace')
+                                if hasattr(result, 'description') and result.description:
+                                    item_info['description'] = result.description.decode('utf-8', errors='replace')
+                                # 获取创建和更新时间
+                                if hasattr(result, 'timeCreated'):
+                                    item_info['timeAdded'] = int(result.timeCreated)
+                                if hasattr(result, 'timeUpdated'):
+                                    item_info['timeUpdated'] = int(result.timeUpdated)
+                                # 获取作者信息
+                                if hasattr(result, 'steamIDOwner'):
+                                    item_info['steamIDOwner'] = str(result.steamIDOwner)
+                                # 获取文件大小信息
+                                if hasattr(result, 'fileSize'):
+                                    item_info['fileSizeOnDisk'] = int(result.fileSize)
+                                
+                                logger.info(f"成功获取物品 {item_id} 的详情信息")
+                        except Exception as query_error:
+                            logger.warning(f"获取查询结果时出错: {query_error}")
+                except Exception as api_error:
+                    logger.warning(f"使用官方API获取物品 {item_id} 详情时出错: {api_error}")
+                
+                # 作为备选方案，如果本地有安装路径，尝试从本地文件获取信息
+                if item_info['title'].startswith('未知物品_') or not item_info['description']:
+                    install_folder = item_info.get('installedFolder')
+                    if install_folder and os.path.exists(install_folder):
+                        logger.debug(f'尝试从安装文件夹获取物品信息: {install_folder}')
+                        # 查找可能的配置文件来获取更多信息
+                        config_files = [
+                            os.path.join(install_folder, "config.json"),
+                            os.path.join(install_folder, "package.json"),
+                            os.path.join(install_folder, "info.json"),
+                            os.path.join(install_folder, "manifest.json"),
+                            os.path.join(install_folder, "README.md"),
+                            os.path.join(install_folder, "README.txt")
+                        ]
+                        
+                        for config_path in config_files:
+                            if os.path.exists(config_path):
+                                try:
+                                    with open(config_path, 'r', encoding='utf-8') as f:
+                                        if config_path.endswith('.json'):
+                                            config_data = json.load(f)
+                                            # 尝试从配置文件中提取标题和描述
+                                            if "title" in config_data and config_data["title"]:
+                                                item_info["title"] = config_data["title"]
+                                            elif "name" in config_data and config_data["name"]:
+                                                item_info["title"] = config_data["name"]
+                                            
+                                            if "description" in config_data and config_data["description"]:
+                                                item_info["description"] = config_data["description"]
+                                        else:
+                                            # 对于文本文件，将第一行作为标题
+                                            first_line = f.readline().strip()
+                                            if first_line and item_info['title'].startswith('未知物品_'):
+                                                item_info['title'] = first_line[:100]  # 限制长度
+                                    logger.info(f"从本地文件 {os.path.basename(config_path)} 成功获取物品 {item_id} 的信息")
+                                    break
+                                except Exception as file_error:
+                                    logger.warning(f"读取配置文件 {config_path} 时出错: {file_error}")
+                # 移除了没有对应try块的except语句
+                
+                # 确保publishedFileId是字符串类型
+                item_info['publishedFileId'] = str(item_info['publishedFileId'])
+                
+                # 尝试获取预览图信息 - 优先从本地文件夹查找
+                preview_url = None
+                install_folder = item_info.get('installedFolder')
+                if install_folder and os.path.exists(install_folder):
+                    try:
+                        # 使用辅助函数查找预览图
+                        preview_image_path = find_preview_image_in_folder(install_folder)
+                        if preview_image_path:
+                            # 为前端提供代理访问的路径格式
+                            # 需要将路径标准化，确保可以通过proxy-image API访问
+                            if os.name == 'nt':
+                                # Windows路径处理
+                                proxy_path = preview_image_path.replace('\\', '/')
+                            else:
+                                proxy_path = preview_image_path
+                            preview_url = f"/api/proxy-image?image_path={quote(proxy_path)}"
+                            logger.debug(f'为物品 {item_id} 找到本地预览图: {preview_url}')
+                    except Exception as preview_error:
+                        logger.warning(f'查找物品 {item_id} 预览图时出错: {preview_error}')
+                
+                # 添加预览图URL到物品信息
+                if preview_url:
+                    item_info['previewUrl'] = preview_url
+                
+                # 添加物品信息到结果列表
+                items_info.append(item_info)
+                logger.debug(f'物品 {item_id} 信息已添加到结果列表: {item_info["title"]}')
+                
+            except Exception as item_error:
+                logger.error(f"获取物品 {item_id} 信息时出错: {item_error}")
+                # 即使出错，也添加一个最基本的物品信息到列表中
+                try:
+                    basic_item_info = {
+                        "publishedFileId": str(item_id),  # 确保是字符串类型
+                        "title": f"未知物品_{item_id}",
+                        "description": "无法获取详细信息",
+                        "state": {
+                            "subscribed": True,
+                            "installed": False,
+                            "downloading": False,
+                            "needsUpdate": False,
+                            "error": True
+                        },
+                        "error_message": str(item_error)
+                    }
+                    items_info.append(basic_item_info)
+                    logger.info(f'已添加物品 {item_id} 的基本信息到结果列表')
+                except Exception as basic_error:
+                    logger.error(f"添加基本物品信息也失败了: {basic_error}")
+                # 继续处理下一个物品
+                continue
+        
+        return {
+            "success": True,
+            "items": items_info,
+            "total": len(items_info)
+        }
+        
+    except Exception as e:
+        logger.error(f"获取订阅物品列表时出错: {e}")
+        return JSONResponse({
+            "success": False,
+            "error": f"获取订阅物品失败: {str(e)}"
+        }, status_code=500)
+
+async def _init_and_mount_workshop():
+    """
+    初始化并挂载创意工坊目录
+    
+    设计原则：
+    - main 层只负责调用，不维护状态
+    - 路径由 utils 层计算并持久化到 config 层
+    - 其他代码需要路径时调用 get_workshop_path() 获取
+    """
+    try:
+        # 1. 获取订阅的创意工坊物品列表
+        workshop_items_result = await get_subscribed_workshop_items()
+        
+        # 2. 提取物品列表传给 utils 层
+        subscribed_items = []
+        if isinstance(workshop_items_result, dict) and workshop_items_result.get('success', False):
+            subscribed_items = workshop_items_result.get('items', [])
+        
+        # 3. 调用 utils 层函数获取/计算路径（路径会被持久化到 config）
+        workshop_path = get_workshop_root(subscribed_items)
+        
+        # 4. 挂载静态文件目录
+        if workshop_path and os.path.exists(workshop_path) and os.path.isdir(workshop_path):
+            try:
+                app.mount("/workshop", StaticFiles(directory=workshop_path), name="workshop")
+                logger.info(f"✅ 成功挂载创意工坊目录: {workshop_path}")
+            except Exception as e:
+                logger.error(f"挂载创意工坊目录失败: {e}")
+        else:
+            logger.warning(f"创意工坊目录不存在或不是有效的目录: {workshop_path}，跳过挂载")
+    except Exception as e:
+        logger.error(f"初始化创意工坊目录时出错: {e}")
+        # 降级：确保至少有一个默认路径可用
+        workshop_path = get_workshop_path()
+        logger.info(f"使用配置中的默认路径: {workshop_path}")
+        if workshop_path and os.path.exists(workshop_path) and os.path.isdir(workshop_path):
+            try:
+                app.mount("/workshop", StaticFiles(directory=workshop_path), name="workshop")
+                logger.info(f"✅ 降级模式下成功挂载创意工坊目录: {workshop_path}")
+            except Exception as mount_err:
+                logger.error(f"降级模式挂载创意工坊目录仍然失败: {mount_err}")
+                
+@app.get('/api/steam/workshop/item/{item_id}/path')
+async def get_workshop_item_path(item_id: str):
+    """
+    获取单个Steam创意工坊物品的下载路径
+    此API端点专门用于在管理页面中获取物品的安装路径
+    """
+    global steamworks
+    
+    # 检查Steamworks是否初始化成功
+    if steamworks is None:
+        return JSONResponse({
+            "success": False,
+            "error": "Steamworks未初始化",
+            "message": "请确保Steam客户端已运行且已登录"
+        }, status_code=503)
+    
+    try:
+        # 转换item_id为整数
+        item_id_int = int(item_id)
+        
+        # 获取物品安装信息
+        install_info = steamworks.Workshop.GetItemInstallInfo(item_id_int)
+        
+        if not install_info:
+            return JSONResponse({
+                "success": False,
+                "error": "物品未安装",
+                "message": f"物品 {item_id} 尚未安装或安装信息不可用"
+            }, status_code=404)
+        
+        # 提取安装路径
+        folder_path = install_info.get('folder', '')
+        
+        # 构建响应
+        response = {
+            "success": True,
+            "item_id": item_id,
+            "installed": True,
+            "path": folder_path,
+            "full_path": folder_path  # 完整路径，与path保持一致
+        }
+        
+        # 如果有磁盘大小信息，也一并返回
+        try:
+            disk_size = install_info.get('disk_size')
+            if isinstance(disk_size, (int, float)):
+                response['size_on_disk'] = int(disk_size)
+        except:
+            pass
+        
+        return response
+        
+    except ValueError:
+        return JSONResponse({
+            "success": False,
+            "error": "无效的物品ID",
+            "message": "物品ID必须是有效的数字"
+        }, status_code=400)
+    except Exception as e:
+        logger.error(f"获取物品 {item_id} 路径时出错: {e}")
+        return JSONResponse({
+            "success": False,
+            "error": "获取路径失败",
+            "message": str(e)
+        }, status_code=500)
+
+@app.get('/api/steam/workshop/item/{item_id}')
+async def get_workshop_item_details(item_id: str):
+    """
+    获取单个Steam创意工坊物品的详细信息
+    """
+    global steamworks
+    
+    # 检查Steamworks是否初始化成功
+    if steamworks is None:
+        return JSONResponse({
+            "success": False,
+            "error": "Steamworks未初始化",
+            "message": "请确保Steam客户端已运行且已登录"
+        }, status_code=503)
+    
+    try:
+        # 转换item_id为整数
+        item_id_int = int(item_id)
+        
+        # 获取物品状态
+        item_state = steamworks.Workshop.GetItemState(item_id_int)
+        
+        # 创建查询请求，传入必要的published_file_ids参数
+        query_handle = steamworks.Workshop.CreateQueryUGCDetailsRequest([item_id_int])
+        
+        # 发送查询请求
+        # 注意：SendQueryUGCRequest返回None而不是布尔值
+        steamworks.Workshop.SendQueryUGCRequest(query_handle)
+        
+        # 直接获取查询结果，不检查handle
+        result = steamworks.Workshop.GetQueryUGCResult(query_handle, 0)
+        
+        if result:
+            
+            if result:
+                # 获取物品安装信息 - 支持字典格式（根据workshop.py的实现）
+                install_info = steamworks.Workshop.GetItemInstallInfo(item_id_int)
+                installed = bool(install_info)
+                folder = install_info.get('folder', '') if installed else ''
+                size = 0
+                disk_size = install_info.get('disk_size')
+                if isinstance(disk_size, (int, float)):
+                    size = int(disk_size)
+                
+                # 获取物品下载信息
+                download_info = steamworks.Workshop.GetItemDownloadInfo(item_id_int)
+                downloading = False
+                bytes_downloaded = 0
+                bytes_total = 0
+                
+                # 处理下载信息（使用正确的键名：downloaded和total）
+                if download_info:
+                    if isinstance(download_info, dict):
+                        downloaded = int(download_info.get("downloaded", 0) or 0)
+                        total = int(download_info.get("total", 0) or 0)
+                        downloading = downloaded > 0 and downloaded < total
+                        bytes_downloaded = downloaded
+                        bytes_total = total
+                    elif isinstance(download_info, tuple) and len(download_info) >= 3:
+                        # 兼容元组格式
+                        downloading, bytes_downloaded, bytes_total = download_info
+                
+                # 解码bytes类型的字段为字符串，避免JSON序列化错误
+                title = result.title.decode('utf-8', errors='replace') if hasattr(result, 'title') and isinstance(result.title, bytes) else getattr(result, 'title', '')
+                description = result.description.decode('utf-8', errors='replace') if hasattr(result, 'description') and isinstance(result.description, bytes) else getattr(result, 'description', '')
+                
+                # 构建详细的物品信息
+                item_info = {
+                    "publishedFileId": item_id_int,
+                    "title": title,
+                    "description": description,
+                    "steamIDOwner": result.steamIDOwner,
+                    "timeCreated": result.timeCreated,
+                    "timeUpdated": result.timeUpdated,
+                    "previewImageUrl": result.URL,  # 使用result.URL代替不存在的previewImageUrl
+                    "fileUrl": result.URL,  # 使用result.URL代替不存在的fileUrl
+                    "fileSize": result.fileSize,
+                    "fileId": result.file,  # 使用result.file代替不存在的fileId
+                    "previewFileId": result.previewFile,  # 使用result.previewFile代替不存在的previewFileId
+                    # 移除不存在的appID属性
+                    "tags": [],
+                    "state": {
+                        "subscribed": bool(item_state & 1),
+                        "legacyItem": bool(item_state & 2),
+                        "installed": installed,
+                        "needsUpdate": bool(item_state & 8),
+                        "downloading": downloading,
+                        "downloadPending": bool(item_state & 32),
+                        "isWorkshopItem": bool(item_state & 128)
+                    },
+                    "installedFolder": folder if installed else None,
+                    "fileSizeOnDisk": size if installed else 0,
+                    "downloadProgress": {
+                        "bytesDownloaded": bytes_downloaded if downloading else 0,
+                        "bytesTotal": bytes_total if downloading else 0,
+                        "percentage": (bytes_downloaded / bytes_total * 100) if bytes_total > 0 and downloading else 0
+                    }
+                }
+                
+                # 注意：SteamWorkshop类中不存在ReleaseQueryUGCRequest方法，无需释放句柄
+                
+                return {
+                    "success": True,
+                    "item": item_info
+                }
+            else:
+                # 注意：SteamWorkshop类中不存在ReleaseQueryUGCRequest方法
+                return JSONResponse({
+                    "success": False,
+                    "error": "获取物品详情失败，未找到物品"
+                }, status_code=404)
+            
+    except ValueError:
+        return JSONResponse({
+            "success": False,
+            "error": "无效的物品ID"
+        }, status_code=400)
+    except Exception as e:
+        logger.error(f"获取物品 {item_id} 详情时出错: {e}")
+        return JSONResponse({
+            "success": False,
+            "error": f"获取物品详情失败: {str(e)}"
+        }, status_code=500)
+
+@app.post('/api/steam/workshop/unsubscribe')
+async def unsubscribe_workshop_item(request: Request):
+    """
+    取消订阅Steam创意工坊物品
+    接收包含物品ID的POST请求
+    """
+    global steamworks
+    
+    # 检查Steamworks是否初始化成功
+    if steamworks is None:
+        return JSONResponse({
+            "success": False,
+            "error": "Steamworks未初始化",
+            "message": "请确保Steam客户端已运行且已登录"
+        }, status_code=503)
+    
+    try:
+        # 获取请求体中的数据
+        data = await request.json()
+        item_id = data.get('item_id')
+        
+        if not item_id:
+            return JSONResponse({
+                "success": False,
+                "error": "缺少必要参数",
+                "message": "请求中缺少物品ID"
+            }, status_code=400)
+        
+        # 转换item_id为整数
+        try:
+            item_id_int = int(item_id)
+        except ValueError:
+            return JSONResponse({
+                "success": False,
+                "error": "无效的物品ID",
+                "message": "提供的物品ID不是有效的数字"
+            }, status_code=400)
+        
+        # 定义一个简单的回调函数来处理取消订阅的结果
+        def unsubscribe_callback(result):
+            # 记录取消订阅的结果
+            if result.result == 1:  # k_EResultOK
+                logger.info(f"取消订阅成功回调: {item_id_int}")
+            else:
+                logger.warning(f"取消订阅失败回调: {item_id_int}, 错误代码: {result.result}")
+        
+        # 调用Steamworks的UnsubscribeItem方法，并提供回调函数
+        steamworks.Workshop.UnsubscribeItem(item_id_int, callback=unsubscribe_callback)
+        # 由于回调是异步的，我们返回请求已被接受处理的状态
+        logger.info(f"取消订阅请求已被接受，正在处理: {item_id_int}")
+        return {
+            "success": True,
+            "status": "accepted",
+            "message": "取消订阅请求已被接受，正在处理中。实际结果将在后台异步完成。"
+        }
+            
+    except Exception as e:
+        logger.error(f"取消订阅物品时出错: {e}")
+        return JSONResponse({
+            "success": False,
+            "error": "服务器内部错误",
+            "message": f"取消订阅过程中发生错误: {str(e)}"
+        }, status_code=500)
+
 @app.get('/api/characters/current_catgirl')
 async def get_current_catgirl():
     """获取当前使用的猫娘名称"""
@@ -1031,6 +2152,20 @@ async def set_current_catgirl(request: Request):
         return JSONResponse({'success': False, 'error': '指定的猫娘不存在'}, status_code=404)
     
     old_catgirl = characters.get('当前猫娘', '')
+    
+    # 检查当前角色是否有活跃的语音session
+    if old_catgirl and old_catgirl in session_manager:
+        mgr = session_manager[old_catgirl]
+        if mgr.is_active:
+            # 检查是否是语音模式（通过session类型判断）
+            from main_helper.omni_realtime_client import OmniRealtimeClient
+            is_voice_mode = mgr.session and isinstance(mgr.session, OmniRealtimeClient)
+            
+            if is_voice_mode:
+                return JSONResponse({
+                    'success': False, 
+                    'error': '语音状态下无法切换角色，请先停止语音对话后再切换'
+                }, status_code=400)
     characters['当前猫娘'] = catgirl_name
     _config_manager.save_characters(characters)
     # 自动重新加载配置
@@ -1124,6 +2259,23 @@ async def add_catgirl(request: Request):
     _config_manager.save_characters(characters)
     # 自动重新加载配置
     await initialize_character_data()
+    
+    # 通知记忆服务器重新加载配置
+    try:
+        import httpx
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(f"http://localhost:{MEMORY_SERVER_PORT}/reload", timeout=5.0)
+            if resp.status_code == 200:
+                result = resp.json()
+                if result.get('status') == 'success':
+                    logger.info(f"✅ 已通知记忆服务器重新加载配置（新角色: {key}）")
+                else:
+                    logger.warning(f"⚠️ 记忆服务器重新加载配置返回: {result.get('message')}")
+            else:
+                logger.warning(f"⚠️ 记忆服务器重新加载配置失败，状态码: {resp.status_code}")
+    except Exception as e:
+        logger.warning(f"⚠️ 通知记忆服务器重新加载配置时出错: {e}（不影响角色创建）")
+    
     return {"success": True}
 
 @app.put('/api/characters/catgirl/{name}')
@@ -1203,10 +2355,14 @@ async def update_catgirl(name: str, request: Request):
             except Exception as e:
                 logger.error(f"结束session时出错: {e}")
     
-    # 自动重新加载配置
-    await initialize_character_data()
-    if voice_id_changed:
+    # 方案3：条件性重新加载 - 只有当前猫娘或voice_id变更时才重新加载配置
+    if voice_id_changed and is_current_catgirl:
+        # 自动重新加载配置
+        await initialize_character_data()
         logger.info(f"配置已重新加载，新的voice_id已生效")
+    elif voice_id_changed and not is_current_catgirl:
+        # 不是当前猫娘，跳过重新加载，避免影响当前猫娘的session
+        logger.info(f"切换的是其他猫娘 {name} 的音色，跳过重新加载以避免影响当前猫娘的session")
     
     return {"success": True, "voice_id_changed": voice_id_changed, "session_restarted": session_ended}
 
@@ -1216,6 +2372,7 @@ async def update_catgirl_l2d(name: str, request: Request):
     try:
         data = await request.json()
         live2d_model = data.get('live2d')
+        item_id = data.get('item_id')  # 获取可选的item_id
         
         if not live2d_model:
             return JSONResponse(content={
@@ -1234,8 +2391,13 @@ async def update_catgirl_l2d(name: str, request: Request):
         if name not in characters['猫娘']:
             characters['猫娘'][name] = {}
         
-        # 更新Live2D模型设置
+        # 更新Live2D模型设置，同时保存item_id（如果有）
         characters['猫娘'][name]['live2d'] = live2d_model
+        if item_id:
+            characters['猫娘'][name]['live2d_item_id'] = item_id
+            logger.debug(f"已保存角色 {name} 的模型 {live2d_model} 和item_id {item_id}")
+        else:
+            logger.debug(f"已保存角色 {name} 的模型 {live2d_model}")
         
         # 保存配置
         _config_manager.save_characters(characters)
@@ -1304,9 +2466,14 @@ async def update_catgirl_voice_id(name: str, request: Request):
             except Exception as e:
                 logger.error(f"结束session时出错: {e}")
     
-    # 3. 重新加载配置，让新的voice_id生效
-    await initialize_character_data()
-    logger.info(f"配置已重新加载，新的voice_id已生效")
+    # 方案3：条件性重新加载 - 只有当前猫娘才重新加载配置
+    if is_current_catgirl:
+        # 3. 重新加载配置，让新的voice_id生效
+        await initialize_character_data()
+        logger.info(f"配置已重新加载，新的voice_id已生效")
+    else:
+        # 不是当前猫娘，跳过重新加载，避免影响当前猫娘的session
+        logger.info(f"切换的是其他猫娘 {name} 的音色，跳过重新加载以避免影响当前猫娘的session")
     
     return {"success": True, "session_restarted": session_ended}
 
@@ -1505,54 +2672,64 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
         }
         
         logger.info(f"正在上传文件到tfLink，文件名: {file.filename}, 大小: {file_size} bytes, MIME类型: {mime_type}")
-        resp = requests.post('http://47.101.214.205:8000/api/upload', files=files, headers=headers, timeout=60)
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post('http://47.101.214.205:8000/api/upload', files=files, headers=headers)
 
-        # 检查响应状态
-        if resp.status_code != 200:
-            logger.error(f"上传到tfLink失败，状态码: {resp.status_code}, 响应内容: {resp.text}")
-            return JSONResponse({'error': f'上传到tfLink失败，状态码: {resp.status_code}, 详情: {resp.text[:200]}'}, status_code=500)
+            # 检查响应状态
+            if resp.status_code != 200:
+                logger.error(f"上传到tfLink失败，状态码: {resp.status_code}, 响应内容: {resp.text}")
+                return JSONResponse({'error': f'上传到tfLink失败，状态码: {resp.status_code}, 详情: {resp.text[:200]}'}, status_code=500)
             
-        try:
-            # 解析JSON响应
-            data = resp.json()
-            logger.info(f"tfLink原始响应: {data}")
-            
-            # 获取下载链接
-            tmp_url = None
-            possible_keys = ['downloadLink', 'download_link', 'url', 'direct_link', 'link', 'download_url']
-            for key in possible_keys:
-                if key in data:
-                    tmp_url = data[key]
-                    logger.info(f"找到下载链接键: {key}")
-                    break
-            
-            if not tmp_url:
-                logger.error(f"无法从响应中提取URL: {data}")
-                return JSONResponse({'error': f'上传成功但无法从响应中提取URL'}, status_code=500)
-            
-            # 确保URL有效
-            if not tmp_url.startswith(('http://', 'https://')):
-                logger.error(f"无效的URL格式: {tmp_url}")
-                return JSONResponse({'error': f'无效的URL格式: {tmp_url}'}, status_code=500)
+            try:
+                # 解析JSON响应
+                data = resp.json()
+                logger.info(f"tfLink原始响应: {data}")
                 
-            # 测试URL是否可访问
-            test_resp = requests.head(tmp_url, timeout=10)
-            if test_resp.status_code >= 400:
-                logger.error(f"生成的URL无法访问: {tmp_url}, 状态码: {test_resp.status_code}")
-                return JSONResponse({'error': f'生成的临时URL无法访问，请重试'}, status_code=500)
+                # 获取下载链接
+                tmp_url = None
+                possible_keys = ['downloadLink', 'download_link', 'url', 'direct_link', 'link', 'download_url']
+                for key in possible_keys:
+                    if key in data:
+                        tmp_url = data[key]
+                        logger.info(f"找到下载链接键: {key}")
+                        break
                 
-            logger.info(f"成功获取临时URL并验证可访问性: {tmp_url}")
+                if not tmp_url:
+                    logger.error(f"无法从响应中提取URL: {data}")
+                    return JSONResponse({'error': f'上传成功但无法从响应中提取URL'}, status_code=500)
                 
-        except ValueError:
-            raw_text = resp.text
-            logger.error(f"上传成功但响应格式无法解析: {raw_text}")
-            return JSONResponse({'error': f'上传成功但响应格式无法解析: {raw_text[:200]}'}, status_code=500)
+                # 确保URL有效
+                if not tmp_url.startswith(('http://', 'https://')):
+                    logger.error(f"无效的URL格式: {tmp_url}")
+                    return JSONResponse({'error': f'无效的URL格式: {tmp_url}'}, status_code=500)
+                    
+                # 测试URL是否可访问
+                test_resp = await client.head(tmp_url, timeout=10)
+                if test_resp.status_code >= 400:
+                    logger.error(f"生成的URL无法访问: {tmp_url}, 状态码: {test_resp.status_code}")
+                    return JSONResponse({'error': f'生成的临时URL无法访问，请重试'}, status_code=500)
+                    
+                logger.info(f"成功获取临时URL并验证可访问性: {tmp_url}")
+                
+            except ValueError:
+                raw_text = resp.text
+                logger.error(f"上传成功但响应格式无法解析: {raw_text}")
+                return JSONResponse({'error': f'上传成功但响应格式无法解析: {raw_text[:200]}'}, status_code=500)
         
         # 3. 用直链注册音色
         core_config = _config_manager.get_core_config()
-        dashscope.api_key = core_config['AUDIO_API_KEY']
+        audio_api_key = core_config.get('AUDIO_API_KEY')
+        
+        if not audio_api_key:
+            logger.error("未配置 AUDIO_API_KEY")
+            return JSONResponse({
+                'error': '未配置音频API密钥，请在设置中配置AUDIO_API_KEY',
+                'suggestion': '请前往设置页面配置音频API密钥'
+            }, status_code=400)
+        
+        dashscope.api_key = audio_api_key
         service = VoiceEnrollmentService()
-        target_model = "cosyvoice-v2"
+        target_model = "cosyvoice-v3-plus"
         
         # 重试配置
         max_retries = 3
@@ -1561,35 +2738,9 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
         for attempt in range(max_retries):
             try:
                 logger.info(f"开始音色注册（尝试 {attempt + 1}/{max_retries}），使用URL: {tmp_url}")
-                # 设置超时参数
-                import time
-                start_time = time.time()
                 
-                # 添加超时装饰器或使用上下文管理器
-                # 这里使用try-except块和时间检查来实现简单的超时控制
-                voice_id = None
-                
-                # 创建一个超时标志
-                timeout_occurred = False
-                
-                try:
-                    # 尝试执行音色注册，设置一个较大的超时时间
-                    voice_id = service.create_voice(target_model=target_model, prefix=prefix, url=tmp_url)
-                except Exception as inner_e:
-                    error_str = str(inner_e)
-                    if "ResponseTimeout" in error_str or "response timeout" in error_str.lower():
-                        timeout_occurred = True
-                        logger.warning(f"音色注册超时: {error_str}")
-                    else:
-                        raise inner_e
-                
-                if timeout_occurred:
-                    return JSONResponse({
-                        'error': '音色注册超时，请稍后重试',
-                        'detail': '服务器响应超时，这可能是由于网络延迟或服务繁忙导致的',
-                        'file_url': tmp_url,
-                        'suggestion': '请检查您的网络连接，或稍后再试'
-                    }, status_code=408)
+                # 尝试执行音色注册
+                voice_id = service.create_voice(target_model=target_model, prefix=prefix, url=tmp_url)
                     
                 logger.info(f"音色注册成功，voice_id: {voice_id}")
                 voice_data = {
@@ -1602,15 +2753,23 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
                     _config_manager.save_voice_for_current_api(voice_id, voice_data)
                     logger.info(f"voice_id已保存到音色库: {voice_id}")
                     
-                    # 验证voice_id是否能够被正确读取
-                    if not _config_manager.validate_voice_id(voice_id):
-                        logger.error(f"voice_id保存后验证失败: {voice_id}")
-                        return JSONResponse({
-                            'error': f'音色注册成功但保存验证失败，请重试',
-                            'voice_id': voice_id,
-                            'file_url': tmp_url
-                        }, status_code=500)
-                    logger.info(f"voice_id保存验证成功: {voice_id}")
+                    # 验证voice_id是否能够被正确读取（添加短暂延迟，避免文件系统延迟）
+                    await asyncio.sleep(0.1)  # 等待100ms，确保文件写入完成
+                    
+                    # 最多验证3次，每次间隔100ms
+                    validation_success = False
+                    for validation_attempt in range(3):
+                        if _config_manager.validate_voice_id(voice_id):
+                            validation_success = True
+                            logger.info(f"voice_id保存验证成功: {voice_id} (尝试 {validation_attempt + 1})")
+                            break
+                        if validation_attempt < 2:
+                            await asyncio.sleep(0.1)
+                    
+                    if not validation_success:
+                        logger.warning(f"voice_id保存后验证失败，但可能已成功保存: {voice_id}")
+                        # 不返回错误，因为保存可能已成功，只是验证失败
+                        # 继续返回成功，让用户尝试使用
                     
                 except Exception as save_error:
                     logger.error(f"保存voice_id到音色库失败: {save_error}")
@@ -1619,46 +2778,56 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
                         'voice_id': voice_id,
                         'file_url': tmp_url
                     }, status_code=500)
+                    
                 return JSONResponse({
                     'voice_id': voice_id,
                     'request_id': service.get_last_request_id(),
                     'file_url': tmp_url,
                     'message': '音色注册成功并已保存到音色库'
                 })
+                
             except Exception as e:
                 logger.error(f"音色注册失败（尝试 {attempt + 1}/{max_retries}）: {str(e)}")
-                # 详细的错误信息
                 error_detail = str(e)
                 
-                # 添加对ResponseTimeout的专门处理
-                if "ResponseTimeout" in error_detail or "response timeout" in error_detail.lower():
+                # 检查是否是超时错误
+                is_timeout = ("ResponseTimeout" in error_detail or 
+                             "response timeout" in error_detail.lower() or
+                             "timeout" in error_detail.lower())
+                
+                # 检查是否是文件下载失败错误
+                is_download_failed = ("download audio failed" in error_detail or 
+                                     "415" in error_detail)
+                
+                # 如果是超时或下载失败，且还有重试机会，则重试
+                if (is_timeout or is_download_failed) and attempt < max_retries - 1:
+                    logger.warning(f"检测到{'超时' if is_timeout else '文件下载失败'}错误，等待 {retry_delay} 秒后重试...")
+                    await asyncio.sleep(retry_delay)
+                    continue  # 重试
+                
+                # 如果是最后一次尝试或非可重试错误，返回错误
+                if is_timeout:
                     return JSONResponse({
-                        'error': '音色注册超时，请稍后重试',
+                        'error': f'音色注册超时，已尝试{max_retries}次',
                         'detail': error_detail,
                         'file_url': tmp_url,
-                        'suggestion': '请检查您的网络连接，或稍后再试'
+                        'suggestion': '请检查您的网络连接，或稍后再试。如果问题持续，可能是服务器繁忙。'
                     }, status_code=408)
-                
-                # 处理415错误（文件下载失败）- 如果不是最后一次尝试，则等待后重试
-                elif "download audio failed" in error_detail or "415" in error_detail:
-                    if attempt < max_retries - 1:
-                        logger.warning(f"检测到文件下载失败（415错误），等待 {retry_delay} 秒后重试...")
-                        await asyncio.sleep(retry_delay)
-                        continue  # 重试
-                    else:
-                        logger.error(f"音色注册失败: 达到最大重试次数（{max_retries}次）")
-                        return JSONResponse({
-                            'error': f'音色注册失败: 无法下载音频文件，已尝试{max_retries}次',
-                            'detail': error_detail,
-                            'file_url': tmp_url,
-                            'suggestion': '请检查文件URL是否可访问，或稍后重试'
-                        }, status_code=415)
-                
-                # 其他错误直接返回
-                return JSONResponse({
-                    'error': f'音色注册失败: {error_detail}',
-                    'file_url': tmp_url
-                }, status_code=500)
+                elif is_download_failed:
+                    return JSONResponse({
+                        'error': f'音色注册失败: 无法下载音频文件，已尝试{max_retries}次',
+                        'detail': error_detail,
+                        'file_url': tmp_url,
+                        'suggestion': '请检查文件URL是否可访问，或稍后重试'
+                    }, status_code=415)
+                else:
+                    # 其他错误直接返回
+                    return JSONResponse({
+                        'error': f'音色注册失败: {error_detail}',
+                        'file_url': tmp_url,
+                        'attempt': attempt + 1,
+                        'max_retries': max_retries
+                    }, status_code=500)
     except Exception as e:
         # 确保tmp_url在出现异常时也有定义
         tmp_url = locals().get('tmp_url', '未获取到URL')
@@ -1776,14 +2945,14 @@ async def shutdown_server_async():
         
         # 向memory_server发送关闭信号
         try:
-            import requests
             from config import MEMORY_SERVER_PORT
             shutdown_url = f"http://localhost:{MEMORY_SERVER_PORT}/shutdown"
-            response = requests.post(shutdown_url, timeout=1)
-            if response.status_code == 200:
-                logger.info("已向memory_server发送关闭信号")
-            else:
-                logger.warning(f"向memory_server发送关闭信号失败，状态码: {response.status_code}")
+            async with httpx.AsyncClient(timeout=1) as client:
+                response = await client.post(shutdown_url)
+                if response.status_code == 200:
+                    logger.info("已向memory_server发送关闭信号")
+                else:
+                    logger.warning(f"向memory_server发送关闭信号失败，状态码: {response.status_code}")
         except Exception as e:
             logger.warning(f"向memory_server发送关闭信号时出错: {e}")
         
@@ -1805,14 +2974,36 @@ async def rename_catgirl(old_name: str, request: Request):
         return JSONResponse({'success': False, 'error': '原猫娘不存在'}, status_code=404)
     if new_name in characters['猫娘']:
         return JSONResponse({'success': False, 'error': '新档案名已存在'}, status_code=400)
+    
+    # 如果当前猫娘是被重命名的猫娘，需要先保存WebSocket连接并发送通知
+    # 必须在 initialize_character_data() 之前发送，因为那个函数会删除旧的 session_manager 条目
+    is_current_catgirl = characters.get('当前猫娘') == old_name
+    if is_current_catgirl:
+        logger.info(f"开始通知WebSocket客户端：猫娘从 {old_name} 重命名为 {new_name}")
+        message = json.dumps({
+            "type": "catgirl_switched",
+            "new_catgirl": new_name,
+            "old_catgirl": old_name
+        })
+        # 在 initialize_character_data() 之前发送消息，因为之后旧的 session_manager 会被删除
+        if old_name in session_manager:
+            ws = session_manager[old_name].websocket
+            if ws:
+                try:
+                    await ws.send_text(message)
+                    logger.info(f"已向 {old_name} 发送重命名通知")
+                except Exception as e:
+                    logger.warning(f"发送重命名通知给 {old_name} 失败: {e}")
+    
     # 重命名
     characters['猫娘'][new_name] = characters['猫娘'].pop(old_name)
     # 如果当前猫娘是被重命名的猫娘，也需要更新
-    if characters.get('当前猫娘') == old_name:
+    if is_current_catgirl:
         characters['当前猫娘'] = new_name
     _config_manager.save_characters(characters)
     # 自动重新加载配置
     await initialize_character_data()
+    
     return {"success": True}
 
 @app.post('/api/characters/catgirl/{name}/unregister_voice')
@@ -2051,11 +3242,1317 @@ async def get_model_files(model_name: str):
         logger.error(f"获取模型文件列表失败: {e}")
         return {"success": False, "error": str(e)}
 
+@app.get("/api/live2d/model_config_by_id/{model_id}")
+async def get_model_config(model_id: str):
+    """获取指定Live2D模型的model3.json配置"""
+    try:
+        # 查找模型目录（可能在static或用户文档目录）
+        model_dir, url_prefix = find_model_by_workshop_item_id(model_id)
+        if not os.path.exists(model_dir):
+            return JSONResponse(status_code=404, content={"success": False, "error": "模型目录不存在"})
+        
+        # 查找.model3.json文件
+        model_json_path = None
+        for file in os.listdir(model_dir):
+            if file.endswith('.model3.json'):
+                model_json_path = os.path.join(model_dir, file)
+                break
+        
+        if not model_json_path or not os.path.exists(model_json_path):
+            return JSONResponse(status_code=404, content={"success": False, "error": "模型配置文件不存在"})
+        
+        with open(model_json_path, 'r', encoding='utf-8') as f:
+            config_data = json.load(f)
+        
+        # 检查并自动添加缺失的配置
+        config_updated = False
+        
+        # 确保FileReferences存在
+        if 'FileReferences' not in config_data:
+            config_data['FileReferences'] = {}
+            config_updated = True
+        
+        # 确保Motions存在
+        if 'Motions' not in config_data['FileReferences']:
+            config_data['FileReferences']['Motions'] = {}
+            config_updated = True
+        
+        # 确保Expressions存在
+        if 'Expressions' not in config_data['FileReferences']:
+            config_data['FileReferences']['Expressions'] = []
+            config_updated = True
+        
+        # 如果配置有更新，保存到文件
+        if config_updated:
+            with open(model_json_path, 'w', encoding='utf-8') as f:
+                json.dump(config_data, f, ensure_ascii=False, indent=4)
+            logger.info(f"已为模型 {model_id} 自动添加缺失的配置项")
+            
+        return {"success": True, "config": config_data}
+    except Exception as e:
+        logger.error(f"获取模型配置失败: {e}")
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+@app.post("/api/live2d/model_config_by_id/{model_id}")
+async def update_model_config(model_id: str, request: Request):
+    """更新指定Live2D模型的model3.json配置"""
+    try:
+        data = await request.json()
+        
+        # 查找模型目录（可能在static或用户文档目录）
+        model_dir, url_prefix = find_model_by_workshop_item_id(model_id)
+        if not os.path.exists(model_dir):
+            return JSONResponse(status_code=404, content={"success": False, "error": "模型目录不存在"})
+        
+        # 查找.model3.json文件
+        model_json_path = None
+        for file in os.listdir(model_dir):
+            if file.endswith('.model3.json'):
+                model_json_path = os.path.join(model_dir, file)
+                break
+        
+        if not model_json_path or not os.path.exists(model_json_path):
+            return JSONResponse(status_code=404, content={"success": False, "error": "模型配置文件不存在"})
+        
+        # 为了安全，只允许修改 Motions 和 Expressions
+        with open(model_json_path, 'r', encoding='utf-8') as f:
+            current_config = json.load(f)
+            
+        if 'FileReferences' in data and 'Motions' in data['FileReferences']:
+            current_config['FileReferences']['Motions'] = data['FileReferences']['Motions']
+            
+        if 'FileReferences' in data and 'Expressions' in data['FileReferences']:
+            current_config['FileReferences']['Expressions'] = data['FileReferences']['Expressions']
+
+        with open(model_json_path, 'w', encoding='utf-8') as f:
+            json.dump(current_config, f, ensure_ascii=False, indent=4) # 使用 indent=4 保持格式
+            
+        return {"success": True, "message": "模型配置已更新"}
+    except Exception as e:
+        logger.error(f"更新模型配置失败: {e}")
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+@app.get('/api/live2d/model_files_by_id/{model_id}')
+async def get_model_files_by_id(model_id: str):
+    """获取指定Live2D模型的动作和表情文件列表"""
+    try:
+        # 直接拒绝无效的model_id
+        if not model_id or model_id.lower() == 'undefined':
+            logger.warning("接收到无效的model_id请求，返回失败")
+            return {"success": False, "error": "无效的模型ID"}
+        
+        # 尝试通过model_id查找模型
+        model_dir = None
+        url_prefix = None
+        
+        # 首先尝试通过workshop item_id查找
+        try:
+            model_dir, url_prefix = find_workshop_item_by_id(model_id)
+            logger.debug(f"通过model_id {model_id} 查找模型目录: {model_dir}")
+        except Exception as e:
+            logger.warning(f"通过model_id查找失败: {e}")
+        
+        # 如果通过model_id找不到有效的目录，尝试将model_id当作model_name回退查找
+        if not model_dir or not os.path.exists(model_dir):
+            logger.info(f"尝试将 {model_id} 作为模型名称回退查找")
+            try:
+                model_dir, url_prefix = find_model_directory(model_id)
+                logger.debug(f"作为模型名称查找的目录: {model_dir}")
+            except Exception as e:
+                logger.warning(f"作为模型名称查找失败: {e}")
+        
+        # 添加额外的错误检查
+        if not model_dir:
+            logger.error(f"获取模型目录失败: 目录路径为空")
+            return {"success": False, "error": "获取模型目录失败: 无效的路径"}
+            
+        if not os.path.exists(model_dir):
+            logger.warning(f"模型目录不存在: {model_dir}")
+            return {"success": False, "error": "模型不存在"}
+        
+        motion_files = []
+        expression_files = []
+        
+        # 递归搜索所有子文件夹
+        def search_files_recursive(directory, target_ext, result_list):
+            """递归搜索指定扩展名的文件"""
+            try:
+                for item in os.listdir(directory):
+                    item_path = os.path.join(directory, item)
+                    if os.path.isfile(item_path):
+                        if item.endswith(target_ext):
+                            # 计算相对于模型根目录的路径
+                            relative_path = os.path.relpath(item_path, model_dir)
+                            # 转换为正斜杠格式（跨平台兼容）
+                            relative_path = relative_path.replace('\\', '/')
+                            result_list.append(relative_path)
+                    elif os.path.isdir(item_path):
+                        # 递归搜索子目录
+                        search_files_recursive(item_path, target_ext, result_list)
+            except Exception as e:
+                logger.warning(f"搜索目录 {directory} 时出错: {e}")
+        
+        # 搜索动作文件
+        search_files_recursive(model_dir, '.motion3.json', motion_files)
+        
+        # 搜索表情文件
+        search_files_recursive(model_dir, '.exp3.json', expression_files)
+        
+        # 查找模型配置文件（model3.json）
+        model_config_file = None
+        for file in os.listdir(model_dir):
+            if file.endswith('.model3.json'):
+                model_config_file = file
+                break
+        
+        # 构建模型配置文件的URL
+        model_config_url = None
+        if model_config_file and url_prefix:
+            # 对于workshop模型，需要在URL中包含item_id
+            if url_prefix == '/workshop':
+                model_config_url = f"{url_prefix}/{model_id}/{model_config_file}"
+            else:
+                model_config_url = f"{url_prefix}/{model_config_file}"
+            logger.debug(f"为模型 {model_id} 构建的配置URL: {model_config_url}")
+        
+        logger.info(f"文件统计: {len(motion_files)} 个动作文件, {len(expression_files)} 个表情文件")
+        return {
+            "success": True, 
+            "motion_files": motion_files,
+            "expression_files": expression_files,
+            "model_config_url": model_config_url
+        }
+    except Exception as e:
+        logger.error(f"获取模型文件列表失败: {e}")
+        return {"success": False, "error": str(e)}
+
+
+# Steam 创意工坊管理相关API路由
+# 确保这个路由被正确注册
+if _IS_MAIN_PROCESS:
+    logger.info('注册Steam创意工坊扫描API路由')
+@app.post('/api/steam/workshop/local-items/scan')
+async def scan_local_workshop_items(request: Request):
+    try:
+        logger.info('接收到扫描本地创意工坊物品的API请求')
+        
+        # 确保配置已加载
+        from utils.workshop_utils import load_workshop_config
+        workshop_config_data = load_workshop_config()
+        logger.info(f'创意工坊配置已加载: {workshop_config_data}')
+        
+        data = await request.json()
+        logger.info(f'请求数据: {data}')
+        folder_path = data.get('folder_path')
+        
+        # 安全检查：始终使用get_workshop_path()作为基础目录
+        base_workshop_folder = os.path.abspath(os.path.normpath(get_workshop_path()))
+        
+        # 如果没有提供路径，使用默认路径
+        default_path_used = False
+        if not folder_path:
+            # 优先使用get_workshop_path()函数获取路径
+            folder_path = base_workshop_folder
+            default_path_used = True
+            logger.info(f'未提供文件夹路径，使用默认路径: {folder_path}')
+            # 确保默认文件夹存在
+            ensure_workshop_folder_exists(folder_path)
+        else:
+            # 用户提供了路径，标准化处理
+            folder_path = os.path.normpath(folder_path)
+            
+            # 如果是相对路径，基于默认路径解析
+            if not os.path.isabs(folder_path):
+                folder_path = os.path.normpath(folder_path)
+            
+            logger.info(f'用户指定路径: {folder_path}')
+        
+        logger.info(f'最终使用的文件夹路径: {folder_path}, 默认路径使用状态: {default_path_used}')
+        
+        if not os.path.exists(folder_path):
+            logger.warning(f'文件夹不存在: {folder_path}')
+            return JSONResponse(content={"success": False, "error": f"指定的文件夹不存在: {folder_path}", "default_path_used": default_path_used}, status_code=404)
+        
+        if not os.path.isdir(folder_path):
+            logger.warning(f'指定的路径不是文件夹: {folder_path}')
+            return JSONResponse(content={"success": False, "error": f"指定的路径不是文件夹: {folder_path}", "default_path_used": default_path_used}, status_code=400)
+        
+        # 扫描本地创意工坊物品
+        local_items = []
+        published_items = []
+        item_id = 1
+        
+        # 获取Steam下载的workshop路径，这个路径需要被排除
+        steam_workshop_path = get_workshop_path()
+        
+        # 遍历文件夹，扫描所有子文件夹
+        for item_folder in os.listdir(folder_path):
+            item_path = os.path.join(folder_path, item_folder)
+            if os.path.isdir(item_path):
+                    
+                # 排除Steam下载的物品目录（WORKSHOP_PATH）
+                if os.path.normpath(item_path) == os.path.normpath(steam_workshop_path):
+                    logger.info(f"跳过Steam下载的workshop目录: {item_path}")
+                    continue
+                stat_info = os.stat(item_path)
+                
+                # 处理预览图路径（如果有）
+                preview_image = find_preview_image_in_folder(item_path)
+                
+                local_items.append({
+                    "id": f"local_{item_id}",
+                    "name": item_folder,
+                    "path": item_path,  # 返回绝对路径
+                    "lastModified": stat_info.st_mtime,
+                    "size": get_folder_size(item_path),
+                    "tags": ["本地文件"],
+                    "previewImage": preview_image  # 返回绝对路径
+                })
+                item_id += 1
+        
+        logger.info(f"扫描完成，找到 {len(local_items)} 个本地创意工坊物品")
+        
+        return JSONResponse(content={
+            "success": True,
+            "local_items": local_items,
+            "published_items": published_items,
+            "folder_path": folder_path,  # 返回绝对路径
+            "default_path_used": default_path_used
+        })
+        
+    except Exception as e:
+        logger.error(f"扫描本地创意工坊物品失败: {e}")
+        return JSONResponse(content={"success": False, "error": str(e)}, status_code=500)
+
+# 获取创意工坊配置
+@app.get('/api/steam/workshop/config')
+async def get_workshop_config():
+    try:
+        from utils.workshop_utils import load_workshop_config
+        workshop_config_data = load_workshop_config()
+        return {"success": True, "config": workshop_config_data}
+    except Exception as e:
+        logger.error(f"获取创意工坊配置失败: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+# 保存创意工坊配置
+@app.post('/api/steam/workshop/config')
+async def save_workshop_config_api(config_data: dict):
+    try:
+        # 导入与get_workshop_config相同路径的函数，保持一致性
+        from utils.workshop_utils import load_workshop_config, save_workshop_config, ensure_workshop_folder_exists
+        
+        # 先加载现有配置，避免使用全局变量导致的不一致问题
+        workshop_config_data = load_workshop_config() or {}
+        
+        # 更新配置
+        if 'default_workshop_folder' in config_data:
+            workshop_config_data['default_workshop_folder'] = config_data['default_workshop_folder']
+        if 'auto_create_folder' in config_data:
+            workshop_config_data['auto_create_folder'] = config_data['auto_create_folder']
+        # 支持用户mod路径配置
+        if 'user_mod_folder' in config_data:
+            workshop_config_data['user_mod_folder'] = config_data['user_mod_folder']
+        
+        # 保存配置到文件，传递完整的配置数据作为参数
+        save_workshop_config(workshop_config_data)
+        
+        # 如果启用了自动创建文件夹且提供了路径，则确保文件夹存在
+        if workshop_config_data.get('auto_create_folder', True):
+            # 优先使用user_mod_folder，如果没有则使用default_workshop_folder
+            folder_path = workshop_config_data.get('user_mod_folder') or workshop_config_data.get('default_workshop_folder')
+            if folder_path:
+                ensure_workshop_folder_exists(folder_path)
+        
+        return {"success": True, "config": workshop_config_data}
+    except Exception as e:
+        logger.error(f"保存创意工坊配置失败: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+@app.get('/api/proxy-image')
+async def proxy_image(image_path: str):
+    """代理访问本地图片文件，支持绝对路径和相对路径，特别是Steam创意工坊目录"""
+
+    try:
+        logger.info(f"代理图片请求，原始路径: {image_path}")
+        
+        # 解码URL编码的路径（处理双重编码情况）
+        decoded_path = unquote(image_path)
+        # 再次解码以处理可能的双重编码
+        decoded_path = unquote(decoded_path)
+        
+        logger.info(f"解码后的路径: {decoded_path}")
+        
+        # 检查是否是远程URL，如果是则直接返回错误（目前只支持本地文件）
+        if decoded_path.startswith(('http://', 'https://')):
+            return JSONResponse(content={"success": False, "error": "暂不支持远程图片URL"}, status_code=400)
+        
+        # 获取基础目录和允许访问的目录列表
+        base_dir = _get_app_root()
+        allowed_dirs = [
+            os.path.realpath(os.path.join(base_dir, 'static')),
+            os.path.realpath(os.path.join(base_dir, 'assets'))
+        ]
+        
+        
+        # 添加get_workshop_path()返回的路径作为允许目录，支持相对路径解析
+        try:
+            workshop_base_dir = os.path.abspath(os.path.normpath(get_workshop_path()))
+            if os.path.exists(workshop_base_dir):
+                real_workshop_dir = os.path.realpath(workshop_base_dir)
+                if real_workshop_dir not in allowed_dirs:
+                    allowed_dirs.append(real_workshop_dir)
+                    logger.info(f"添加允许的默认创意工坊目录: {real_workshop_dir}")
+        except Exception as e:
+            logger.warning(f"无法添加默认创意工坊目录: {str(e)}")
+        
+        # 动态添加路径到允许列表：如果请求的路径包含创意工坊相关标识，则允许访问
+        try:
+            # 检查解码后的路径是否包含创意工坊相关路径标识
+            if ('steamapps\\workshop' in decoded_path.lower() or 
+                'steamapps/workshop' in decoded_path.lower()):
+                
+                # 获取创意工坊父目录
+                workshop_related_dir = None
+                
+                # 方法1：如果路径存在，获取文件所在目录或直接使用目录路径
+                if os.path.exists(decoded_path):
+                    if os.path.isfile(decoded_path):
+                        workshop_related_dir = os.path.dirname(decoded_path)
+                    else:
+                        workshop_related_dir = decoded_path
+                else:
+                    # 方法2：尝试从路径中提取创意工坊相关部分
+                    import re
+                    match = re.search(r'(.*?steamapps[/\\]workshop)', decoded_path, re.IGNORECASE)
+                    if match:
+                        workshop_related_dir = match.group(1)
+                
+                # 方法3：如果是Steam创意工坊内容路径，获取content目录
+                if not workshop_related_dir:
+                    content_match = re.search(r'(.*?steamapps[/\\]workshop[/\\]content)', decoded_path, re.IGNORECASE)
+                    if content_match:
+                        workshop_related_dir = content_match.group(1)
+                
+                # 如果找到了相关目录，添加到允许列表
+                if workshop_related_dir and os.path.exists(workshop_related_dir):
+                    real_workshop_dir = os.path.realpath(workshop_related_dir)
+                    if real_workshop_dir not in allowed_dirs:
+                        allowed_dirs.append(real_workshop_dir)
+                        logger.info(f"动态添加允许的创意工坊相关目录: {real_workshop_dir}")
+        except Exception as e:
+            logger.warning(f"动态添加创意工坊路径失败: {str(e)}")
+        
+        logger.info(f"当前允许的目录列表: {allowed_dirs}")
+
+        # Windows路径处理：确保路径分隔符正确
+        if os.name == 'nt':  # Windows系统
+            # 替换可能的斜杠为反斜杠，确保Windows路径格式正确
+            decoded_path = decoded_path.replace('/', '\\')
+            # 处理可能的双重编码问题
+            if decoded_path.startswith('\\\\'):
+                decoded_path = decoded_path[2:]  # 移除多余的反斜杠前缀
+        
+        # 尝试解析路径
+        final_path = None
+        
+        # 尝试作为绝对路径
+        if os.path.exists(decoded_path) and os.path.isfile(decoded_path):
+            # 规范化路径以防止路径遍历攻击
+            real_path = os.path.realpath(decoded_path)
+            # 检查路径是否在允许的目录内
+            if any(real_path.startswith(allowed_dir) for allowed_dir in allowed_dirs):
+                final_path = real_path
+        
+        # 尝试备选路径格式
+        if final_path is None:
+            alt_path = decoded_path.replace('\\', '/')
+            if os.path.exists(alt_path) and os.path.isfile(alt_path):
+                real_path = os.path.realpath(alt_path)
+                if any(real_path.startswith(allowed_dir) for allowed_dir in allowed_dirs):
+                    final_path = real_path
+        
+        # 尝试相对路径处理 - 相对于static目录
+        if final_path is None:
+            # 对于以../static开头的相对路径，尝试直接从static目录解析
+            if decoded_path.startswith('..\\static') or decoded_path.startswith('../static'):
+                # 提取static后面的部分
+                relative_part = decoded_path.split('static')[1]
+                if relative_part.startswith(('\\', '/')):
+                    relative_part = relative_part[1:]
+                # 构建完整路径
+                relative_path = os.path.join(allowed_dirs[0], relative_part)  # static目录
+                if os.path.exists(relative_path) and os.path.isfile(relative_path):
+                    real_path = os.path.realpath(relative_path)
+                    if any(real_path.startswith(allowed_dir) for allowed_dir in allowed_dirs):
+                        final_path = real_path
+        
+        # 尝试相对于默认创意工坊目录的路径处理
+        if final_path is None:
+            try:
+                workshop_base_dir = os.path.abspath(os.path.normpath(get_workshop_path()))
+                
+                # 尝试将解码路径作为相对于创意工坊目录的路径
+                rel_workshop_path = os.path.join(workshop_base_dir, decoded_path)
+                rel_workshop_path = os.path.normpath(rel_workshop_path)
+                
+                logger.info(f"尝试相对于创意工坊目录的路径: {rel_workshop_path}")
+                
+                if os.path.exists(rel_workshop_path) and os.path.isfile(rel_workshop_path):
+                    real_path = os.path.realpath(rel_workshop_path)
+                    # 确保路径在允许的目录内
+                    if real_path.startswith(workshop_base_dir):
+                        final_path = real_path
+                        logger.info(f"找到相对于创意工坊目录的图片: {final_path}")
+            except Exception as e:
+                logger.warning(f"处理相对于创意工坊目录的路径失败: {str(e)}")
+        
+        
+        # 如果仍未找到有效路径，返回错误
+        if final_path is None:
+            return JSONResponse(content={"success": False, "error": f"文件不存在或无访问权限: {decoded_path}"}, status_code=404)
+        
+        # 检查文件扩展名是否为图片
+        image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
+        if os.path.splitext(final_path)[1].lower() not in image_extensions:
+            return JSONResponse(content={"success": False, "error": "不是有效的图片文件"}, status_code=400)
+        
+        # 读取图片文件
+        with open(final_path, 'rb') as f:
+            image_data = f.read()
+        
+        # 根据文件扩展名设置MIME类型
+        ext = os.path.splitext(final_path)[1].lower()
+        mime_type = {
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.gif': 'image/gif',
+            '.bmp': 'image/bmp',
+            '.webp': 'image/webp'
+        }.get(ext, 'application/octet-stream')
+        
+        # 返回图片数据
+        return Response(content=image_data, media_type=mime_type)
+    except Exception as e:
+        logger.error(f"代理图片访问失败: {str(e)}")
+        return JSONResponse(content={"success": False, "error": f"访问图片失败: {str(e)}"}, status_code=500)
+
+
+@app.get('/api/steam/workshop/local-items/{item_id}')
+async def get_local_workshop_item(item_id: str, folder_path: str = None):
+    try:
+        # 这个接口需要从缓存或临时存储中获取物品信息
+        # 这里简化实现，实际应用中应该有更完善的缓存机制
+        # folder_path 已经通过函数参数获取
+        
+        if not folder_path:
+            return JSONResponse(content={"success": False, "error": "未提供文件夹路径"}, status_code=400)
+        
+        # 安全检查：始终使用get_workshop_path()作为基础目录
+        base_workshop_folder = os.path.abspath(os.path.normpath(get_workshop_path()))
+        
+        # Windows路径处理：确保路径分隔符正确
+        if os.name == 'nt':  # Windows系统
+            # 解码并处理Windows路径
+            decoded_folder_path = unquote(folder_path)
+            # 替换斜杠为反斜杠，确保Windows路径格式正确
+            decoded_folder_path = decoded_folder_path.replace('/', '\\')
+            # 处理可能的双重编码问题
+            if decoded_folder_path.startswith('\\\\'):
+                decoded_folder_path = decoded_folder_path[2:]  # 移除多余的反斜杠前缀
+        else:
+            decoded_folder_path = unquote(folder_path)
+        
+        # 关键修复：将相对路径转换为基于基础目录的绝对路径
+        # 确保路径是绝对路径，如果不是则视为相对路径
+        if not os.path.isabs(decoded_folder_path):
+            # 将相对路径转换为基于基础目录的绝对路径
+            full_path = os.path.join(base_workshop_folder, decoded_folder_path)
+        else:
+            # 如果已经是绝对路径，仍然确保它在基础目录内（安全检查）
+            full_path = decoded_folder_path
+            # 标准化路径
+            full_path = os.path.normpath(full_path)
+            
+        # 安全检查：验证路径是否在基础目录内
+        if not full_path.startswith(base_workshop_folder):
+            logger.warning(f'路径遍历尝试被拒绝: {folder_path}')
+            return JSONResponse(content={"success": False, "error": "访问被拒绝: 路径不在允许的范围内"}, status_code=403)
+        
+        folder_path = full_path
+        logger.info(f'处理后的完整路径: {folder_path}')
+        
+        # 解析本地ID
+        if item_id.startswith('local_'):
+            index = int(item_id.split('_')[1])
+            
+            try:
+                # 检查folder_path是否已经是项目文件夹路径
+                if os.path.isdir(folder_path):
+                    # 情况1：folder_path直接指向项目文件夹
+                    stat_info = os.stat(folder_path)
+                    item_name = os.path.basename(folder_path)
+                    
+                    item = {
+                        "id": item_id,
+                        "name": item_name,
+                        "path": folder_path,
+                        "lastModified": stat_info.st_mtime,
+                        "size": get_folder_size(folder_path),
+                        "tags": ["模组"],
+                        "previewImage": find_preview_image_in_folder(folder_path)
+                    }
+                    
+                    return JSONResponse(content={"success": True, "item": item})
+                else:
+                    # 情况2：尝试原始逻辑，从folder_path中查找第index个子文件夹
+                    items = []
+                    for i, item_folder in enumerate(os.listdir(folder_path)):
+                        item_path = os.path.join(folder_path, item_folder)
+                        if os.path.isdir(item_path) and i + 1 == index:
+                            stat_info = os.stat(item_path)
+                            items.append({
+                                "id": f"local_{i + 1}",
+                                "name": item_folder,
+                                "path": item_path,
+                                "lastModified": stat_info.st_mtime,
+                                "size": get_folder_size(item_path),
+                                "tags": ["模组"],
+                                "previewImage": find_preview_image_in_folder(item_path)
+                            })
+                            break
+                    
+                    if items:
+                        return JSONResponse(content={"success": True, "item": items[0]})
+                    else:
+                        return JSONResponse(content={"success": False, "error": "物品不存在"}, status_code=404)
+            except Exception as e:
+                logger.error(f"处理本地物品路径时出错: {e}")
+                return JSONResponse(content={"success": False, "error": f"路径处理错误: {str(e)}"}, status_code=500)
+        
+        return JSONResponse(content={"success": False, "error": "无效的物品ID格式"}, status_code=400)
+        
+    except Exception as e:
+        logger.error(f"获取本地创意工坊物品失败: {e}")
+        return JSONResponse(content={"success": False, "error": str(e)}, status_code=500)
+
+@app.get('/api/steam/workshop/check-upload-status')
+async def check_upload_status(item_path: str = None):
+    try:
+        # 验证路径参数
+        if not item_path:
+            return JSONResponse(content={
+                "success": False,
+                "error": "未提供物品文件夹路径"
+            }, status_code=400)
+        
+        # 安全检查：使用get_workshop_path()作为基础目录
+        base_workshop_folder = os.path.abspath(os.path.normpath(get_workshop_path()))
+        
+        # Windows路径处理：确保路径分隔符正确
+        if os.name == 'nt':  # Windows系统
+            # 解码并处理Windows路径
+            decoded_item_path = unquote(item_path)
+            # 替换斜杠为反斜杠，确保Windows路径格式正确
+            decoded_item_path = decoded_item_path.replace('/', '\\')
+            # 处理可能的双重编码问题
+            if decoded_item_path.startswith('\\\\'):
+                decoded_item_path = decoded_item_path[2:]  # 移除多余的反斜杠前缀
+        else:
+            decoded_item_path = unquote(item_path)
+        
+        # 将相对路径转换为基于基础目录的绝对路径
+        if not os.path.isabs(decoded_item_path):
+            full_path = os.path.join(base_workshop_folder, decoded_item_path)
+        else:
+            full_path = decoded_item_path
+            full_path = os.path.normpath(full_path)
+        
+        # 安全检查：验证路径是否在基础目录内
+        if not full_path.startswith(base_workshop_folder):
+            logger.warning(f'路径遍历尝试被拒绝: {item_path}')
+            return JSONResponse(content={"success": False, "error": "访问被拒绝: 路径不在允许的范围内"}, status_code=403)
+        
+        # 验证路径存在性
+        if not os.path.exists(full_path) or not os.path.isdir(full_path):
+            return JSONResponse(content={
+                "success": False,
+                "error": "无效的物品文件夹路径"
+            }, status_code=400)
+        
+        # 搜索以steam_workshop_id_开头的txt文件
+        import glob
+        import re
+        
+        upload_files = glob.glob(os.path.join(full_path, "steam_workshop_id_*.txt"))
+        
+        # 提取第一个找到的物品ID
+        published_file_id = None
+        if upload_files:
+            # 获取第一个文件
+            first_file = upload_files[0]
+            
+            # 从文件名提取ID
+            match = re.search(r'steam_workshop_id_(\d+)\.txt', os.path.basename(first_file))
+            if match:
+                published_file_id = match.group(1)
+        
+        # 返回检查结果
+        return JSONResponse(content={
+            "success": True,
+            "is_published": published_file_id is not None,
+            "published_file_id": published_file_id
+        })
+        
+    except Exception as e:
+        logger.error(f"检查上传状态失败: {e}")
+        return JSONResponse(content={
+            "success": False,
+            "error": str(e),
+            "message": "检查上传状态时发生错误"
+        }, status_code=500)
+
+@app.post('/api/steam/workshop/publish')
+async def publish_to_workshop(request: Request):
+    global steamworks
+    
+    # 检查Steamworks是否初始化成功
+    if steamworks is None:
+        return JSONResponse(content={
+            "success": False,
+            "error": "Steamworks未初始化",
+            "message": "请确保Steam客户端已运行且已登录"
+        }, status_code=503)
+    
+    try:
+        data = await request.json()
+        
+        # 验证必要的字段
+        required_fields = ['title', 'content_folder', 'visibility']
+        for field in required_fields:
+            if field not in data:
+                return JSONResponse(content={"success": False, "error": f"缺少必要字段: {field}"}, status_code=400)
+        
+        # 提取数据
+        title = data['title']
+        content_folder = data['content_folder']
+        visibility = int(data['visibility'])
+        preview_image = data.get('preview_image', '')
+        description = data.get('description', '')
+        tags = data.get('tags', [])
+        change_note = data.get('change_note', '初始发布')
+        
+        # 规范化路径处理 - 改进版，确保在所有情况下都能正确处理路径
+        content_folder = unquote(content_folder)
+        # 处理Windows路径，确保使用正确的路径分隔符
+        if os.name == 'nt':
+            # 将所有路径分隔符统一为反斜杠
+            content_folder = content_folder.replace('/', '\\')
+            # 清理可能的错误前缀
+            if content_folder.startswith('\\\\'):
+                content_folder = content_folder[2:]
+        else:
+            # 非Windows系统使用正斜杠
+            content_folder = content_folder.replace('\\', '/')
+        
+        # 验证内容文件夹存在并是一个目录
+        if not os.path.exists(content_folder):
+            return JSONResponse(content={
+                "success": False,
+                "error": "内容文件夹不存在",
+                "message": f"指定的内容文件夹不存在: {content_folder}"
+            }, status_code=404)
+        
+        if not os.path.isdir(content_folder):
+            return JSONResponse(content={
+                "success": False,
+                "error": "不是有效的文件夹",
+                "message": f"指定的路径不是有效的文件夹: {content_folder}"
+            }, status_code=400)
+        
+        # 增加内容文件夹检查：确保文件夹中至少有文件，验证文件夹是否包含内容
+        if not any(os.scandir(content_folder)):
+            return JSONResponse(content={
+                "success": False,
+                "error": "内容文件夹为空",
+                "message": f"内容文件夹为空，请确保包含要上传的文件: {content_folder}"
+            }, status_code=400)
+        
+        # 检查文件夹权限
+        if not os.access(content_folder, os.R_OK):
+            return JSONResponse(content={
+                "success": False,
+                "error": "没有文件夹访问权限",
+                "message": f"没有读取内容文件夹的权限: {content_folder}"
+            }, status_code=403)
+        
+        # 处理预览图片路径
+        if preview_image:
+            preview_image = unquote(preview_image)
+            if os.name == 'nt':
+                preview_image = preview_image.replace('/', '\\')
+                if preview_image.startswith('\\\\'):
+                    preview_image = preview_image[2:]
+            else:
+                preview_image = preview_image.replace('\\', '/')
+            
+            # 验证预览图片存在
+            if not os.path.exists(preview_image):
+                # 如果指定的预览图不存在，尝试在内容文件夹中查找默认预览图
+                logger.warning(f'指定的预览图片不存在，尝试在内容文件夹中查找: {preview_image}')
+                auto_preview = find_preview_image_in_folder(content_folder)
+                if auto_preview:
+                    logger.info(f'找到自动预览图片: {auto_preview}')
+                    preview_image = auto_preview
+                else:
+                    logger.warning(f'无法找到预览图片')
+                    preview_image = ''
+            
+            if preview_image and not os.path.isfile(preview_image):
+                return JSONResponse(content={
+                    "success": False,
+                    "error": "预览图片无效",
+                    "message": f"预览图片路径不是有效的文件: {preview_image}"
+                }, status_code=400)
+        else:
+            # 如果未指定预览图片，尝试自动查找
+            auto_preview = find_preview_image_in_folder(content_folder)
+            if auto_preview:
+                logger.info(f'自动找到预览图片: {auto_preview}')
+                preview_image = auto_preview
+        
+        # 记录将要上传的内容信息
+        logger.info(f"准备发布创意工坊物品: {title}")
+        logger.info(f"内容文件夹: {content_folder}")
+        logger.info(f"预览图片: {preview_image or '无'}")
+        logger.info(f"可见性: {visibility}")
+        logger.info(f"标签: {tags}")
+        logger.info(f"内容文件夹包含文件数量: {len([f for f in os.listdir(content_folder) if os.path.isfile(os.path.join(content_folder, f))])}")
+        logger.info(f"内容文件夹包含子文件夹数量: {len([f for f in os.listdir(content_folder) if os.path.isdir(os.path.join(content_folder, f))])}")
+        
+        # 使用线程池执行Steamworks API调用（因为这些是阻塞操作）
+        loop = asyncio.get_event_loop()
+        published_file_id = await loop.run_in_executor(
+            None, 
+            lambda: _publish_workshop_item(
+                steamworks, title, description, content_folder, 
+                preview_image, visibility, tags, change_note
+            )
+        )
+        
+        logger.info(f"成功发布创意工坊物品，ID: {published_file_id}")
+        return JSONResponse(content={
+            "success": True,
+            "published_file_id": published_file_id,
+            "message": "发布成功"
+        })
+        
+    except ValueError as ve:
+        logger.error(f"参数错误: {ve}")
+        return JSONResponse(content={"success": False, "error": str(ve)}, status_code=400)
+    except SteamNotLoadedException as se:
+        logger.error(f"Steamworks API错误: {se}")
+        return JSONResponse(content={
+            "success": False,
+            "error": "Steamworks API错误",
+            "message": "请确保Steam客户端已运行且已登录"
+        }, status_code=503)
+    except Exception as e:
+        logger.error(f"发布到创意工坊失败: {e}")
+        return JSONResponse(content={"success": False, "error": str(e)}, status_code=500)
+
+
+def _format_size(size_bytes):
+    """
+    将字节大小格式化为人类可读的格式
+    """
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size_bytes < 1024.0:
+            return f"{size_bytes:.2f} {unit}"
+        size_bytes /= 1024.0
+    return f"{size_bytes:.2f} TB"
+
+def _publish_workshop_item(steamworks, title, description, content_folder, preview_image, visibility, tags, change_note):
+    """
+    在单独的线程中执行Steam创意工坊发布操作
+    """
+    # 在函数内部添加导入语句，确保枚举在函数作用域内可用
+    from steamworks.enums import EItemUpdateStatus
+    
+    # 检查是否存在现有的上传标记文件，避免重复上传
+    try:
+        if os.path.exists(content_folder) and os.path.isdir(content_folder):
+            # 查找以steam_workshop_id_开头的txt文件
+            import glob
+            marker_files = glob.glob(os.path.join(content_folder, "steam_workshop_id_*.txt"))
+            
+            if marker_files:
+                # 使用第一个找到的标记文件
+                marker_file = marker_files[0]
+                
+                # 从文件名中提取物品ID
+                import re
+                match = re.search(r'steam_workshop_id_([0-9]+)\.txt', marker_file)
+                if match:
+                    existing_item_id = int(match.group(1))
+                    logger.info(f"检测到物品已上传，找到标记文件: {marker_file}，物品ID: {existing_item_id}")
+                    return existing_item_id
+    except Exception as e:
+        logger.error(f"检查上传标记文件时出错: {e}")
+        # 即使检查失败，也继续尝试上传，不阻止功能
+    try:
+        # 再次验证内容文件夹，确保在多线程环境中仍然有效
+        if not os.path.exists(content_folder) or not os.path.isdir(content_folder):
+            raise Exception(f"内容文件夹不存在或无效: {content_folder}")
+        
+        # 统计文件夹内容，确保有文件可上传
+        file_count = 0
+        for root, dirs, files in os.walk(content_folder):
+            file_count += len(files)
+        
+        if file_count == 0:
+            raise Exception(f"内容文件夹中没有找到可上传的文件: {content_folder}")
+        
+        logger.info(f"内容文件夹验证通过，包含 {file_count} 个文件")
+        
+        # 获取当前应用ID
+        app_id = steamworks.app_id
+        logger.info(f"使用应用ID: {app_id} 进行创意工坊上传")
+        
+        # 增强的Steam连接状态验证
+        try:
+            # 基础连接状态检查
+            is_steam_running = steamworks.IsSteamRunning()
+            is_overlay_enabled = steamworks.IsOverlayEnabled()
+            is_logged_on = steamworks.Users.LoggedOn()
+            steam_id = steamworks.Users.GetSteamID()
+            
+            # 应用相关权限检查
+            app_owned = steamworks.Apps.IsAppInstalled(app_id)
+            app_owned_license = steamworks.Apps.IsSubscribedApp(app_id)
+            app_subscribed = steamworks.Apps.IsSubscribed()
+            
+            # 记录详细的连接状态
+            logger.info(f"Steam客户端运行状态: {is_steam_running}")
+            logger.info(f"Steam覆盖层启用状态: {is_overlay_enabled}")
+            logger.info(f"用户登录状态: {is_logged_on}")
+            logger.info(f"用户SteamID: {steam_id}")
+            logger.info(f"应用ID {app_id} 安装状态: {app_owned}")
+            logger.info(f"应用ID {app_id} 订阅许可状态: {app_owned_license}")
+            logger.info(f"当前应用订阅状态: {app_subscribed}")
+            
+            # 预检查连接状态，如果存在问题则提前报错
+            if not is_steam_running:
+                raise Exception("Steam客户端未运行，请先启动Steam客户端")
+            if not is_logged_on:
+                raise Exception("用户未登录Steam，请确保已登录Steam客户端")
+            
+        except Exception as e:
+            logger.error(f"Steam连接状态验证失败: {e}")
+            # 即使验证失败也继续执行，但提供警告
+            logger.warning(f"继续尝试创意工坊上传，但可能会因为Steam连接问题而失败")
+        
+        # 错误映射表，根据错误码提供更具体的错误信息
+        error_codes = {
+            1: "成功",
+            10: "权限不足 - 可能需要登录Steam客户端或缺少创意工坊上传权限",
+            111: "网络连接错误 - 无法连接到Steam网络",
+            100: "服务不可用 - Steam创意工坊服务暂时不可用",
+            8: "文件已存在 - 相同内容的物品已存在",
+            34: "服务器忙 - Steam服务器暂时无法处理请求",
+            116: "请求超时 - 与Steam服务器通信超时"
+        }
+        
+        # 对于新物品，先创建一个空物品
+        # 使用回调来处理创建结果
+        created_item_id = [None]
+        created_event = threading.Event()
+        create_result = [None]  # 用于存储创建结果
+        
+        def onCreateItem(result):
+            nonlocal created_item_id, create_result
+            create_result[0] = result.result
+            # 直接从结构体读取字段而不是字典
+            if result.result == 1:  # k_EResultOK
+                created_item_id[0] = result.publishedFileId
+                logger.info(f"成功创建创意工坊物品，ID: {created_item_id[0]}")
+                created_event.set()
+            else:
+                error_msg = error_codes.get(result.result, f"未知错误码: {result.result}")
+                logger.error(f"创建创意工坊物品失败，错误码: {result.result} ({error_msg})")
+                created_event.set()
+        
+        # 设置创建物品回调
+        steamworks.Workshop.SetItemCreatedCallback(onCreateItem)
+        
+        # 创建新的创意工坊物品（使用文件类型枚举表示UGC）
+        logger.info(f"开始创建创意工坊物品: {title}")
+        logger.info(f"调用SteamWorkshop.CreateItem({app_id}, {EWorkshopFileType.COMMUNITY})")
+        steamworks.Workshop.CreateItem(app_id, EWorkshopFileType.COMMUNITY)
+        
+        # 等待创建完成或超时，增加超时时间并添加调试信息
+        logger.info("等待创意工坊物品创建完成...")
+        # 使用循环等待，定期调用run_callbacks处理回调
+        start_time = time.time()
+        timeout = 60  # 超时时间60秒
+        while time.time() - start_time < timeout:
+            if created_event.is_set():
+                break
+            # 定期调用run_callbacks处理Steam API回调
+            try:
+                steamworks.run_callbacks()
+            except Exception as e:
+                logger.error(f"执行Steam回调时出错: {str(e)}")
+            time.sleep(0.1)  # 每100毫秒检查一次
+        
+        if not created_event.is_set():
+            logger.error("创建创意工坊物品超时，可能是网络问题或Steam服务暂时不可用")
+            raise TimeoutError("创建创意工坊物品超时")
+        
+        if created_item_id[0] is None:
+            # 提供更具体的错误信息
+            error_msg = error_codes.get(create_result[0], f"未知错误码: {create_result[0]}")
+            logger.error(f"创建创意工坊物品失败: {error_msg}")
+            
+            # 针对错误码10（权限不足）提供更详细的错误信息和解决方案
+            if create_result[0] == 10:
+                detailed_error = f"""权限不足 - 请确保:
+1. Steam客户端已启动并登录
+2. 您的Steam账号拥有应用ID {app_id} 的访问权限
+3. Steam创意工坊功能未被禁用
+4. 尝试以管理员权限运行应用程序
+5. 检查防火墙设置是否阻止了应用程序访问Steam网络
+6. 确保steam_appid.txt文件中的应用ID正确
+7. 您的Steam账号有权限上传到该应用的创意工坊"""
+                logger.error(f"创意工坊上传失败 - 详细诊断信息:")
+                logger.error(f"- 应用ID: {app_id}")
+                logger.error(f"- Steam运行状态: {steamworks.IsSteamRunning()}")
+                logger.error(f"- 用户登录状态: {steamworks.Users.LoggedOn()}")
+                logger.error(f"- 应用订阅状态: {steamworks.Apps.IsSubscribedApp(app_id)}")
+                raise Exception(f"创建创意工坊物品失败: {detailed_error} (错误码: {create_result[0]})")
+            else:
+                raise Exception(f"创建创意工坊物品失败: {error_msg} (错误码: {create_result[0]})")
+        
+        # 开始更新物品
+        logger.info(f"开始更新物品内容: {title}")
+        update_handle = steamworks.Workshop.StartItemUpdate(app_id, created_item_id[0])
+        
+        # 设置物品属性
+        logger.info("设置物品基本属性...")
+        steamworks.Workshop.SetItemTitle(update_handle, title)
+        if description:
+            steamworks.Workshop.SetItemDescription(update_handle, description)
+        
+        # 设置物品内容 - 这是文件上传的核心步骤
+        logger.info(f"设置物品内容文件夹: {content_folder}")
+        content_set_result = steamworks.Workshop.SetItemContent(update_handle, content_folder)
+        logger.info(f"内容设置结果: {content_set_result}")
+        
+        # 设置预览图片（如果提供）
+        if preview_image:
+            logger.info(f"设置预览图片: {preview_image}")
+            preview_set_result = steamworks.Workshop.SetItemPreview(update_handle, preview_image)
+            logger.info(f"预览图片设置结果: {preview_set_result}")
+        
+        # 导入枚举类型并将整数值转换为枚举对象
+        from steamworks.enums import ERemoteStoragePublishedFileVisibility
+        if visibility == 0:
+            visibility_enum = ERemoteStoragePublishedFileVisibility.PUBLIC
+        elif visibility == 1:
+            visibility_enum = ERemoteStoragePublishedFileVisibility.FRIENDS_ONLY
+        elif visibility == 2:
+            visibility_enum = ERemoteStoragePublishedFileVisibility.PRIVATE
+        else:
+            # 默认设为公开
+            visibility_enum = ERemoteStoragePublishedFileVisibility.PUBLIC
+            
+        # 设置物品可见性
+        logger.info(f"设置物品可见性: {visibility_enum}")
+        steamworks.Workshop.SetItemVisibility(update_handle, visibility_enum)
+        
+        # 设置标签（如果有）
+        if tags:
+            logger.info(f"设置物品标签: {tags}")
+            steamworks.Workshop.SetItemTags(update_handle, tags)
+        
+        # 提交更新，使用回调来处理结果
+        updated = [False]
+        error_code = [0]
+        update_event = threading.Event()
+        
+        def onSubmitItemUpdate(result):
+            nonlocal updated, error_code
+            # 直接从结构体读取字段而不是字典
+            error_code[0] = result.result
+            if result.result == 1:  # k_EResultOK
+                updated[0] = True
+                logger.info(f"物品更新提交成功，结果代码: {result.result}")
+            else:
+                logger.error(f"提交创意工坊物品更新失败，错误码: {result.result}")
+            update_event.set()
+        
+        # 设置更新物品回调
+        steamworks.Workshop.SetItemUpdatedCallback(onSubmitItemUpdate)
+        
+        # 提交更新
+        logger.info(f"开始提交物品更新，更新说明: {change_note}")
+        steamworks.Workshop.SubmitItemUpdate(update_handle, change_note)
+        
+        # 等待更新完成或超时，增加超时时间并添加调试信息
+        logger.info("等待创意工坊物品更新完成...")
+        # 使用循环等待，定期调用run_callbacks处理回调
+        start_time = time.time()
+        timeout = 180  # 超时时间180秒
+        last_progress = -1
+        
+        while time.time() - start_time < timeout:
+            if update_event.is_set():
+                break
+            # 定期调用run_callbacks处理Steam API回调
+            try:
+                steamworks.run_callbacks()
+                # 记录上传进度（更详细的进度报告）
+                if update_handle:
+                    progress = steamworks.Workshop.GetItemUpdateProgress(update_handle)
+                    if 'status' in progress:
+                        status_text = "未知"
+                        if progress['status'] == EItemUpdateStatus.UPLOADING_CONTENT:
+                            status_text = "上传内容"
+                        elif progress['status'] == EItemUpdateStatus.UPLOADING_PREVIEW_FILE:
+                            status_text = "上传预览图"
+                        elif progress['status'] == EItemUpdateStatus.COMMITTING_CHANGES:
+                            status_text = "提交更改"
+                        
+                        if 'progress' in progress:
+                            current_progress = int(progress['progress'] * 100)
+                            # 只有进度有明显变化时才记录日志
+                            if current_progress != last_progress:
+                                logger.info(f"上传状态: {status_text}, 进度: {current_progress}%")
+                                last_progress = current_progress
+            except Exception as e:
+                logger.error(f"执行Steam回调时出错: {str(e)}")
+            time.sleep(0.5)  # 每500毫秒检查一次，减少日志量
+        
+        if not update_event.is_set():
+            logger.error("提交创意工坊物品更新超时，可能是网络问题或Steam服务暂时不可用")
+            raise TimeoutError("提交创意工坊物品更新超时")
+        
+        if not updated[0]:
+            # 根据错误码提供更详细的错误信息
+            if error_code[0] == 25:  # LIMIT_EXCEEDED
+                error_msg = "提交创意工坊物品更新失败：内容超过Steam限制（错误码25）。请检查内容大小、文件数量或其他限制。"
+            else:
+                error_msg = f"提交创意工坊物品更新失败，错误码: {error_code[0]}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
+        
+        logger.info(f"创意工坊物品上传成功完成！物品ID: {created_item_id[0]}")
+        
+        # 在原文件夹创建带物品ID的txt文件，标记为已上传
+        try:
+            marker_file_path = os.path.join(content_folder, f"steam_workshop_id_{created_item_id[0]}.txt")
+            with open(marker_file_path, 'w', encoding='utf-8') as f:
+                f.write(f"Steam创意工坊物品ID: {created_item_id[0]}\n")
+                f.write(f"上传时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}\n")
+                f.write(f"物品标题: {title}\n")
+            logger.info(f"已在原文件夹创建上传标记文件: {marker_file_path}")
+        except Exception as e:
+            logger.error(f"创建上传标记文件失败: {e}")
+            # 即使创建标记文件失败，也不影响物品上传的成功返回
+        
+        return created_item_id[0]
+        
+    except Exception as e:
+        logger.error(f"发布创意工坊物品时出错: {e}")
+        raise
+
+
+@app.get('/api/file-exists')
+async def check_file_exists(path: str = None):
+    try:
+        # file_path 已经通过函数参数获取
+        
+        if not path:
+            return JSONResponse(content={"exists": False}, status_code=400)
+        
+        # 获取基础目录和允许访问的目录列表
+        base_dir = _get_app_root()
+        allowed_dirs = [
+            os.path.realpath(os.path.join(base_dir, 'static')),
+            os.path.realpath(os.path.join(base_dir, 'assets'))
+        ]
+        
+        # 解码URL编码的路径
+        decoded_path = unquote(path)
+        
+        # Windows路径处理
+        if os.name == 'nt':
+            decoded_path = decoded_path.replace('/', '\\')
+        
+        # 规范化路径以防止路径遍历攻击
+        real_path = os.path.realpath(decoded_path)
+        
+        # 检查路径是否在允许的目录内
+        if any(real_path.startswith(allowed_dir) for allowed_dir in allowed_dirs):
+            # 检查文件是否存在
+            exists = os.path.exists(real_path) and os.path.isfile(real_path)
+        else:
+            # 不在允许的目录内，返回文件不存在
+            exists = False
+        
+        return JSONResponse(content={"exists": exists})
+        
+    except Exception as e:
+        logger.error(f"检查文件存在失败: {e}")
+        return JSONResponse(content={"exists": False}, status_code=500)
+
+@app.get('/api/find-first-image')
+async def find_first_image(folder: str = None):
+    """
+    查找指定文件夹中的预览图片 - 增强版，添加了严格的安全检查
+    
+    安全注意事项：
+    1. 只允许访问项目内特定的安全目录
+    2. 防止路径遍历攻击
+    3. 限制返回信息，避免泄露文件系统信息
+    4. 记录可疑访问尝试
+    5. 只返回小于 1MB 的图片（Steam创意工坊预览图大小限制）
+    """
+    MAX_IMAGE_SIZE = 1 * 1024 * 1024  # 1MB
+    
+    try:
+        # 检查参数有效性
+        if not folder:
+            logger.warning("收到空的文件夹路径请求")
+            return JSONResponse(content={"success": False, "error": "无效的文件夹路径"}, status_code=400)
+        
+        # 安全警告日志记录
+        logger.warning(f"预览图片查找请求: {folder}")
+        
+        # 获取基础目录和允许访问的目录列表
+        base_dir = _get_app_root()
+        allowed_dirs = [
+            os.path.realpath(os.path.join(base_dir, 'static')),
+            os.path.realpath(os.path.join(base_dir, 'assets'))
+        ]
+        
+        # 添加"我的文档/Xiao8"目录到允许列表
+        if os.name == 'nt':  # Windows系统
+            documents_path = os.path.join(os.path.expanduser('~'), 'Documents', 'Xiao8')
+            if os.path.exists(documents_path):
+                real_doc_path = os.path.realpath(documents_path)
+                allowed_dirs.append(real_doc_path)
+                logger.info(f"find-first-image: 添加允许的文档目录: {real_doc_path}")
+        
+        # 解码URL编码的路径
+        decoded_folder = unquote(folder)
+        
+        # Windows路径处理
+        if os.name == 'nt':
+            decoded_folder = decoded_folder.replace('/', '\\')
+        
+        # 额外的安全检查：拒绝包含路径遍历字符的请求
+        if '..' in decoded_folder or '//' in decoded_folder:
+            logger.warning(f"检测到潜在的路径遍历攻击: {decoded_folder}")
+            return JSONResponse(content={"success": False, "error": "无效的文件夹路径"}, status_code=403)
+        
+        # 规范化路径以防止路径遍历攻击
+        try:
+            real_folder = os.path.realpath(decoded_folder)
+        except Exception as e:
+            logger.error(f"路径规范化失败: {e}")
+            return JSONResponse(content={"success": False, "error": "无效的文件夹路径"}, status_code=400)
+        
+        # 检查路径是否在允许的目录内
+        is_allowed = False
+        for allowed_dir in allowed_dirs:
+            if real_folder.startswith(allowed_dir):
+                is_allowed = True
+                break
+        
+        if not is_allowed:
+            logger.warning(f"访问被拒绝：路径不在允许的目录内 - {real_folder}")
+            return JSONResponse(content={"success": False, "error": "无效的文件夹路径"}, status_code=403)
+        
+        # 检查文件夹是否存在
+        if not os.path.exists(real_folder) or not os.path.isdir(real_folder):
+            return JSONResponse(content={"success": False, "error": "无效的文件夹路径"}, status_code=400)
+        
+        # 只查找指定的8个预览图片名称，按优先级顺序
+        preview_image_names = [
+            'preview.jpg', 'preview.png',
+            'thumbnail.jpg', 'thumbnail.png',
+            'icon.jpg', 'icon.png',
+            'header.jpg', 'header.png'
+        ]
+        
+        for image_name in preview_image_names:
+            image_path = os.path.join(real_folder, image_name)
+            try:
+                # 检查文件是否存在
+                if os.path.exists(image_path) and os.path.isfile(image_path):
+                    # 检查文件大小是否小于 1MB
+                    file_size = os.path.getsize(image_path)
+                    if file_size >= MAX_IMAGE_SIZE:
+                        logger.info(f"跳过大于1MB的图片: {image_name} ({file_size / 1024 / 1024:.2f}MB)")
+                        continue
+                    
+                    # 再次验证图片文件路径是否在允许的目录内
+                    real_image_path = os.path.realpath(image_path)
+                    if any(real_image_path.startswith(allowed_dir) for allowed_dir in allowed_dirs):
+                        # 只返回相对路径或文件名，不返回完整的文件系统路径，避免信息泄露
+                        # 计算相对于base_dir的相对路径
+                        try:
+                            relative_path = os.path.relpath(real_image_path, base_dir)
+                            return JSONResponse(content={"success": True, "imagePath": relative_path})
+                        except ValueError:
+                            # 如果无法计算相对路径（例如跨驱动器），只返回文件名
+                            return JSONResponse(content={"success": True, "imagePath": image_name})
+            except Exception as e:
+                logger.error(f"检查图片文件 {image_name} 失败: {e}")
+                continue
+        
+        return JSONResponse(content={"success": False, "error": "未找到小于1MB的预览图片文件"})
+        
+    except Exception as e:
+        logger.error(f"查找预览图片文件失败: {e}")
+        # 发生异常时不泄露详细信息
+        return JSONResponse(content={"success": False, "error": "服务器内部错误"}, status_code=500)
+
+# 辅助函数
+def get_folder_size(folder_path):
+    """获取文件夹大小（字节）"""
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(folder_path):
+        for filename in filenames:
+            filepath = os.path.join(dirpath, filename)
+            try:
+                total_size += os.path.getsize(filepath)
+            except (OSError, FileNotFoundError):
+                continue
+    return total_size
+
+def find_preview_image_in_folder(folder_path):
+    """在文件夹中查找预览图片，只查找指定的8个图片名称"""
+    # 按优先级顺序查找指定的图片文件列表
+    preview_image_names = ['preview.jpg', 'preview.png', 'thumbnail.jpg', 'thumbnail.png', 
+                         'icon.jpg', 'icon.png', 'header.jpg', 'header.png']
+    
+    for image_name in preview_image_names:
+        image_path = os.path.join(folder_path, image_name)
+        if os.path.exists(image_path) and os.path.isfile(image_path):
+            return image_path
+    
+    # 如果找不到指定的图片名称，返回None
+    return None
+
 @app.get('/live2d_emotion_manager', response_class=HTMLResponse)
 async def live2d_emotion_manager(request: Request):
     """Live2D情感映射管理器页面"""
     try:
-        with open('templates/live2d_emotion_manager.html', 'r', encoding='utf-8') as f:
+        template_path = os.path.join(_get_app_root(), 'templates', 'live2d_emotion_manager.html')
+        with open(template_path, 'r', encoding='utf-8') as f:
             content = f.read()
         return HTMLResponse(content=content)
     except Exception as e:
@@ -2190,6 +4687,105 @@ async def upload_live2d_model(files: list[UploadFile] = File(...)):
             
             # 复制模型根目录到用户文档的live2d目录
             shutil.copytree(model_root_dir, target_model_dir)
+
+            # 上传后：遍历模型目录中的所有动作文件（*.motion3.json），
+            # 将官方白名单参数及模型自身在 .model3.json 中声明为 LipSync 的参数的 Segments 清空为 []。
+            # 这样可以兼顾官方参数与模型声明的口型参数，同时忽略未声明的作者自定义命名（避免误伤）。
+            try:
+                import json as _json
+
+                # 官方口型参数白名单（尽量全面列出常见和官方命名的嘴部/口型相关参数）
+                # 仅包含与嘴巴形状、发音帧（A/I/U/E/O）、下颚/唇动作直接相关的参数，
+                # 明确排除头部/身体/表情等其它参数（例如 ParamAngleZ、ParamAngleX 等不应在此）。
+                official_mouth_params = {
+                    # 五个基本发音帧（A/I/U/E/O）
+                    'ParamA', 'ParamI', 'ParamU', 'ParamE', 'ParamO',
+                    # 常见嘴部上下/开合/形状参数
+                    'ParamMouthUp', 'ParamMouthDown', 'ParamMouthOpen', 'ParamMouthOpenY',
+                    'ParamMouthForm', 'ParamMouthX', 'ParamMouthY', 'ParamMouthSmile', 'ParamMouthPucker',
+                    'ParamMouthStretch', 'ParamMouthShrug', 'ParamMouthLeft', 'ParamMouthRight',
+                    'ParamMouthCornerUpLeft', 'ParamMouthCornerUpRight',
+                    'ParamMouthCornerDownLeft', 'ParamMouthCornerDownRight',
+                    # 唇相关（部分模型/官方扩展中可能出现）
+                    'ParamLipA', 'ParamLipI', 'ParamLipU', 'ParamLipE', 'ParamLipO', 'ParamLipThickness',
+                    # 下颚（部分模型以下颚控制口型）
+                    'ParamJawOpen', 'ParamJawForward', 'ParamJawLeft', 'ParamJawRight',
+                    # 其它口型相关（保守列入）
+                    'ParamMouthAngry', 'ParamMouthAngryLine'
+                }
+
+                # 尝试读取模型的 .model3.json，提取 Groups -> Name == "LipSync" && Target == "Parameter" 的 Ids
+                model_declared_mouth_params = set()
+                try:
+                    local_model_json = target_model_dir / model_json_file.name
+                    if local_model_json.exists():
+                        with open(local_model_json, 'r', encoding='utf-8') as mf:
+                            try:
+                                model_cfg = _json.load(mf)
+                                groups = model_cfg.get('Groups') if isinstance(model_cfg, dict) else None
+                                if isinstance(groups, list):
+                                    for grp in groups:
+                                        try:
+                                            if not isinstance(grp, dict):
+                                                continue
+                                            # 仅考虑官方 Group Name 为 LipSync 且 Target 为 Parameter 的条目
+                                            if grp.get('Name') == 'LipSync' and grp.get('Target') == 'Parameter':
+                                                ids = grp.get('Ids') or []
+                                                for pid in ids:
+                                                    if isinstance(pid, str) and pid:
+                                                        model_declared_mouth_params.add(pid)
+                                        except Exception:
+                                            continue
+                            except Exception:
+                                # 解析失败则视为未找到 groups，继续使用官方白名单
+                                pass
+                except Exception:
+                    pass
+
+                # 合并白名单（官方 + 模型声明）
+                mouth_param_whitelist = set(official_mouth_params)
+                mouth_param_whitelist.update(model_declared_mouth_params)
+
+                for motion_path in target_model_dir.rglob('*.motion3.json'):
+                    try:
+                        with open(motion_path, 'r', encoding='utf-8') as mf:
+                            try:
+                                motion_data = _json.load(mf)
+                            except Exception:
+                                # 非 JSON 或解析失败则跳过
+                                continue
+
+                        modified = False
+                        curves = motion_data.get('Curves') if isinstance(motion_data, dict) else None
+                        if isinstance(curves, list):
+                            for curve in curves:
+                                try:
+                                    if not isinstance(curve, dict):
+                                        continue
+                                    cid = curve.get('Id')
+                                    if not cid:
+                                        continue
+                                    # 严格按白名单匹配（避免模糊匹配误伤）
+                                    if cid in mouth_param_whitelist:
+                                        # 清空 Segments（若存在）
+                                        if 'Segments' in curve and curve['Segments']:
+                                            curve['Segments'] = []
+                                            modified = True
+                                except Exception:
+                                    continue
+
+                        if modified:
+                            try:
+                                with open(motion_path, 'w', encoding='utf-8') as mf:
+                                    _json.dump(motion_data, mf, ensure_ascii=False, indent=4)
+                                logger.info(f"已清除口型参数：{motion_path}")
+                            except Exception:
+                                # 写入失败则记录但不阻止上传
+                                logger.exception(f"写入 motion 文件失败: {motion_path}")
+                    except Exception:
+                        continue
+            except Exception:
+                logger.exception("处理 motion 文件时发生错误")
             
             logger.info(f"成功上传Live2D模型: {model_name} -> {target_model_dir}")
             
@@ -2326,6 +4922,101 @@ async def save_recent_file(request: Request):
             json.dump(arr, f, ensure_ascii=False, indent=2)
         return {"success": True}
     except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post('/api/memory/update_catgirl_name')
+async def update_catgirl_name(request: Request):
+    """
+    更新记忆文件中的猫娘名称
+    1. 重命名记忆文件
+    2. 更新文件内容中的猫娘名称引用
+    """
+    import os, json
+    data = await request.json()
+    old_name = data.get('old_name')
+    new_name = data.get('new_name')
+    
+    if not old_name or not new_name:
+        return JSONResponse({"success": False, "error": "缺少必要参数"}, status_code=400)
+    
+    try:
+        from utils.config_manager import get_config_manager
+        cm = get_config_manager()
+        
+        # 1. 重命名记忆文件
+        old_filename = f'recent_{old_name}.json'
+        new_filename = f'recent_{new_name}.json'
+        old_file_path = str(cm.memory_dir / old_filename)
+        new_file_path = str(cm.memory_dir / new_filename)
+        
+        # 检查旧文件是否存在
+        if not os.path.exists(old_file_path):
+            logger.warning(f"记忆文件不存在: {old_file_path}")
+            return JSONResponse({"success": False, "error": f"记忆文件不存在: {old_filename}"}, status_code=404)
+        
+        # 如果新文件已存在，先删除
+        if os.path.exists(new_file_path):
+            os.remove(new_file_path)
+        
+        # 重命名文件
+        os.rename(old_file_path, new_file_path)
+        
+        # 2. 更新文件内容中的猫娘名称引用
+        with open(new_file_path, 'r', encoding='utf-8') as f:
+            file_content = json.load(f)
+        
+        # 遍历所有消息，仅在特定字段中更新猫娘名称
+        for item in file_content:
+            if isinstance(item, dict):
+                # 安全的方式：只在特定的字段中替换猫娘名称
+                # 避免在整个content中进行字符串替换
+                
+                # 检查角色名称相关字段
+                name_fields = ['speaker', 'author', 'name', 'character', 'role']
+                for field in name_fields:
+                    if field in item and isinstance(item[field], str) and old_name in item[field]:
+                        if item[field] == old_name:  # 完全匹配才替换
+                            item[field] = new_name
+                            logger.debug(f"更新角色名称字段 {field}: {old_name} -> {new_name}")
+                
+                # 如果item有data嵌套结构，也检查其中的name字段
+                if 'data' in item and isinstance(item['data'], dict):
+                    data = item['data']
+                    for field in name_fields:
+                        if field in data and isinstance(data[field], str) and old_name in data[field]:
+                            if data[field] == old_name:  # 完全匹配才替换
+                                data[field] = new_name
+                                logger.debug(f"更新data中角色名称字段 {field}: {old_name} -> {new_name}")
+                    
+                    # 对于content字段，使用更保守的方法 - 仅在明确标识为角色名称的地方替换
+                    if 'content' in data and isinstance(data['content'], str):
+                        content = data['content']
+                        # 检查是否是明确的角色发言格式，如"小白说："或"小白: "
+                        # 这种格式通常表示后面的内容是角色发言
+                        patterns = [
+                            f"{old_name}说：",  # 中文冒号
+                            f"{old_name}说:",   # 英文冒号  
+                            f"{old_name}:",     # 纯冒号
+                            f"{old_name}->",    # 箭头
+                            f"[{old_name}]",    # 方括号
+                        ]
+                        
+                        for pattern in patterns:
+                            if pattern in content:
+                                new_pattern = pattern.replace(old_name, new_name)
+                                content = content.replace(pattern, new_pattern)
+                                logger.debug(f"在消息内容中发现角色标识，更新: {pattern} -> {new_pattern}")
+                        
+                        data['content'] = content
+        
+        # 保存更新后的内容
+        with open(new_file_path, 'w', encoding='utf-8') as f:
+            json.dump(file_content, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"已更新猫娘名称从 '{old_name}' 到 '{new_name}' 的记忆文件")
+        return {"success": True}
+    except Exception as e:
+        logger.exception("更新猫娘名称失败")
         return {"success": False, "error": str(e)}
 
 @app.post('/api/emotion/analysis')
@@ -2635,17 +5326,14 @@ if __name__ == "__main__":
     logger.info(f"Access UI at: http://127.0.0.1:{MAIN_SERVER_PORT} (or your network IP:{MAIN_SERVER_PORT})")
     logger.info("-----------------------------")
 
-    # Custom logging filter to suppress specific endpoints
-    class EndpointFilter(logging.Filter):
-        def filter(self, record: logging.LogRecord) -> bool:
-            # Suppress only INFO level logs for specific endpoints
-            # Keep WARNING and ERROR logs
-            if record.levelno > logging.INFO:
-                return True
-            return record.getMessage().find("/api/characters/current_catgirl") == -1
-
+    # 使用统一的速率限制日志过滤器
+    from utils.logger_config import create_main_server_filter, create_httpx_filter
+    
     # Add filter to uvicorn access logger
-    logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
+    logging.getLogger("uvicorn.access").addFilter(create_main_server_filter())
+    
+    # Add filter to httpx logger for availability check requests
+    logging.getLogger("httpx").addFilter(create_httpx_filter())
 
     # 1) 配置 UVicorn
     config = uvicorn.Config(
@@ -2691,3 +5379,4 @@ if __name__ == "__main__":
         server.run()
     finally:
         logger.info("服务器已关闭")
+

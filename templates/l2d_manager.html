@@ -233,7 +233,12 @@
 <script src="/static/libs/live2d.min.js"></script>
 <script src="/static/libs/pixi.min.js"></script>
 <script src="/static/libs/index.min.js"></script>
-<script src="/static/live2d.js"></script>
+<script src="/static/live2d-core.js"></script>
+<script src="/static/live2d-emotion.js"></script>
+<script src="/static/live2d-model.js"></script>
+<script src="/static/live2d-interaction.js"></script>
+<script src="/static/live2d-ui.js"></script>
+<script src="/static/live2d-init.js"></script>
 
 <script>
     // 用于页面间通信的事件处理
@@ -254,25 +259,6 @@
         // 全局变量：跟踪未保存的更改
         window.hasUnsavedChanges = false;
 
-        document.addEventListener('DOMContentLoaded', async () => {
-        const statusDiv = document.getElementById('status');
-        const modelSelect = document.getElementById('model-select');
-        const motionSelect = document.getElementById('motion-select');
-        const expressionSelect = document.getElementById('expression-select');
-        const playMotionBtn = document.getElementById('play-motion-btn');
-        const playExpressionBtn = document.getElementById('play-expression-btn');
-        const emotionManagerBtn = document.getElementById('emotion-manager-btn');
-        const savePositionBtn = document.getElementById('save-position-btn');
-        const persistentBox = document.getElementById('persistent-box');
-        const persistentSelect = document.getElementById('persistent-expression-select');
-        const addPersistentBtn = document.getElementById('add-persistent-btn');
-        const persistentList = document.getElementById('persistent-list');
-        const savePersistentBtn = document.getElementById('save-persistent-btn');
-        const uploadBtn = document.getElementById('upload-btn');
-        const modelUpload = document.getElementById('model-upload');
-        const uploadStatus = document.getElementById('upload-status');
-        const backToMainBtn = document.getElementById('backToMainBtn');
-        
         // 全屏控制函数
         const requestFullscreen = () => {
             const elem = document.documentElement;
@@ -307,6 +293,36 @@
                      document.mozFullScreenElement || 
                      document.msFullscreenElement);
         };
+
+        document.addEventListener('DOMContentLoaded', async () => {
+        // Electron白屏修复
+        if (document.body) {
+            void document.body.offsetHeight;
+            const currentOpacity = document.body.style.opacity || '1';
+            document.body.style.opacity = '0.99';
+            requestAnimationFrame(() => {
+                document.body.style.opacity = currentOpacity;
+            });
+        }
+
+        const statusDiv = document.getElementById('status');
+        const modelSelect = document.getElementById('model-select');
+        const motionSelect = document.getElementById('motion-select');
+        const expressionSelect = document.getElementById('expression-select');
+        const playMotionBtn = document.getElementById('play-motion-btn');
+        const playExpressionBtn = document.getElementById('play-expression-btn');
+        const emotionManagerBtn = document.getElementById('emotion-manager-btn');
+        const savePositionBtn = document.getElementById('save-position-btn');
+        const persistentBox = document.getElementById('persistent-box');
+        const persistentSelect = document.getElementById('persistent-expression-select');
+        const addPersistentBtn = document.getElementById('add-persistent-btn');
+        const persistentList = document.getElementById('persistent-list');
+        const savePersistentBtn = document.getElementById('save-persistent-btn');
+        const uploadBtn = document.getElementById('upload-btn');
+        const modelUpload = document.getElementById('model-upload');
+        const uploadStatus = document.getElementById('upload-status');
+        const backToMainBtn = document.getElementById('backToMainBtn');
+        
         
         // 检测页面来源，设置返回按钮文本
         const isPopupWindow = window.opener !== null;
@@ -326,14 +342,17 @@
             fullscreenBtn.id = 'fullscreen-btn';
             fullscreenBtn.className = 'btn btn-primary';
             fullscreenBtn.textContent = t('live2d.toggleFullscreen', '切换全屏');
+            fullscreenBtn.setAttribute('data-i18n', 'live2d.toggleFullscreen');
             fullscreenBtn.onclick = async () => {
                 try {
                     if (isFullscreen()) {
                         await exitFullscreen();
                         fullscreenBtn.textContent = t('live2d.toggleFullscreen', '切换全屏');
+                        fullscreenBtn.setAttribute('data-i18n', 'live2d.toggleFullscreen');
                     } else {
                         await requestFullscreen();
                         fullscreenBtn.textContent = t('live2d.exitFullscreen', '退出全屏');
+                        fullscreenBtn.setAttribute('data-i18n', 'live2d.exitFullscreen');
                     }
                 } catch (e) {
                     console.log('切换全屏失败:', e);
@@ -358,14 +377,18 @@
             if (fullscreenBtn) {
                 if (isFullscreen()) {
                     fullscreenBtn.textContent = t('live2d.exitFullscreen', '退出全屏');
+                    fullscreenBtn.setAttribute('data-i18n', 'live2d.exitFullscreen');
                 } else {
                     fullscreenBtn.textContent = t('live2d.toggleFullscreen', '切换全屏');
+                    fullscreenBtn.setAttribute('data-i18n', 'live2d.toggleFullscreen');
                 }
             }
         }
         
-        // 页面加载时发送消息隐藏主界面
-        sendMessageToMainPage('hide_main_ui');
+        // 页面加载时发送消息隐藏主界面（仅在弹出窗口模式下）
+        if (isPopupWindow) {
+            sendMessageToMainPage('hide_main_ui');
+        }
 
         // 翻译辅助函数：简化翻译调用并处理错误
         function t(key, fallback, params = {}) {
@@ -410,6 +433,9 @@
                     const option = document.createElement('option');
                     option.value = model.name;
                     option.textContent = model.name;
+                    // 使用data属性存储item_id，这样更容易在change事件中获取
+                    option.dataset.itemId = model.item_id;
+                    console.log('添加模型选项:', model.name, 'item_id:', model.item_id);
                     modelSelect.appendChild(option);
                 });
 
@@ -457,7 +483,7 @@
         }
         
         // 保存模型设置到角色的函数
-        async function saveModelToCharacter(modelName) {
+        async function saveModelToCharacter(modelName, itemId = null) {
             try {
                 // 获取角色名称
                 const lanlanName = await getLanlanName();
@@ -467,12 +493,23 @@
                     return false;
                 }
                 
+                // 构建保存数据，包含模型名称和可选的item_id
+                const saveData = { 
+                    live2d: modelName 
+                };
+                
+                // 如果有item_id，也保存它
+                if (itemId && itemId !== 'undefined') {
+                    saveData.item_id = itemId;
+                    console.log('保存模型设置时同时保存item_id:', itemId);
+                }
+                
                 const response = await fetch(`/api/characters/catgirl/l2d/${encodeURIComponent(lanlanName)}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ live2d: modelName })
+                    body: JSON.stringify(saveData)
                 });
                 
                 const result = await response.json();
@@ -494,15 +531,25 @@
         // 修改模型选择事件，自动保存模型设置
         modelSelect.addEventListener('change', async (e) => {
             const modelName = e.target.value;
+            const modelId = e.target.dataset.itemId
+            console.log("id:", modelId)
             if (!modelName) return;
 
             currentModelInfo = availableModels.find(m => m.name === modelName);
+            if (currentModelInfo) {
+                // 设置item_id，确保从dataset中获取
+                currentModelInfo.item_id = modelId || currentModelInfo.item_id;
+            }
             if (!currentModelInfo) return;
 
-            await loadModel(modelName, currentModelInfo);
+            // 获取选中的option元素，从中获取item_id
+            const selectedOption = e.target[e.target.selectedIndex];
+            const modelSteamId = selectedOption ? selectedOption.dataset.itemId : currentModelInfo.item_id;
             
-            // 自动保存模型设置到角色
-            const saveSuccess = await saveModelToCharacter(modelName);
+            await loadModel(modelName, currentModelInfo, modelSteamId);
+            
+            // 自动保存模型设置到角色，同时传入item_id
+            const saveSuccess = await saveModelToCharacter(modelName, modelSteamId);
             if (!saveSuccess) {
                 // 如果自动保存失败，标记为有未保存的更改
                 window.hasUnsavedChanges = true;
@@ -510,21 +557,54 @@
         });
 
         // 加载模型的函数
-        async function loadModel(modelName, modelInfo) {
+        async function loadModel(modelName, modelInfo, steam_id) {
             if (!modelName || !modelInfo) return;
             
+            // 确保获取正确的steam_id，优先使用传入的，然后从modelInfo中获取
+            let finalSteamId = steam_id || modelInfo.item_id;
+            console.log('modelInfo:', modelInfo);
+            console.log('finalSteamId:', finalSteamId);
             showStatus(t('live2d.loadingModel', `正在加载模型: ${modelName}...`, {model: modelName}));
             setControlsDisabled(true);
 
             try {
                 // 1. Fetch files list
-                const filesRes = await fetch(`/api/live2d/model_files/${modelName}`);
+                let filesRes;
+                // 根据modelInfo的source字段和finalSteamId决定使用哪个API端点
+                if (modelInfo.source === 'user_mods') {
+                    // 对于用户mod模型，使用modelName构建URL
+                    console.log('Fetching model files for user mod:', modelName);
+                    filesRes = await fetch(`/api/live2d/model_files/${encodeURIComponent(modelName)}`);
+                } else if (finalSteamId && finalSteamId !== 'undefined') {
+                    // 如果提供了finalSteamId，调用专门的API端点
+                    filesRes = await fetch(`/api/live2d/model_files_by_id/${finalSteamId}`);
+                } else {
+                    // 否则使用原来的API端点
+                    filesRes = await fetch(`/api/live2d/model_files/${encodeURIComponent(modelName)}`);
+                }
                 const filesData = await filesRes.json();
                 if (!filesData.success) throw new Error(t('live2d.modelFilesFetchFailed', '无法获取模型文件列表'));
                 currentModelFiles = filesData;
 
                 // 2. Fetch model config
-                const modelJsonUrl = modelInfo.path;
+                let modelJsonUrl;
+                // 优先使用后端返回的model_config_url（如果有）
+                if (filesData.model_config_url) {
+                    modelJsonUrl = filesData.model_config_url;
+                    console.log('使用后端返回的模型配置URL:', modelJsonUrl);
+                } else if (modelInfo.source === 'user_mods') {
+                    // 对于用户mod模型，直接使用modelInfo.path（已经包含/user_mods/路径）
+                    modelJsonUrl = modelInfo.path;
+                    console.log('使用用户mod模型路径:', modelJsonUrl);
+                } else if (finalSteamId && finalSteamId !== 'undefined') {
+                    // 如果提供了finalSteamId但没有model_config_url，使用原来的方式构建URL（兼容模式）
+                    modelJsonUrl = `/workshop/${finalSteamId}/${modelName}.model3.json`;
+                    console.log('兼容模式 - 构建的模型URL(带steam_id):', modelJsonUrl);
+                } else {
+                    // 否则使用原来的路径
+                    modelJsonUrl = modelInfo.path;
+                    console.log('构建的模型URL(本地):', modelJsonUrl);
+                }
                 const modelConfigRes = await fetch(modelJsonUrl);
                 if (!modelConfigRes.ok) throw new Error(t('live2d.modelConfigFetchFailed', `无法获取模型配置: ${modelConfigRes.statusText}`, {status: modelConfigRes.statusText}));
                 const modelConfig = await modelConfigRes.json();
@@ -662,8 +742,8 @@
                 { x: live2dModel.scale.x, y: live2dModel.scale.y }
             );
             
-            // 保存模型设置到角色
-            const modelSuccess = await saveModelToCharacter(currentModelInfo.name);
+            // 保存模型设置到角色，同时传入item_id
+            const modelSuccess = await saveModelToCharacter(currentModelInfo.name, currentModelInfo.item_id);
             
             if (positionSuccess && modelSuccess) {
                 showStatus(t('live2d.settingsSaved', '位置和模型设置保存成功!'), 2000);
@@ -680,9 +760,7 @@
         // 返回主页/关闭按钮
         backToMainBtn.addEventListener('click', async () => {
             // 检查是否有未保存的更改
-            console.log('返回按钮被点击，hasUnsavedChanges =', window.hasUnsavedChanges);
             if (window.hasUnsavedChanges) {
-                console.log('检测到未保存的更改，显示确认对话框');
                 const message = t('dialogs.unsavedChanges', '您有未保存的设置，确定要离开吗？');
                 const title = t('dialogs.confirmLeave', '确认离开');
                 const confirmLeave = await showConfirm(message, title, { danger: true });
@@ -690,6 +768,8 @@
                 if (!confirmLeave) {
                     return; // 用户取消，不离开
                 }
+                // 用户确认离开，重置未保存状态，避免被 beforeunload 拦截
+                window.hasUnsavedChanges = false;
             } else {
                 console.log('没有未保存的更改，直接返回');
             }
@@ -698,7 +778,6 @@
             if (isFullscreen()) {
                 try {
                     await exitFullscreen();
-                    // 等待全屏退出完成
                     await new Promise(resolve => setTimeout(resolve, 100));
                 } catch (e) {
                     console.log('退出全屏失败:', e);
@@ -998,9 +1077,27 @@
                 // 获取角色名称
                 const lanlanName = await getLanlanName();
                 
+                // 构建API URL，支持可选的item_id参数
                 let apiUrl = '/api/characters/current_live2d_model';
+                const params = new URLSearchParams();
+                
                 if (lanlanName) {
-                    apiUrl += `?catgirl_name=${encodeURIComponent(lanlanName)}`;
+                    params.append('catgirl_name', lanlanName);
+                }
+                
+                // 如果有item_id，添加到参数中
+                // 注意：这里的item_id需要从适当的地方获取
+                // 例如从全局变量、DOM元素或其他逻辑中获取
+                // 这里只是示例，实际实现可能需要根据具体情况调整
+                const itemId = currentModelInfo ? currentModelInfo.item_id : null;
+                if (itemId) {
+                    params.append('item_id', itemId);
+                }
+                
+                // 添加参数到URL
+                const paramsString = params.toString();
+                if (paramsString) {
+                    apiUrl += `?${paramsString}`;
                 }
                 
                 const currentModelResponse = await fetch(apiUrl);
@@ -1023,7 +1120,7 @@
                     modelSelect.value = model_name;
                     
                     // 加载模型
-                    await loadModel(model_name, model_info);
+                    await loadModel(model_name, model_info, model_info.item_id);
                     
                     showStatus(t('live2d.modelLoaded', `已加载角色 ${catgirl_name} 的模型: ${model_name}`, {name: catgirl_name, model: model_name}));
                 } else {
@@ -1037,7 +1134,8 @@
             }
         }
     });
-// 监听页面卸载事件，确保返回时主界面可见
+    
+    // 监听页面卸载事件，确保返回时主界面可见
         window.addEventListener('beforeunload', (e) => {
             // 尝试退出全屏
             if (isFullscreen()) {
@@ -1048,20 +1146,25 @@
                 }
             }
             
-            sendMessageToMainPage('show_main_ui');
+            if (window.opener) {
+                sendMessageToMainPage('show_main_ui');
+            }
             
-            // 如果有未保存的更改，阻止页面关闭并显示确认对话框
-            // 注意：现代浏览器会忽略自定义消息，显示标准的确认对话框
+            // 如果有未保存的更改，本应阻止页面关闭并显示确认对话框
+            // 但在Electron中可能导致无法关闭窗口，且无法使用自定义模态窗替代系统默认弹窗
+            // 因此直接允许关闭，不再拦截
+            /* 
             if (window.hasUnsavedChanges) {
                 e.preventDefault();
                 e.returnValue = ''; // Chrome需要这个
                 return ''; // 某些浏览器需要返回值
             }
+            */
         });
         
         // 确保在页面关闭时也恢复主界面
         window.addEventListener('unload', () => {
-            sendMessageToMainPage('show_main_ui');
+            // 页面卸载时不需要再次发送消息
         });
         </script>
 

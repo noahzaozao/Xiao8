@@ -72,7 +72,7 @@
             opacity: 0;
             transform: translateY(-20px) scale(0.95);
             transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-            pointer-events: auto !important;  /* 确保可以显示，不受 body 的 pointer-events 影响 */
+            pointer-events: none;  /* 默认不响应事件 */
             word-wrap: break-word;
             white-space: pre-wrap;
             display: flex;  /* 使用flex布局 */
@@ -257,34 +257,39 @@
             width: 400px;
             max-height: 500px;
             height: 500px;
-            background: #f7f8fa;
-            opacity: 0.9;
-            border-radius: 12px;
+            /* Fluent Design Acrylic 材质 */
+            background: rgba(255, 255, 255, 0.65);
+            backdrop-filter: saturate(180%) blur(20px);  /* Fluent Design 标准模糊值 */
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+            border-radius: 8px;  /* Fluent Design 标准圆角 */
+            border: 1px solid rgba(255, 255, 255, 0.18);  /* 微妙的高光边框 */
             padding: 0;
             box-sizing: border-box;
-            overflow: hidden; /* 重要：改为 hidden，滚动交给内部 wrapper */
+            overflow: hidden;
             z-index: 20;
-            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+            /* Fluent Design 多层阴影创造深度 */
+            box-shadow: 
+                0 2px 4px rgba(0, 0, 0, 0.04),
+                0 8px 16px rgba(0, 0, 0, 0.08),
+                0 16px 32px rgba(0, 0, 0, 0.04);
             scroll-behavior: smooth;
-            display: flex; /* 使用 flex 布局 */
+            display: flex;
             flex-direction: column;
-            /* 添加过渡效果，让尺寸变化平滑 */
-            transition: width 0.3s ease, height 0.3s ease, max-height 0.3s ease, padding 0.3s ease;
+            transition: width 0.3s ease, height 0.3s ease, max-height 0.3s ease, padding 0.3s ease, box-shadow 0.2s ease;
         }
 
-        /* 内部内容包裹器，负责滚动 */
+        /* 内部内容包裹器，负责滚动 - Fluent Design */
         #chat-content-wrapper {
-            pointer-events: auto; /* 恢复鼠标交互 */
-            flex-grow: 1; /* 占据可用空间 */
-            padding: 16px; /* 内边距移到这里 */
-            padding-top: 48px; /* 为顶部按钮留空间 */
-            overflow-y: auto; /* 滚动条在这里 */
+            pointer-events: auto;
+            flex-grow: 1;
+            padding: 16px;
+            padding-top: 48px;
+            overflow-y: auto;
             scroll-behavior: smooth;
-            /* 添加过渡，让内容隐藏/显示更平滑 */
             transition: opacity 0.2s ease, visibility 0.2s ease;
             opacity: 1;
             visibility: visible;
-            background: #fff;
+            background: rgba(249, 249, 249, 0.7);  /* Fluent Design 背景层 */
         }
 
         /* 切换按钮样式 - 更醒目的设计 */
@@ -316,22 +321,22 @@
             transform: scale(1.1);
         }
         
-        /* 聊天框标题 */
+        /* 聊天框标题 - Fluent Design 风格 */
         #chat-header {
             position: absolute;
             top: 0;
             left: 0;
             right: 0;
             height: 48px;
-            background: #f7f8fa;
-            border-bottom: 1px solid #e0e0e0;
+            background: rgba(255, 255, 255, 0.5);  /* 更透明的 Mica 效果 */
+            border-bottom: 1px solid rgba(0, 0, 0, 0.06);  /* Fluent Design 中性分隔线 */
             display: flex;
             align-items: center;
             padding: 0 16px;
             box-sizing: border-box;
             z-index: 21;
-            cursor: grab; /* 拖动手柄样式 */
-            user-select: none; /* 防止拖动时选中文字 */
+            cursor: grab;
+            user-select: none;
             -webkit-user-select: none;
             -moz-user-select: none;
             -ms-user-select: none;
@@ -346,9 +351,9 @@
         }
         
         #chat-title {
-            font-size: 1rem;
+            font-size: 0.875rem;  /* Fluent Design 标准字号 14px */
             font-weight: 600;
-            color: #333;
+            color: rgba(0, 0, 0, 0.9);  /* Fluent Design 高对比度文本 */
             user-select: none;
             -webkit-user-select: none;
             -moz-user-select: none;
@@ -360,13 +365,13 @@
             position: absolute;
             top: 60px;
             left: 16px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: rgba(68, 183, 254, 0.95);  /* 与主色调一致 #44b7fe */
             color: white;
             padding: 12px 20px;
             border-radius: 8px;
             font-size: 0.95rem;
             font-weight: 500;
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 4px 12px rgba(68, 183, 254, 0.4);
             z-index: 22;
             pointer-events: none;
             animation: slideInBounce 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
@@ -388,7 +393,7 @@
             height: 0;
             border-left: 8px solid transparent;
             border-right: 8px solid transparent;
-            border-bottom: 8px solid #667eea;
+            border-bottom: 8px solid rgba(68, 183, 254, 0.95);
         }
 
         @keyframes slideInBounce {
@@ -425,7 +430,7 @@
         
         .message.user {
             align-self: flex-end;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #44b7fe;  /* 与按钮一致的浅蓝色 */
             color: #fff;
             margin-left: auto;
             border-bottom-right-radius: 4px;
@@ -433,7 +438,7 @@
         
         .message.gemini {
             align-self: flex-start;
-            background: #f0f0f0;
+            background: rgba(68, 183, 254, 0.12);  /* 与主色调协调的浅蓝背景 */
             color: #333;
             margin-right: auto;
             border-bottom-left-radius: 4px;
@@ -450,21 +455,20 @@
             }
         }
         
-        /* 文本输入区域样式 - 在聊天框底部 */
+        /* 文本输入区域样式 - Fluent Design */
         #text-input-area {
             pointer-events: auto;
             display: flex;
             flex-direction: column;
             gap: 8px;
             padding: 12px;
-            background: #fff;
-            border-top: 1px solid #e0e0e0;
-            background: transparent;
+            background: rgba(255, 255, 255, 0.5);  /* Fluent Acrylic */
+            border-top: 1px solid rgba(0, 0, 0, 0.06);  /* 中性分隔线 */
             box-sizing: border-box;
             transition: all 0.3s ease;
             position: relative;
             z-index: 25;
-            user-select: none; /* 默认区域内元素不可选中 */
+            user-select: none;
             -webkit-user-select: none;
             -moz-user-select: none;
             -ms-user-select: none;
@@ -489,9 +493,9 @@
             flex-direction: column;
             gap: 6px;
             padding: 8px;
-            background: #f5f5f5;
+            background: rgba(68, 183, 254, 0.05);
             border-radius: 8px;
-            border: 1px solid #e0e0e0;
+            border: 1px solid rgba(68, 183, 254, 0.2);
             animation: slideDown 0.3s ease;
         }
         
@@ -520,7 +524,7 @@
         
         #screenshots-title {
             font-size: 0.85rem;
-            color: #333;
+            color: #44b7fe;
             font-weight: 600;
         }
         
@@ -559,12 +563,12 @@
         }
         
         #screenshots-list::-webkit-scrollbar-thumb {
-            background: #ccc;
+            background: rgba(68, 183, 254, 0.4);
             border-radius: 3px;
         }
         
         #screenshots-list::-webkit-scrollbar-thumb:hover {
-            background: #999;
+            background: rgba(68, 183, 254, 0.6);
         }
         
         /* 单个截图卡片 */
@@ -613,7 +617,7 @@
         }
         
         .screenshot-thumbnail:hover {
-            border-color: #4f8cff;
+            border-color: #44b7fe;
             transform: scale(1.05);
         }
         
@@ -646,17 +650,17 @@
         
         .screenshot-index {
             font-size: 0.7rem;
-            color: #666;
+            color: #44b7fe;
             background: white;
             padding: 2px 6px;
             border-radius: 10px;
-            border: 1px solid #ddd;
+            border: 1px solid rgba(68, 183, 254, 0.3);
         }
         
         #text-input-row {
             display: flex;
             gap: 8px;
-            align-items: flex-start;
+            align-items: flex-start; /* 顶部对齐，确保上沿对齐 */
             position: relative;
             z-index: 1;
         }
@@ -671,7 +675,13 @@
             background: #fff;
             color: #222;
             resize: none;
-            height: 78px;
+            /* 高度精确等于按钮组总高度，确保上沿和下沿对齐 */
+            /* 发送按钮: padding 8px上下 + border 2px上下(透明) + 内容高度(图标22px) = 8+2+22+2+8 = 42px */
+            /* gap: 6px */
+            /* 截图按钮: padding 8px上下 + border 2px上下(蓝色) + 内容高度(图标22px) = 8+2+22+2+8 = 42px */
+            /* 总高度: 42px + 6px + 42px = 90px */
+            /* 由于box-sizing: border-box，边框包含在高度内 */
+            height: 90px;
             box-sizing: border-box;
             cursor: text;
             caret-color: #222;
@@ -689,7 +699,7 @@
         
         #textInputBox:focus {
             outline: none;
-            border-color: #4f8cff;
+            border-color: #44b7fe;
             box-shadow: none;
         }
         
@@ -709,33 +719,69 @@
             pointer-events: auto;
             padding: 8px 16px;
             border-radius: 8px;
-            border: none;
-            background: #4f8cff;
-            color: #fff;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: background 0.2s, border-color 0.2s;
             font-size: 0.85rem;
             font-weight: 500;
             white-space: nowrap;
             min-width: 80px;
+            display: flex;
+            align-items: center; /* 图标和文字垂直居中对齐 */
+            justify-content: flex-start; /* 内容左对齐，图标在左边 */
+            gap: 6px;
+            box-sizing: border-box;
         }
         
-        #textSendButton:hover:not(:disabled), #screenshotButton:hover:not(:disabled) {
-            background: #2662c8;
+        /* 确保两个按钮的图标和文字对齐 */
+        #textSendButton img, #screenshotButton img {
+            flex-shrink: 0; /* 图标不收缩 */
+            width: 22px; /* 统一图标宽度，确保对齐 */
+            height: 22px;
+            object-fit: contain;
+            pointer-events: none;
         }
         
-        #textSendButton:disabled, #screenshotButton:disabled {
+        #textSendButton span, #screenshotButton span {
+            flex-shrink: 0; /* 文字不收缩 */
+            text-align: left; /* 文字左对齐 */
+        }
+        
+        /* 发送按钮：蓝色背景 */
+        #textSendButton {
+            border: 2px solid transparent;
+            background: #44b7fe;
+            color: #fff;
+        }
+        
+        #textSendButton:hover:not(:disabled) {
+            background: #2ea0e0;
+        }
+        
+        #textSendButton:disabled {
             background: #b0c4de;
             cursor: not-allowed;
             opacity: 0.6;
         }
         
+        /* 截图按钮：白色背景 + 蓝色边框 */
         #screenshotButton {
-            background: #6c757d;
+            border: 2px solid #44b7fe;
+            background: #fff;
+            color: #44b7fe;
         }
         
         #screenshotButton:hover:not(:disabled) {
-            background: #5a6268;
+            background: #f0f9ff;
+            border-color: #2ea0e0;
+            border-width: 2px;
+        }
+        
+        #screenshotButton:disabled {
+            border-color: #b0c4de;
+            border-width: 2px;
+            color: #b0c4de;
+            cursor: not-allowed;
+            opacity: 0.6;
         }
         
         /* 桌面端和移动端文本显示控制 */
@@ -814,14 +860,14 @@
             padding: 8px 16px;
             border-radius: 6px;
             border: none;
-            background: #4f8cff;
+            background: #44b7fe;
             color: #fff;
             cursor: pointer;
             transition: background 0.2s;
         }
 
         #sendButton:active {
-            background: #2662c8;
+            background: #2ea0e0;
         }
 
         #sendButton:disabled {
@@ -871,15 +917,15 @@
                 padding-top: 44px;
                 /* 禁用内容区过渡，避免折叠时对子元素产生影响 */
                 transition: none !important;
-                background: transparent;
+                background: rgba(249, 249, 249, 0.5);  /* Fluent 背景层 */
             }
             
             #text-input-area {
                 padding: 8px;
                 /* 输入区不参与任何过渡动画 */
                 transition: none !important;
-                background: transparent;
-                border-top: none;
+                background: rgba(255, 255, 255, 0.4);  /* Fluent Acrylic */
+                border-top: 1px solid rgba(0, 0, 0, 0.06);  /* Fluent 分隔线 */
             }
             /* 输入区内部元素也不参与过渡，避免细微跳动 */
             #text-input-row,
@@ -890,7 +936,8 @@
             
             #textInputBox {
                 font-size: 0.9rem;
-                height: 62px;
+                /* 移动端：按钮组高度 = 两个按钮(6px*2+内容) + gap(4px) */
+                height: 62px; /* 保持移动端原有高度 */
             }
             
             #button-group {
@@ -1018,8 +1065,8 @@
         <div id="text-input-row">
             <textarea id="textInputBox" data-i18n-placeholder="chat.textInputPlaceholder" placeholder="文字聊天模式...回车发送，Shift+回车换行" tabindex="0"></textarea>
             <div id="button-group">
-                <button id="textSendButton" data-i18n="chat.send">📤 发送</button>
-                <button id="screenshotButton"><span class="desktop-text" data-i18n="chat.screenshot">📸 截图</span><span class="mobile-text" data-i18n="chat.takePhoto">📷 拍照</span></button>
+                <button id="textSendButton"><img src="/static/icons/send_icon.png" alt=""><span data-i18n="chat.send">发送</span></button>
+                <button id="screenshotButton"><img src="/static/icons/screenshot_icon.png" alt=""><span class="desktop-text" data-i18n="chat.screenshot">截图</span><span class="mobile-text" data-i18n="chat.takePhoto">拍照</span></button>
             </div>
         </div>
     </div>
@@ -1064,6 +1111,7 @@
                 lanlan_config.lanlan_name = lanlanNameFromUrl || data.lanlan_name || "";
                 window.lanlan_config = lanlan_config;
                 cubism4Model = data.model_path || "";
+                window.cubism4Model = cubism4Model;
                 
                 // 动态设置页面标题
                 document.title = `${lanlan_config.lanlan_name} Terminal - Project N.E.K.O.`;
@@ -1336,17 +1384,36 @@
             // 等待配置加载完成
             await window.pageConfigReady;
             
-            // 动态加载 live2d.js
-            const live2dScript = document.createElement('script');
-            live2dScript.src = '/static/live2d.js';
-            document.body.appendChild(live2dScript);
+            // 动态加载 live2d 模块（按顺序加载拆分后的文件）
+            const live2dModules = [
+                '/static/live2d-core.js',
+                '/static/live2d-emotion.js',
+                '/static/live2d-model.js',
+                '/static/live2d-interaction.js',
+                '/static/live2d-ui.js',
+                '/static/live2d-init.js'
+            ];
             
-            // 等待 live2d.js 加载完成后再加载 app.js
-            live2dScript.onload = function() {
-                const appScript = document.createElement('script');
-                appScript.src = '/static/app.js';
-                document.body.appendChild(appScript);
-            };
+            // 按顺序加载脚本的辅助函数
+            async function loadScriptsSequentially(scripts) {
+                for (const src of scripts) {
+                    await new Promise((resolve, reject) => {
+                        const script = document.createElement('script');
+                        script.src = src;
+                        script.onload = resolve;
+                        script.onerror = reject;
+                        document.body.appendChild(script);
+                    });
+                }
+            }
+            
+            // 加载所有 live2d 模块
+            await loadScriptsSequentially(live2dModules);
+            
+            // 等待 live2d 模块加载完成后再加载 app.js
+            const appScript = document.createElement('script');
+            appScript.src = '/static/app.js';
+            document.body.appendChild(appScript);
         } catch (error) {
             console.error('加载脚本时出错:', error);
         }
