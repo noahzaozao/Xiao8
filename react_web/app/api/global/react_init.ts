@@ -90,6 +90,14 @@ export function checkRequestAvailable(): void {
  */
 if (typeof window !== 'undefined') {
   const win = window as any;
+
+  // 模块加载时的初始化日志，方便在控制台确认 react_init 是否已生效
+  if (!win.ReactInit) {
+    console.log('[ReactInit] 初始化全局工具对象...');
+  } else {
+    console.log('[ReactInit] 复用已有的全局工具对象');
+  }
+
   if (!win.ReactInit) {
     win.ReactInit = {} as any;
   }

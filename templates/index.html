@@ -1100,11 +1100,6 @@
     // 异步获取页面配置
     async function loadPageConfig() {
         try {
-            // 等待 request.global.js 初始化完成
-            if (window.ReactInit?.waitForRequestInit) {
-                await window.ReactInit.waitForRequestInit();
-            }
-            
             // 优先从 URL 获取 lanlan_name
             const urlParams = new URLSearchParams(window.location.search);
             let lanlanNameFromUrl = urlParams.get('lanlan_name') || "";
@@ -1121,20 +1116,13 @@
             const apiPath = lanlanNameFromUrl 
                 ? `/api/config/page_config?lanlan_name=${encodeURIComponent(lanlanNameFromUrl)}`
                 : '/api/config/page_config';
-            
-            // 使用 window.request 如果可用，否则使用 fetch
+
+            // 统一通过 ReactInit 中的方法：优先使用 window.request，否则回退到 fetch
             let data;
+            await window.ReactInit.waitForRequestInit();
             if (window.request) {
-                try {
-                    // request 已配置 baseURL，直接使用相对路径
-                    data = await window.request.get(apiPath);
-                } catch (error) {
-                    console.error('使用 request 获取配置失败:', error);
-                    // 降级到 fetch，需要构建完整 URL
-                    const apiUrl = window.buildApiUrl ? window.buildApiUrl(apiPath) : apiPath;
-                    const response = await fetch(apiUrl);
-                    data = await response.json();
-                }
+                // request 已配置 baseURL，直接使用相对路径
+                data = await window.request.get(apiPath);
             } else {
                 // 使用 fetch 时需要构建完整 URL
                 const apiUrl = window.buildApiUrl ? window.buildApiUrl(apiPath) : apiPath;
