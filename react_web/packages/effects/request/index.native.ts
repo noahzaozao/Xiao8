@@ -1,15 +1,19 @@
 import { createRequestClient } from "./createClient";
 import { NativeTokenStorage } from "./src/request-client/tokenStorage";
 import type { TokenRefreshFn } from "./src/request-client/types";
+import { getApiBaseUrl } from "../../../app/api/config";
 
 /**
  * React Native 环境的请求客户端实例
  */
 export const request = createRequestClient({
-    baseURL: "https://api.yourserver.com",
+    baseURL: getApiBaseUrl(),
     storage: new NativeTokenStorage(),
     refreshApi: async (refreshToken: string) => {
-        const res = await fetch("https://api.yourserver.com/auth/refresh", {
+        const base = getApiBaseUrl().replace(/\/$/, '');
+        const url = `${base}/auth/refresh`;
+
+        const res = await fetch(url, {
             method: "POST",
             body: JSON.stringify({ refreshToken }),
             headers: { "Content-Type": "application/json" },

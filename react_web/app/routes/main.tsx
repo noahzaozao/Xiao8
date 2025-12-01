@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import "./main.css";
-import { request, exposeRequestToGlobal, buildApiUrl } from "../api/request";
+import { request, buildApiUrl } from "../api/request";
 import { ExampleButton } from "../components/ExampleButton";
 
 export function meta() {
@@ -218,10 +218,6 @@ export default function Main() {
         }
       });
     })();
-
-    // 将 request 实例和相关工具函数暴露到全局，供外部 JS 文件使用
-    // 这会暴露：window.request, window.buildApiUrl, window.buildStaticUrl, window.buildWebSocketUrl
-    exposeRequestToGlobal();
 
     // 页面配置 - 从 URL 或 API 获取（初始化为空值）
     let lanlan_config = {

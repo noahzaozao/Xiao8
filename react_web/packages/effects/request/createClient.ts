@@ -39,8 +39,25 @@ export function createRequestClient(options: RequestClientConfig): AxiosInstance
         async (config: InternalAxiosRequestConfig) => {
             // 如果正在刷新 token，将请求加入队列
             if (requestQueue.getIsRefreshing()) {
-                return new Promise((resolve, reject) => {
-                    requestQueue.enqueue({ resolve, reject, config });
+                return new Promise<InternalAxiosRequestConfig>((resolve, reject) => {
+                    requestQueue.enqueue({
+                        resolve: async (cfg) => {
+                            // 添加最新 access token
+                            const token = await storage.getAccessToken();
+                            if (token && cfg.headers) {
+                                cfg.headers.Authorization = `Bearer ${token}`;
+                            }
+
+                            // 执行自定义请求拦截器
+                            if (requestInterceptor) {
+                                resolve(await requestInterceptor(cfg));
+                            } else {
+                                resolve(cfg);
+                            }
+                        },
+                        reject,
+                        config,
+                    });
                 });
             }
 
@@ -66,11 +83,14 @@ export function createRequestClient(options: RequestClientConfig): AxiosInstance
     createAuthRefreshInterceptor(
         instance,
         async (failedRequest: AxiosError<any>) => {
-            // 如果已经在刷新，等待刷新完成
-            if (requestQueue.getIsRefreshing()) {
+            // 记录进入时是否已经在刷新，避免覆盖进行中的刷新 Promise
+            const wasRefreshing = requestQueue.getIsRefreshing();
+            const refreshPromise = requestQueue.startRefresh();
+
+            // 已在刷新：只需等待既有刷新完成，然后使用新 token 重试
+            if (wasRefreshing) {
                 try {
-                    await requestQueue.startRefresh();
-                    // 刷新完成后，使用新 token 重试请求
+                    await refreshPromise;
                     const newToken = await storage.getAccessToken();
                     if (newToken && failedRequest.config?.headers) {
                         failedRequest.config.headers.Authorization = `Bearer ${newToken}`;
@@ -80,9 +100,6 @@ export function createRequestClient(options: RequestClientConfig): AxiosInstance
                     return Promise.reject(error);
                 }
             }
-
-            // 开始刷新流程
-            await requestQueue.startRefresh();
 
             try {
                 const refreshToken = await storage.getRefreshToken();

@@ -1,6 +1,27 @@
-*:focus {
-  outline: none !important;
-  box-shadow: none !important;
+/* 可访问的焦点样式 - 仅针对键盘导航显示 */
+:focus-visible {
+  outline: 2px solid #4f8cff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(79, 140, 255, 0.2);
+}
+
+/* 仅针对展示性元素移除鼠标点击焦点（保留键盘焦点） */
+img:focus,
+.container:focus,
+#live2d-container:focus,
+#live2d-canvas:focus {
+  outline: none;
+}
+
+/* 为可交互元素提供增强的焦点样式 */
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid #4f8cff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(79, 140, 255, 0.2);
 }
 
 .container {
@@ -613,9 +634,13 @@ button * {
 }
 
 #textInputBox:focus {
-  outline: none;
   border-color: #4f8cff;
-  box-shadow: none;
+}
+
+#textInputBox:focus-visible {
+  outline: 2px solid #4f8cff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(79, 140, 255, 0.2);
 }
 
 #textInputBox:disabled {
