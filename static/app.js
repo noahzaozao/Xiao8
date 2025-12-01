@@ -395,20 +395,10 @@ function init_app(){
                     }, 2500);
                 } else if (response.type === 'auto_close_mic') {
                     console.log('收到auto_close_mic事件，自动关闭麦克风');
-                    // 长时间无语音输入，自动关闭麦克风但不关闭live2d
+                    // 长时间无语音输入，模拟用户手动关闭语音会话
                     if (isRecording) {
-                        // 停止录音，但不隐藏live2d
-                        stopRecording();
-                        
-                        // 复位按钮状态
-                        micButton.disabled = false;
-                        muteButton.disabled = true;
-                        screenButton.disabled = true;
-                        stopButton.disabled = true;
-                        resetSessionButton.disabled = false;
-                        
-                        // 移除录音状态类
-                        micButton.classList.remove('recording');
+                        // 直接触发闭麦按钮点击，走完整的关闭流程（包括通知后端）
+                        muteButton.click();
                         
                         // 显示提示信息
                         showStatusToast(response.message || (window.t ? window.t('app.autoMuteTimeout') : '长时间无语音输入，已自动关闭麦克风'), 4000);
@@ -690,6 +680,9 @@ function init_app(){
         // 移除active类
         micButton.classList.remove('active');
         screenButton.classList.remove('active');
+        
+        // 同步浮动按钮状态
+        syncFloatingMicButtonState(false);
         
         stopRecording();
         micButton.disabled = false;

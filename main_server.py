@@ -4363,18 +4363,66 @@ def _publish_workshop_item(steamworks, title, description, content_folder, previ
 async def set_achievement_status(name: str):
     if steamworks is not None:
         try:
+            # 先请求统计数据并运行回调，确保数据已加载
+            steamworks.UserStats.RequestCurrentStats()
+            # 运行回调等待数据加载（多次运行以确保接收到响应）
+            for _ in range(10):
+                steamworks.run_callbacks()
+                await asyncio.sleep(0.1)
+            
             achievement_status = steamworks.UserStats.GetAchievement(name)
             logger.info(f"Achievement status: {achievement_status}")
             if not achievement_status:
                 result = steamworks.UserStats.SetAchievement(name)
                 if result:
                     logger.info(f"成功设置成就: {name}")
+                    steamworks.UserStats.StoreStats()
+                    steamworks.run_callbacks()
                 else:
-                    logger.error(f"设置成就失败: {name}，{result}")
-                steamworks.UserStats.StoreStats()
-            steamworks.run_callbacks()
+                    # 第一次失败，等待后重试一次
+                    logger.warning(f"设置成就首次尝试失败，正在重试: {name}")
+                    await asyncio.sleep(0.5)
+                    steamworks.run_callbacks()
+                    result = steamworks.UserStats.SetAchievement(name)
+                    if result:
+                        logger.info(f"成功设置成就（重试后）: {name}")
+                        steamworks.UserStats.StoreStats()
+                        steamworks.run_callbacks()
+                    else:
+                        logger.error(f"设置成就失败: {name}，请确认成就ID在Steam后台已配置")
+            else:
+                logger.info(f"成就已解锁，无需重复设置: {name}")
         except Exception as e:
             logger.error(f"设置成就失败: {e}")
+
+@app.get('/api/steam/list-achievements')
+async def list_achievements():
+    """列出Steam后台已配置的所有成就（调试用）"""
+    if steamworks is not None:
+        try:
+            steamworks.UserStats.RequestCurrentStats()
+            for _ in range(10):
+                steamworks.run_callbacks()
+                await asyncio.sleep(0.1)
+            
+            num_achievements = steamworks.UserStats.GetNumAchievements()
+            achievements = []
+            for i in range(num_achievements):
+                name = steamworks.UserStats.GetAchievementName(i)
+                if name:
+                    # 如果是bytes类型，解码为字符串
+                    if isinstance(name, bytes):
+                        name = name.decode('utf-8')
+                    status = steamworks.UserStats.GetAchievement(name)
+                    achievements.append({"name": name, "unlocked": status})
+            
+            logger.info(f"Steam后台已配置 {num_achievements} 个成就: {achievements}")
+            return JSONResponse(content={"count": num_achievements, "achievements": achievements})
+        except Exception as e:
+            logger.error(f"获取成就列表失败: {e}")
+            return JSONResponse(content={"error": str(e)}, status_code=500)
+    else:
+        return JSONResponse(content={"error": "Steamworks未初始化"}, status_code=500)
 
 @app.get('/api/file-exists')
 async def check_file_exists(path: str = None):
