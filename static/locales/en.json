@@ -134,7 +134,10 @@
     "status": {
       "unpublished": "Unpublished",
       "published": "Published",
-      "installed": "Installed"
+      "installed": "Installed",
+      "subscribed": "Subscribed",
+      "downloading": "Downloading",
+      "needsUpdate": "Needs Update"
     },
     "modified_date": "Modified Date:",
     "size": "Size:",

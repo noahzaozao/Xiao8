@@ -133,7 +133,10 @@
     "status": {
       "unpublished": "未发布",
       "published": "已发布",
-      "installed": "已安装"
+      "installed": "已安装",
+      "subscribed": "已订阅",
+      "downloading": "下载中",
+      "needsUpdate": "需要更新"
     },
     "modified_date": "修改日期:",
     "size": "大小:",
