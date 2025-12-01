@@ -19,10 +19,8 @@
     window.STATIC_SERVER_URL = window.API_BASE_URL;
   </script>
   
-  <!-- 2. 加载配置管理（可选，request.global.js 已包含配置功能） -->
-  <script type="module" src="/static/bundles/config.global.js"></script>
-  
-  <!-- 3. 加载请求库 -->
+  <!-- 2. 加载通用初始化 & 请求库 -->
+  <script type="module" src="/static/bundles/react_init.js"></script>
   <script type="module" src="/static/bundles/request.global.js"></script>
 </head>
 <body>
@@ -52,16 +50,17 @@
 </html>
 ```
 
-### 方式 2：仅使用配置管理（轻量级）
+### 方式 2：仅使用工具函数（不依赖 React）
 
-如果只需要 URL 构建功能，不需要完整的 request 库：
+如果只需要 URL 构建功能，不需要完整的 React 前端：
 
 ```html
 <script>
   window.API_BASE_URL = 'http://localhost:48911';
   window.STATIC_SERVER_URL = window.API_BASE_URL;
 </script>
-<script type="module" src="/static/bundles/config.global.js"></script>
+<script type="module" src="/static/bundles/react_init.js"></script>
+<script type="module" src="/static/bundles/request.global.js"></script>
 <script>
   // 使用配置工具函数
   const apiUrl = window.buildApiUrl('/api/users');
@@ -215,9 +214,9 @@ fetch(window.buildApiUrl('/api/users'))
 ## ⚠️ 注意事项
 
 1. **加载顺序**：确保在加载 `request.global.js` 之前设置 `window.API_BASE_URL`（如果需要自定义）
-2. **ES 模块**：`config.global.js` 和 `request.global.js` 是 ES 模块，需要使用 `<script type="module">`
+2. **ES 模块**：`react_init.js` 和 `request.global.js` 是 ES 模块，需要使用 `<script type="module">`
 3. **构建路径**：所有构建产物位于 `static/bundles/` 目录，便于全量构建时清理
-4. **构建互斥**：`build:global` 和 `build:request` 会互相覆盖（互斥），推荐使用 `build:global`
+4. **构建推荐**：统一使用 `build:global` + `build:component` 或 `build:all`，不再单独构建 request
 5. **向后兼容**：`api_interceptor.js` 仍然可以继续使用，但建议逐步迁移到新方式
 6. **TypeScript**：React 项目中使用 TypeScript 源码，享受类型检查和自动补全
 

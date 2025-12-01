@@ -42,6 +42,26 @@ export function getStaticServerUrl(): string {
 }
 
 /**
+ * 获取 WebSocket URL
+ * 优先级：window.WEBSOCKET_URL > 环境变量 > API_BASE_URL
+ */
+export function getWebSocketUrl(): string {
+  // 浏览器环境：优先从 window 获取
+  if (typeof window !== 'undefined' && (window as any).WEBSOCKET_URL) {
+    return (window as any).WEBSOCKET_URL;
+  }
+  
+  // 构建时环境变量
+  if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_WEBSOCKET_URL) {
+    return import.meta.env.VITE_WEBSOCKET_URL as string;
+  }
+  
+  // 默认值 使用 API_BASE_URL 构建 WebSocket URL
+  return getApiBaseUrl().replace(/^http:\/\//, 'ws://').replace(/^https:\/\//, 'wss://');
+}
+
+
+/**
  * 构建完整的 API URL
  * @param path - API 路径（如 '/api/users' 或 'api/users'）
  * @returns 完整的 URL
@@ -85,4 +105,3 @@ export function buildWebSocketUrl(path: string): string {
   // 将 http:// 替换为 ws://，https:// 替换为 wss://
   return httpUrl.replace(/^http:\/\//, 'ws://').replace(/^https:\/\//, 'wss://');
 }
-

@@ -7,8 +7,9 @@ const __dirname = path.dirname(__filename);
 
 // 要复制的文件列表
 const filesToCopy = [
-  { src: "config.global.js", dest: "config.global.js" },
   { src: "request.global.js", dest: "request.global.js" },
+  // HTML/JS 通用初始化工具（封装 waitForRequestInit 等）
+  { src: "react_init.js", dest: "react_init.js" },
 ];
 
 const srcDir = path.join(__dirname, "..", "build", "global");

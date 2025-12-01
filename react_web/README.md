@@ -108,7 +108,7 @@ react_web/
 - **构建指南**：`docs/BUILD_GUIDE.md`  
   - 说明 `build:global` / `build:component` / `build:all` / `clean:bundles` 等命令和构建产物路径。
 - **统一 Request 库使用指南**：`docs/USAGE_GUIDE.md`  
-  - 详细说明 `request.global.js` / `config.global.js` 在 HTML/JS 和 React 中的用法。
+  - 详细说明 `request.global.js` / `react_init.js` 在 HTML/JS 和 React 中的用法。
 - **React 重构计划（渐进式迁移方案）**：`docs/REACT_REFACTOR_PLAN.md`  
   - 描述从 `static/app.js` 迁移到 React 的阶段性计划与风险评估。
 - **Live2D 性能与动画重置分析（技术笔记）**：  
@@ -167,11 +167,15 @@ const wsUrl = window.buildWebSocketUrl('/ws/chat');
 
 ### 构建 request.global.js
 
+通常不需要单独构建 `request.global.js`，推荐使用：
+
 ```bash
-npm run build:request
+npm run build:global   # 构建 request.global.js + react_init.js
+# 或
+npm run build:all      # 全量构建（global + component）
 ```
 
-这会打包 `app/api/request.global.ts` 及其所有依赖，并复制到 `static/request.global.js`
+这会打包 `app/api/global/request.global.ts` 及其所有依赖，并复制到 `static/bundles/request.global.js`
 
 ---
 

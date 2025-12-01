@@ -1,8 +1,8 @@
 /**
  * 在外部 JS 文件中使用全局 request 实例的示例
- * 
+ *
  * 在 HTML 或外部 JS 文件中，可以直接使用 window.request 来发起请求
- * 
+ *
  * request.global.js 会自动初始化并暴露以下全局对象：
  * - window.request: request 实例（支持 get, post, put, delete 等方法）
  * - window.buildApiUrl(path): 构建完整的 API URL
@@ -10,22 +10,39 @@
  * - window.buildWebSocketUrl(path): 构建完整的 WebSocket URL
  * - window.API_BASE_URL: API 基础 URL
  * - window.STATIC_SERVER_URL: 静态资源服务器 URL
+ *
+ * 本文件原始路径为 app/api/request.global.example.js，
+ * 现统一移动到 app/api/global 目录，避免与 React 公共 API 混淆。
  */
 
 // ========== 等待 request 初始化 ==========
 
 /**
  * 等待 request.global.js 初始化完成
- * 在需要使用 request 之前调用此函数，确保 request 已初始化
+ * 优先复用 react_init.js 暴露的工具，避免每个页面重复实现。
+ *
+ * 使用方式（HTML 中）：
+ * ```html
+ * <script type="module" src="/static/bundles/react_init.js"></script>
+ * <script type="module" src="/static/bundles/request.global.js"></script>
+ * <script type="module">
+ *   await window.ReactInit.waitForRequestInit();
+ *   // ... 你的页面逻辑
+ * </script>
+ * ```
  */
 async function waitForRequestInit(maxWait = 5000) {
-  // 如果已经初始化，直接返回
+  // 如果存在 ReactInit 工具，则直接复用
+  if (window.ReactInit?.waitForRequestInit) {
+    return window.ReactInit.waitForRequestInit(maxWait);
+  }
+
+  // 否则使用本地简化版本作为兜底
   if (window.request || window.buildApiUrl) {
     return;
   }
   
   const startTime = Date.now();
-  // 轮询检查，直到 request 或 buildApiUrl 可用
   while (!window.request && !window.buildApiUrl) {
     if (Date.now() - startTime > maxWait) {
       console.warn('等待 request.global.js 初始化超时（' + maxWait + 'ms），继续执行');

@@ -5,11 +5,9 @@
   "scripts": {
     "build": "react-router build",
     "build:component": "vite build --config vite.component.config.ts && npm run copy:component",
-    "build:request": "npm run clean:bundles && vite build --config vite.request.config.ts && npm run copy:request",
-    "build:global": "npm run clean:bundles && vite build --config vite.global.config.ts && npm run copy:global",
+    "build:global": "vite build --config vite.global.config.ts && npm run copy:global",
     "build:all": "npm run clean:bundles && npm run build:global && npm run build:component",
     "copy:component": "node scripts/copy-component.js",
-    "copy:request": "node scripts/copy-request.js",
     "copy:global": "node scripts/copy-global.js",
     "clean:bundles": "node scripts/clean-bundles.js",
     "dev": "react-router dev",

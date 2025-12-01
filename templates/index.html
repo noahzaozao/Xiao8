@@ -10,6 +10,9 @@
     <meta charset="UTF-8">
     <title data-i18n="app.title">Project N.E.K.O.</title>
     
+    <!-- HTML/JS 通用初始化工具（封装 waitForRequestInit 等） -->
+    <script type="module" src="/static/bundles/react_init.js"></script>
+
     <!-- 加载统一的 request 模块 -->
     <script type="module" src="/static/bundles/request.global.js"></script>
     
@@ -1097,33 +1100,13 @@
     window.lanlan_config = lanlan_config;
     let cubism4Model = "";
     
-    // 等待 request.global.js 初始化完成
-    async function waitForRequestInit(maxWait = 5000) {
-        // 如果已经初始化，直接返回
-        if (window.request || window.buildApiUrl) {
-            return;
-        }
-        
-        const startTime = Date.now();
-        // 轮询检查，直到 request 或 buildApiUrl 可用
-        while (!window.request && !window.buildApiUrl) {
-            if (Date.now() - startTime > maxWait) {
-                console.warn('等待 request.global.js 初始化超时（' + maxWait + 'ms），继续执行');
-                break;
-            }
-            await new Promise(resolve => setTimeout(resolve, 50));
-        }
-        
-        if (window.request || window.buildApiUrl) {
-            console.log('request.global.js 初始化完成');
-        }
-    }
-    
     // 异步获取页面配置
     async function loadPageConfig() {
         try {
             // 等待 request.global.js 初始化完成
-            await waitForRequestInit();
+            if (window.ReactInit?.waitForRequestInit) {
+                await window.ReactInit.waitForRequestInit();
+            }
             
             // 优先从 URL 获取 lanlan_name
             const urlParams = new URLSearchParams(window.location.search);

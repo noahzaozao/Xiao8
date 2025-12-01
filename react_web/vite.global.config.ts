@@ -144,7 +144,9 @@ function inlineAllChunks(): Plugin {
 
 /**
  * 构建全局库的配置
- * 支持多入口：config.global.ts 和 request.global.ts
+ * 当前仅构建：
+ * - request.global.ts：必备 Request 全局库
+ * - react_init.ts：HTML/JS 通用初始化工具
  */
 export default defineConfig({
   plugins: [
@@ -158,10 +160,11 @@ export default defineConfig({
   build: {
     // 不使用 lib 模式，直接使用 rollup 多入口
     rollupOptions: {
-      // 多入口配置
+      // 多入口配置（global 代码集中放在 app/api/global 目录）
       input: {
-        "config.global": resolve(__dirname, "app/api/config.global.ts"),
-        "request.global": resolve(__dirname, "app/api/request.global.ts"),
+        "request.global": resolve(__dirname, "app/api/global/request.global.ts"),
+        // 轻量 HTML/JS 公共初始化脚本（封装 waitForRequestInit 等）
+        "react_init": resolve(__dirname, "app/api/global/react_init.ts"),
       },
       output: {
         format: "es",

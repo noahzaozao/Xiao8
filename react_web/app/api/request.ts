@@ -1,6 +1,10 @@
 /**
- * 请求客户端配置
- * 使用 @project_neko/request 包提供的统一请求库
+ * 请求客户端配置（React / TypeScript 专用）
+ * 
+ * 约定：
+ * - 仅在 React 代码中通过 `import { request } from '~/api/request'` 使用
+ * - 不做任何 window 挂载、全局暴露等操作
+ * - 所有「全局 JS」相关逻辑统一放在 `request.global.ts` / `react_init.ts` 中
  */
 
 import { createRequestClient, WebTokenStorage } from '@project_neko/request';
@@ -14,7 +18,7 @@ export const request = createRequestClient({
   storage: new WebTokenStorage(),
   refreshApi: async (refreshToken: string) => {
     const baseURL = getApiBaseUrl();
-    const refreshUrl = `${baseURL.replace(/\/$/, "")}/api/auth/refresh`;
+    const refreshUrl = `${baseURL.replace(/\/$/, '')}/api/auth/refresh`;
     const res = await fetch(refreshUrl, {
       method: 'POST',
       body: JSON.stringify({ refreshToken }),
@@ -39,33 +43,9 @@ export const request = createRequestClient({
   },
 });
 
-// 导出类型
+// 导出类型（React 代码可以按需引用）
 export type { RequestClientConfig, TokenStorage, TokenRefreshFn } from '@project_neko/request';
 
-// 导出配置工具函数（从 config.ts 重新导出）
+// 导出配置工具函数（从 config.ts 重新导出），供 React 端直接使用
 export { buildApiUrl, buildStaticUrl, buildWebSocketUrl };
-
-/**
- * 将 request 实例和相关工具函数暴露到全局，供外部 JS 文件使用
- * 在 main.tsx 中调用此函数来初始化全局 API
- */
-export function exposeRequestToGlobal(): void {
-  if (typeof window !== 'undefined') {
-    const win = window as any;
-    
-    // 暴露 request 实例
-    win.request = request;
-    
-    // 暴露工具函数
-    win.buildApiUrl = buildApiUrl;
-    win.buildStaticUrl = buildStaticUrl;
-    win.buildWebSocketUrl = buildWebSocketUrl;
-    
-    // 暴露配置（向后兼容）
-    win.API_BASE_URL = getApiBaseUrl();
-    win.STATIC_SERVER_URL = getStaticServerUrl();
-    
-    console.log('[Request] request 实例和工具函数已暴露到全局');
-  }
-}
 
