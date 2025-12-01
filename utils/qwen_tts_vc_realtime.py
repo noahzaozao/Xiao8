@@ -164,9 +164,10 @@ import logging
 from datetime import datetime
 from websockets import exceptions as web_exceptions
 from fastapi import WebSocket, WebSocketDisconnect
-from utils.frontend_utils import contains_chinese, replace_blank, replace_corner_mark, remove_bracket, \
+from utils.frontend_utils import contains_chinese, replace_blank, replace_corner_mark, remove_bracket, spell_out_number, \
     is_only_punctuation, split_paragraph
 from main_helper.omni_realtime_client import OmniRealtimeClient
+import inflect
 import base64
 from io import BytesIO
 from PIL import Image
@@ -565,6 +566,7 @@ class LLMSessionManager:
         self.tts_handler_task = None  # TTS消息处理任务
         self.lock = asyncio.Lock()  # 使用异步锁替代同步锁
         self.current_speech_id = None
+        self.inflect_parser = inflect.engine()
         self.emoji_pattern = re.compile(r'[^\w\u4e00-\u9fff\s>][^\w\u4e00-\u9fff\s]{2,}[^\w\u4e00-\u9fff\s<]', flags=re.UNICODE)
         self.emoji_pattern2 = re.compile("["
         u"\U0001F600-\U0001F64F"  # emoticons
@@ -848,6 +850,7 @@ class LLMSessionManager:
             text = re.sub(r'[，、]+$', '。', text)
         else:
             text = remove_bracket(text)
+            text = spell_out_number(text, self.inflect_parser)
         text = self.emoji_pattern2.sub('', text)
         text = self.emoji_pattern.sub('', text)
         if is_only_punctuation(text) and text not in ['<', '>']:
