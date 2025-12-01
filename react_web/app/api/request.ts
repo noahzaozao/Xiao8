@@ -4,14 +4,7 @@
  */
 
 import { createRequestClient, WebTokenStorage } from '@project_neko/request';
-
-/**
- * 获取 API 基础 URL
- */
-function getApiBaseUrl(): string {
-  const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) || "http://localhost:48911";
-  return API_BASE_URL;
-}
+import { getApiBaseUrl, buildApiUrl, buildStaticUrl, buildWebSocketUrl } from './config';
 
 /**
  * 创建并导出请求客户端实例
@@ -49,58 +42,8 @@ export const request = createRequestClient({
 // 导出类型
 export type { RequestClientConfig, TokenStorage, TokenRefreshFn } from '@project_neko/request';
 
-/**
- * 获取静态资源服务器 URL
- */
-function getStaticServerUrl(): string {
-  const STATIC_SERVER_URL = (import.meta.env.VITE_STATIC_SERVER_URL as string) || getApiBaseUrl();
-  return STATIC_SERVER_URL;
-}
-
-/**
- * 构建完整的 API URL
- * @param path - API 路径（如 /api/users）
- * @returns 完整的 URL
- */
-export function buildApiUrl(path: string): string {
-  // 如果已经是完整 URL，直接返回
-  if (path.startsWith('http://') || path.startsWith('https://')) {
-    return path;
-  }
-  
-  const baseURL = getApiBaseUrl();
-  const base = baseURL.replace(/\/$/, '');
-  const cleanPath = path.startsWith('/') ? path : `/${path}`;
-  return `${base}${cleanPath}`;
-}
-
-/**
- * 构建完整的静态资源 URL
- * @param path - 静态资源路径（如 /static/icon.png）
- * @returns 完整的 URL
- */
-export function buildStaticUrl(path: string): string {
-  // 如果已经是完整 URL，直接返回
-  if (path.startsWith('http://') || path.startsWith('https://')) {
-    return path;
-  }
-  
-  const baseURL = getStaticServerUrl();
-  const base = baseURL.replace(/\/$/, '');
-  const cleanPath = path.startsWith('/') ? path : `/${path}`;
-  return `${base}${cleanPath}`;
-}
-
-/**
- * 构建 WebSocket URL
- * @param path - WebSocket 路径（如 /ws/chat）
- * @returns WebSocket URL
- */
-export function buildWebSocketUrl(path: string): string {
-  const httpUrl = buildApiUrl(path);
-  // 将 http:// 替换为 ws://，https:// 替换为 wss://
-  return httpUrl.replace(/^http:\/\//, 'ws://').replace(/^https:\/\//, 'wss://');
-}
+// 导出配置工具函数（从 config.ts 重新导出）
+export { buildApiUrl, buildStaticUrl, buildWebSocketUrl };
 
 /**
  * 将 request 实例和相关工具函数暴露到全局，供外部 JS 文件使用

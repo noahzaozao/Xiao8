@@ -299,7 +299,7 @@ async function handleErrorsExample() {
  *   window.API_BASE_URL = window.API_BASE_URL || 'http://localhost:48911';
  *   window.STATIC_SERVER_URL = window.STATIC_SERVER_URL || window.API_BASE_URL;
  * </script>
- * <script type="module" src="/static/request.global.js"></script>
+ * <script type="module" src="/static/bundles/request.global.js"></script>
  * ```
  * 
  * 或者在 JS 中动态设置（需要在加载 request.global.js 之前）：

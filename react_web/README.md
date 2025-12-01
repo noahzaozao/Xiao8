@@ -26,6 +26,36 @@
 
 ---
 
+## 🚀 快速开始（开发者视角）
+
+### 安装依赖
+
+```bash
+cd react_web
+npm install
+```
+
+### 启动开发服务
+
+```bash
+cd react_web
+npm run dev
+```
+
+默认打开 `http://localhost:5173`，需要后端（`main_server.py`）在根项目中已启动。
+
+### 常用构建命令
+
+```bash
+cd react_web
+npm run build        # 构建 React Router SPA (build/client)
+npm run build:all    # 构建 global + component，并复制到 static/bundles
+```
+
+更多细节见 **`docs/BUILD_GUIDE.md`**。
+
+---
+
 ## 📁 目录结构
 
 ```txt
@@ -47,6 +77,7 @@ react_web/
 ├── build/                    # 构建输出
 │   ├── client/               # React Router SPA 静态资源（HTML/JS/CSS）
 │   └── components/           # 独立组件构建（临时）
+├── docs/                     # 文档（构建、使用、重构计划等）
 ├── vite.config.ts            # React Router 应用构建配置
 ├── vite.component.config.ts  # 独立组件构建配置
 ├── tsconfig.json
@@ -72,7 +103,23 @@ react_web/
 
 ---
 
+## 📚 文档索引（更多细节）
+
+- **构建指南**：`docs/BUILD_GUIDE.md`  
+  - 说明 `build:global` / `build:component` / `build:all` / `clean:bundles` 等命令和构建产物路径。
+- **统一 Request 库使用指南**：`docs/USAGE_GUIDE.md`  
+  - 详细说明 `request.global.js` / `config.global.js` 在 HTML/JS 和 React 中的用法。
+- **React 重构计划（渐进式迁移方案）**：`docs/REACT_REFACTOR_PLAN.md`  
+  - 描述从 `static/app.js` 迁移到 React 的阶段性计划与风险评估。
+- **Live2D 性能与动画重置分析（技术笔记）**：  
+  - `docs/L2D_OPTIMIZE.md`：Live2D Canvas 尺寸与渲染性能优化思路。  
+  - `docs/LIVE2D_ANIMATION_RESET_ANALYSIS.md`：Live2D 动画结束后的参数重置机制分析与改进建议。
+
+---
+
 ## 统一的 Request 模块
+
+> 详细用法、API 说明与迁移示例见 **`docs/USAGE_GUIDE.md`**。
 
 ### 两套前端架构
 
@@ -128,97 +175,18 @@ npm run build:request
 
 ---
 
-## 环境变量
+## 环境变量（概要）
 
-可通过 `.env` 或命令行注入以下变量（Vite / React Router 标准）：
-
-- **`VITE_API_BASE_URL`**  
-  - 用途：指向 N.E.K.O 后端 API 根地址  
-  - 默认值：`http://localhost:48911`
-  - 影响位置：`app/root.tsx`、`app/routes/main.tsx` 里设置 `window.API_BASE_URL` 与 `fetchWithBaseUrl`
-
-- **`VITE_STATIC_SERVER_URL`**  
-  - 用途：指向提供 `static/` 目录的 HTTP 服务地址  
-  - 默认值：`http://localhost:48911`
-  - 用途示例：
-    - 注入 CSS 变量 `--toast-background-url`
-    - 拼接 `/static/xxx` 资源路径
-    - 在运行时通过 `buildStaticUrl` 自动重写 `/static/` 路径
-
-示例 `.env`：
-
-```bash
-VITE_API_BASE_URL=http://localhost:48911
-VITE_STATIC_SERVER_URL=http://localhost:48911
-```
-
---- 
-
-## 安装依赖
-
-```bash
-cd react_web
-npm install
-```
-
----
-
-## 开发模式
-
-- **仅前端开发（需要后端已启动）**
-
-```bash
-cd react_web
-npm run dev
-```
-
-默认监听 `http://localhost:5173`，前端会：
-
-- 调用 `VITE_API_BASE_URL` 指向的后端接口（如 `/api/config/page_config`、`/api/characters`、`/api/live2d/models` 等）
-- 从 `VITE_STATIC_SERVER_URL/static/` 拉取 `live2d.js`、`app.js`、Live2D 模型相关资源
-
----
-
-## 构建与运行
-
-### 1. 构建 React Router 应用（生产）
-
-```bash
-cd react_web
-npm run build
-```
-
-输出目录：
-
-```txt
-build/
-└── client/    # SPA 静态资源（HTML/JS/CSS）
-```
-
-> 注：SPA 模式只生成客户端资源，可以部署到任何静态文件服务器。
-
-### 2. 预览生产构建
-
-```bash
-cd react_web
-npm run preview
-```
-
-使用 Vite 的预览服务器查看构建结果。
-
-### 3. 部署
-
-构建后的 `build/client/` 目录可以部署到：
-- Nginx / Apache 等静态文件服务器
-- Vercel / Netlify / GitHub Pages
-- CDN + 对象存储（OSS）
-- N.E.K.O 主项目的静态文件服务（集成模式）
+- 环境变量的完整说明（包括 `.env` 示例与静态资源配置），请参见 **`docs/BUILD_GUIDE.md`**。
+- 这里只保留两个关键变量名称：
+  - **`VITE_API_BASE_URL`**：后端 API 根地址
+  - **`VITE_STATIC_SERVER_URL`**：静态资源服务器地址（用于 `/static/...` 资源）
 
 ---
 
 ## 独立组件构建（渐进式迁移）
 
-虽然主界面已经由 `main.tsx` + 传统 JS 管理，但这里提供一个完整的组件级渐进式迁移方案，用于将 React 组件单独打包成 ES Module，方便在模板 HTML 中按需挂载和逐步替换旧代码。
+虽然主界面已经由 `main.tsx` + 传统 JS 管理，但仍支持将 React 组件单独打包成 ES Module，逐步替换 `static/app.js` 中的旧逻辑。
 
 ### 🎯 适用场景
 

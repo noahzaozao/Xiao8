@@ -6,7 +6,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const src = path.join(__dirname, "..", "build", "components", "ExampleButton.js");
-const dest = path.join(__dirname, "..", "..", "static", "ExampleButton.js");
+const dest = path.join(__dirname, "..", "..", "static", "bundles", "ExampleButton.js");
 
 try {
   if (fs.existsSync(src)) {
@@ -17,7 +17,7 @@ try {
     }
     
     fs.copyFileSync(src, dest);
-    console.log("✅ 已复制到 static 目录:", dest);
+    console.log("✅ 已复制到 static/bundles 目录:", dest);
   } else {
     console.error("❌ 构建文件不存在:", src);
     process.exit(1);

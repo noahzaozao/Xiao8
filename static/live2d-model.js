@@ -2,6 +2,40 @@
  * Live2D Model - 模型加载、口型同步相关功能
  */
 
+// 辅助函数：将静态资源路径转换为完整 URL
+// 优先使用全局的 window.buildStaticUrl（来自 request.global.js/config.global.js）
+// 注意：避免与全局同名函数互相递归，这里使用局部名称 resolveStaticUrl
+function resolveStaticUrl(path) {
+    if (typeof path !== 'string') return path;
+    // 如果已经是完整 URL，直接返回
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+        return path;
+    }
+    // 优先使用全局的 buildStaticUrl（如果已加载，且不是当前函数本身）
+    if (typeof window !== 'undefined'
+        && typeof window.buildStaticUrl === 'function'
+        && window.buildStaticUrl !== resolveStaticUrl) {
+        try {
+            return window.buildStaticUrl(path);
+        } catch (e) {
+            // 如果全局实现异常，回退到本地实现
+            console.warn('[Live2D] window.buildStaticUrl 调用失败，使用本地实现:', e);
+        }
+    }
+    // 如果是 /static/ 或 /user_live2d/ 开头的路径，使用 STATIC_SERVER_URL
+    if (path.startsWith('/static/') || path.startsWith('/user_live2d/')) {
+        const staticServerUrl = (typeof window !== 'undefined' && window.STATIC_SERVER_URL) 
+            ? window.STATIC_SERVER_URL.replace(/\/$/, '')
+            : (typeof window !== 'undefined' && window.API_BASE_URL)
+            ? window.API_BASE_URL.replace(/\/$/, '')
+            : '';
+        if (staticServerUrl) {
+            return staticServerUrl + path;
+        }
+    }
+    return path;
+}
+
 // 加载模型
 Live2DManager.prototype.loadModel = async function(modelPath, options = {}) {
     if (!this.pixi_app) {
@@ -83,22 +117,33 @@ Live2DManager.prototype.loadModel = async function(modelPath, options = {}) {
     }
 
     try {
-        const model = await Live2DModel.from(modelPath, { autoInteract: false });
+        // 转换模型路径为完整 URL（如果是以 /static/ 或 /user_live2d/ 开头的相对路径）
+        let actualModelPath = modelPath;
+        if (typeof modelPath === 'string') {
+            actualModelPath = resolveStaticUrl(modelPath);
+        } else if (modelPath && typeof modelPath === 'object' && typeof modelPath.url === 'string') {
+            actualModelPath = { ...modelPath, url: resolveStaticUrl(modelPath.url) };
+        }
+        
+        const model = await Live2DModel.from(actualModelPath, { autoInteract: false });
         this.currentModel = model;
 
         // 解析模型目录名与根路径，供资源解析使用
         try {
             let urlString = null;
-            if (typeof modelPath === 'string') {
-                urlString = modelPath;
-            } else if (modelPath && typeof modelPath === 'object' && typeof modelPath.url === 'string') {
-                urlString = modelPath.url;
+            if (typeof actualModelPath === 'string') {
+                urlString = actualModelPath;
+            } else if (actualModelPath && typeof actualModelPath === 'object' && typeof actualModelPath.url === 'string') {
+                urlString = actualModelPath.url;
             }
 
             if (typeof urlString !== 'string') throw new TypeError('modelPath/url is not a string');
 
             // 记录用于保存偏好的原始模型路径（供 beforeunload 使用）
-            try { this._lastLoadedModelPath = urlString; } catch (_) {}
+            // 保存原始路径（可能是相对路径），而不是转换后的完整 URL
+            try { 
+                this._lastLoadedModelPath = (typeof modelPath === 'string') ? modelPath : (modelPath?.url || urlString);
+            } catch (_) {}
 
             const cleanPath = urlString.split('#')[0].split('?')[0];
             const lastSlash = cleanPath.lastIndexOf('/');
@@ -202,10 +247,13 @@ Live2DManager.prototype.loadModel = async function(modelPath, options = {}) {
         console.error('加载模型失败:', error);
         
         // 尝试回退到默认模型
-        if (modelPath !== '/static/mao_pro/mao_pro.model3.json') {
+        const defaultModelPathRelative = '/static/mao_pro/mao_pro.model3.json';
+        const originalModelPathStr = (typeof modelPath === 'string') ? modelPath : (modelPath?.url || '');
+        
+        if (originalModelPathStr !== defaultModelPathRelative && originalModelPathStr !== resolveStaticUrl(defaultModelPathRelative)) {
             console.warn('模型加载失败，尝试回退到默认模型: mao_pro');
             try {
-                const defaultModelPath = '/static/mao_pro/mao_pro.model3.json';
+                const defaultModelPath = resolveStaticUrl(defaultModelPathRelative);
                 const model = await Live2DModel.from(defaultModelPath, { autoInteract: false });
                 this.currentModel = model;
 
@@ -218,7 +266,7 @@ Live2DManager.prototype.loadModel = async function(modelPath, options = {}) {
                     const parts = rootDir.split('/').filter(Boolean);
                     this.modelName = parts.length > 0 ? parts[parts.length - 1] : null;
                     console.log('回退模型根路径解析:', { modelUrl: defaultModelPath, modelName: this.modelName, modelRootPath: this.modelRootPath });
-                    try { this._lastLoadedModelPath = defaultModelPath; } catch (_) {}
+                    try { this._lastLoadedModelPath = defaultModelPathRelative; } catch (_) {}
                 } catch (e) {
                     console.warn('解析回退模型根路径失败，将使用默认值', e);
                     this.modelRootPath = '/static';
