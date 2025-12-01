@@ -5,7 +5,7 @@
   "scripts": {
     "build": "react-router build",
     "build:component": "vite build --config vite.component.config.ts && npm run copy:component",
-    "build:global": "vite build --config vite.global.config.ts && npm run copy:global",
+    "build:global": "vite build --config vite.react_init.config.ts && vite build --config vite.global.config.ts && npm run copy:global",
     "build:all": "npm run clean:bundles && npm run build:global && npm run build:component",
     "copy:component": "node scripts/copy-component.js",
     "copy:global": "node scripts/copy-global.js",

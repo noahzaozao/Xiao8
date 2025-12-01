@@ -89,11 +89,10 @@ export function checkRequestAvailable(): void {
  * 挂载到 window.ReactInit，供 HTML/JS 直接访问
  */
 if (typeof window !== 'undefined') {
-  if (!window.ReactInit) {
-    window.ReactInit = {} as any;
+  const win = window as any;
+  if (!win.ReactInit) {
+    win.ReactInit = {} as any;
   }
-  window.ReactInit.waitForRequestInit = waitForRequestInit;
-  window.ReactInit.checkRequestAvailable = checkRequestAvailable;
+  win.ReactInit.waitForRequestInit = waitForRequestInit;
+  win.ReactInit.checkRequestAvailable = checkRequestAvailable;
 }
-
-

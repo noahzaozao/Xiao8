@@ -19,9 +19,9 @@
     window.STATIC_SERVER_URL = window.API_BASE_URL;
   </script>
   
-  <!-- 2. 加载通用初始化 & 请求库 -->
-  <script type="module" src="/static/bundles/react_init.js"></script>
-  <script type="module" src="/static/bundles/request.global.js"></script>
+  <!-- 2. 加载通用初始化 & 请求库（同步阻塞方式） -->
+  <script src="/static/bundles/react_init.js"></script>
+  <script src="/static/bundles/request.global.js"></script>
 </head>
 <body>
   <script>
@@ -59,8 +59,8 @@
   window.API_BASE_URL = 'http://localhost:48911';
   window.STATIC_SERVER_URL = window.API_BASE_URL;
 </script>
-<script type="module" src="/static/bundles/react_init.js"></script>
-<script type="module" src="/static/bundles/request.global.js"></script>
+<script src="/static/bundles/react_init.js"></script>
+<script src="/static/bundles/request.global.js"></script>
 <script>
   // 使用配置工具函数
   const apiUrl = window.buildApiUrl('/api/users');
@@ -214,7 +214,7 @@ fetch(window.buildApiUrl('/api/users'))
 ## ⚠️ 注意事项
 
 1. **加载顺序**：确保在加载 `request.global.js` 之前设置 `window.API_BASE_URL`（如果需要自定义）
-2. **ES 模块**：`react_init.js` 和 `request.global.js` 是 ES 模块，需要使用 `<script type="module">`
+2. **脚本类型**：`react_init.js` 和 `request.global.js` 以普通脚本形式输出，可直接使用 `<script src="..."></script>` 同步加载
 3. **构建路径**：所有构建产物位于 `static/bundles/` 目录，便于全量构建时清理
 4. **构建推荐**：统一使用 `build:global` + `build:component` 或 `build:all`，不再单独构建 request
 5. **向后兼容**：`api_interceptor.js` 仍然可以继续使用，但建议逐步迁移到新方式

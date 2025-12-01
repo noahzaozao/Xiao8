@@ -145,8 +145,9 @@ function inlineAllChunks(): Plugin {
 /**
  * 构建全局库的配置
  * 当前仅构建：
- * - request.global.ts：必备 Request 全局库
- * - react_init.ts：HTML/JS 通用初始化工具
+ * - request.global.ts：必备 Request 全局库（ES Module）
+ *
+ * react_init.ts 单独由 vite.react_init.config.ts 构建为 IIFE。
  */
 export default defineConfig({
   plugins: [
@@ -160,13 +161,12 @@ export default defineConfig({
   build: {
     // 不使用 lib 模式，直接使用 rollup 多入口
     rollupOptions: {
-      // 多入口配置（global 代码集中放在 app/api/global 目录）
+      // 单入口配置（global 代码集中放在 app/api/global 目录）
       input: {
         "request.global": resolve(__dirname, "app/api/global/request.global.ts"),
-        // 轻量 HTML/JS 公共初始化脚本（封装 waitForRequestInit 等）
-        "react_init": resolve(__dirname, "app/api/global/react_init.ts"),
       },
       output: {
+        // 使用 ES Module 形式输出
         format: "es",
         entryFileNames: "[name].js",
         // 对于多入口构建，不能使用 inlineDynamicImports
@@ -178,7 +178,8 @@ export default defineConfig({
     // 压缩代码
     minify: "esbuild", // 使用 esbuild，更快且配置更简单
     outDir: "build/global",
-    emptyOutDir: true, // 清空构建目录
+    // 不清空目录，避免覆盖由 vite.react_init.config.ts 生成的 react_init.js
+    emptyOutDir: false,
   },
 });
 

@@ -11,9 +11,9 @@
     <title data-i18n="app.title">Project N.E.K.O.</title>
     
     <!-- HTML/JS 通用初始化工具（封装 waitForRequestInit 等） -->
-    <script type="module" src="/static/bundles/react_init.js"></script>
+    <script src="/static/bundles/react_init.js"></script>
 
-    <!-- 加载统一的 request 模块 -->
+    <!-- 加载统一的 request 模块（ES Module） -->
     <script type="module" src="/static/bundles/request.global.js"></script>
     
     <!-- i18next 加载器（统一处理 CDN 加载和初始化） -->
@@ -23,13 +23,10 @@
         - 加载 request.global.js（打包了 axios 和 axios-auth-refresh）
         - 自动初始化 window.request、window.buildApiUrl 等工具函数
         - 旧版 JS 代码应使用 window.request 或 window.buildApiUrl 等工具函数
+        - 如需自定义后端地址，可在此处显式设置：
+          window.API_BASE_URL = 'http://your-backend-host:port';
+          window.STATIC_SERVER_URL = window.API_BASE_URL;
     -->
-    <script>
-        // 设置 API_BASE_URL（必须在加载 request.global.js 之前）
-        // 默认使用当前服务器（端口 48911），可以通过环境变量或配置覆盖
-        window.API_BASE_URL = window.API_BASE_URL || 'http://localhost:48911';
-        window.STATIC_SERVER_URL = window.STATIC_SERVER_URL || window.API_BASE_URL;
-    </script>
     <script src="/static/common_dialogs.js"></script>
     <style>
         *:focus {

@@ -23,9 +23,9 @@
  *
  * 使用方式（HTML 中）：
  * ```html
- * <script type="module" src="/static/bundles/react_init.js"></script>
- * <script type="module" src="/static/bundles/request.global.js"></script>
- * <script type="module">
+ * <script src="/static/bundles/react_init.js"></script>
+ * <script src="/static/bundles/request.global.js"></script>
+ * <script>
  *   await window.ReactInit.waitForRequestInit();
  *   // ... 你的页面逻辑
  * </script>
@@ -316,7 +316,7 @@ async function handleErrorsExample() {
  *   window.API_BASE_URL = window.API_BASE_URL || 'http://localhost:48911';
  *   window.STATIC_SERVER_URL = window.STATIC_SERVER_URL || window.API_BASE_URL;
  * </script>
- * <script type="module" src="/static/bundles/request.global.js"></script>
+ * <script src="/static/bundles/request.global.js"></script>
  * ```
  * 
  * 或者在 JS 中动态设置（需要在加载 request.global.js 之前）：
