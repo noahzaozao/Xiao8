@@ -680,6 +680,7 @@ class LLMSessionManager:
                     on_connection_error=self.handle_connection_error,
                     on_response_done=self.handle_response_complete,
                     on_silence_timeout=self.handle_silence_timeout,
+                    on_status_message=self.send_status,
                     api_type=self.core_api_type  # 传入API类型，用于判断是否启用静默超时
                 )
 
@@ -687,6 +688,7 @@ class LLMSessionManager:
             if self.session:
                 await self.session.connect(initial_prompt, native_audio = not self.use_tts)
                 logger.info(f"✅ LLM Session 已连接")
+                print(initial_prompt)
                 return True
             else:
                 raise Exception("Session not initialized")
@@ -877,6 +879,7 @@ class LLMSessionManager:
                 on_output_transcript=self.handle_output_transcript,
                 on_connection_error=self.handle_connection_error,
                 on_response_done=self.handle_response_complete,
+                on_status_message=self.send_status,
                 api_type=self.core_api_type  # 传入API类型，用于判断是否启用静默超时
             )
             

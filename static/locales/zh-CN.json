@@ -611,7 +611,7 @@
     "voiceSystemPreparing": "语音系统准备中...",
     "textSystemPreparing": "文本系统准备中，请稍候...",
     "connectingToServer": "正在连接服务器...",
-    "readyToSpeak": "可以说话了！",
+    "readyToSpeak": "可以说话了！"
   },
   "buttons": {
     "voiceControl": "语音控制",

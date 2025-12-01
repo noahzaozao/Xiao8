@@ -612,7 +612,7 @@
     "voiceSystemPreparing": "Voice system preparing...",
     "textSystemPreparing": "Text system preparing, please wait...",
     "connectingToServer": "Connecting to server...",
-    "readyToSpeak": "Ready to speak!",
+    "readyToSpeak": "Ready to speak!"
   },
   "buttons": {
     "voiceControl": "Voice Control",
