@@ -9,7 +9,7 @@ from config.prompts_chara import lanlan_prompt
 logger = logging.getLogger(__name__)
 
 # 应用程序名称配置
-APP_NAME = "N.E.K.O"
+APP_NAME = "Xiao8"
 
 # 服务器端口配置
 MAIN_SERVER_PORT = 48911
