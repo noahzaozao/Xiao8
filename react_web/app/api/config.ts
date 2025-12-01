@@ -88,11 +88,26 @@ export function buildStaticUrl(path: string): string {
   if (path.startsWith('http://') || path.startsWith('https://')) {
     return path;
   }
-  
-  const baseURL = getStaticServerUrl();
-  const base = baseURL.replace(/\/$/, '');
+
+  // 统一规范路径前缀
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
-  return `${base}${cleanPath}`;
+
+  /**
+   * 仅对明确的静态资源前缀做「拼接静态服务器域名」处理：
+   * - /static/...
+   * - /user_live2d/...
+   *
+   * 这样可以避免误把其他业务路径/相对路径强行挂到静态域名下，
+   * 同时与传统 HTML/JS 中的 Live2D 等脚本使用习惯保持一致。
+   */
+  if (cleanPath.startsWith('/static/') || cleanPath.startsWith('/user_live2d/')) {
+    const baseURL = getStaticServerUrl();
+    const base = baseURL.replace(/\/$/, '');
+    return `${base}${cleanPath}`;
+  }
+
+  // 其他路径保持原样（只做前导 / 规范化），交由调用方自行决定是否需要拼绝对 URL
+  return cleanPath;
 }
 
 /**

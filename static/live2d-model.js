@@ -3,37 +3,25 @@
  */
 
 // 辅助函数：将静态资源路径转换为完整 URL
-// 优先使用全局的 window.buildStaticUrl（来自 request.global.js/config.global.js）
-// 注意：避免与全局同名函数互相递归，这里使用局部名称 resolveStaticUrl
+// 统一优先使用全局的 window.buildStaticUrl（由 request.global.js 暴露，内部复用 config.ts 的 buildStaticUrl）
+// 仅在全局不可用或调用失败时，做最小兜底处理，避免在这里重复维护 URL 规则。
 function resolveStaticUrl(path) {
     if (typeof path !== 'string') return path;
     // 如果已经是完整 URL，直接返回
     if (path.startsWith('http://') || path.startsWith('https://')) {
         return path;
     }
-    // 优先使用全局的 buildStaticUrl（如果已加载，且不是当前函数本身）
-    if (typeof window !== 'undefined'
-        && typeof window.buildStaticUrl === 'function'
-        && window.buildStaticUrl !== resolveStaticUrl) {
+    // 优先使用全局的 buildStaticUrl（由 request.global.js 提供统一实现）
+    if (typeof window !== 'undefined' && typeof window.buildStaticUrl === 'function') {
         try {
             return window.buildStaticUrl(path);
         } catch (e) {
-            // 如果全局实现异常，回退到本地实现
-            console.warn('[Live2D] window.buildStaticUrl 调用失败，使用本地实现:', e);
+            // 如果全局实现异常，回退到本地最小实现，避免影响页面可用性
+            console.warn('[Live2D] window.buildStaticUrl 调用失败，使用原始路径:', e);
         }
     }
-    // 如果是 /static/ 或 /user_live2d/ 开头的路径，使用 STATIC_SERVER_URL
-    if (path.startsWith('/static/') || path.startsWith('/user_live2d/')) {
-        const staticServerUrl = (typeof window !== 'undefined' && window.STATIC_SERVER_URL) 
-            ? window.STATIC_SERVER_URL.replace(/\/$/, '')
-            : (typeof window !== 'undefined' && window.API_BASE_URL)
-            ? window.API_BASE_URL.replace(/\/$/, '')
-            : '';
-        if (staticServerUrl) {
-            return staticServerUrl + path;
-        }
-    }
-    return path;
+    // 兜底：只做前导 / 规范化，具体域名拼接规则交给全局实现
+    return path.startsWith('/') ? path : ('/' + path);
 }
 
 // 加载模型
