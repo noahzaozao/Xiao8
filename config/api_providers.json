@@ -23,13 +23,6 @@
       "core_url": "wss://api.openai.com/v1/realtime",
       "core_model": "gpt-realtime"
     },
-    "glm": {
-      "key": "glm",
-      "name": "GLM-realtime（智谱）",
-      "description": "此模型已暂时下架！（有免费额度，但需充值1元，内置联网搜索功能）",
-      "core_url": "wss://open.bigmodel.cn/api/paas/v4/realtime",
-      "core_model": "glm-realtime-air"
-    },
     "step": {
       "key": "step",
       "name": "Step-2（阶跃星辰）",

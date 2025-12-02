@@ -1809,6 +1809,28 @@ function init_app(){
         isRecording = true;
         window.isRecording = true;
 
+        // 先清理旧的音频上下文，防止多个 worklet 同时发送数据导致 QPS 超限
+        if (audioContext) {
+            try {
+                await audioContext.close();
+            } catch (e) {
+                console.warn('关闭旧音频上下文时出错:', e);
+                // 强制复位所有状态，防止状态不一致
+                isRecording = false;
+                window.isRecording = false;
+                micButton.classList.remove('recording', 'active');
+                syncFloatingMicButtonState(false);
+                micButton.disabled = false;
+                muteButton.disabled = true;
+                screenButton.disabled = true;
+                stopButton.disabled = true;
+                showStatusToast(window.t ? window.t('app.audioContextError') : '音频系统异常，请重试', 3000);
+                throw e; // 重新抛出错误，阻止后续执行
+            }
+            audioContext = null;
+            workletNode = null;
+        }
+
         // 创建音频上下文
         audioContext = new AudioContext();
         console.log("音频上下文采样率:", audioContext.sampleRate);
@@ -3154,13 +3176,48 @@ function init_app(){
             () => ++mcpOperationSeq
         );
         
-        // 监听 Agent 弹窗打开事件，在弹窗显示时检查服务器状态
-        window.addEventListener('live2d-agent-popup-opening', async () => {
-            // 如果总开关已经是开启状态，不需要检查
-            if (agentMasterCheckbox.checked) {
-                return;
+        // 从后端同步 flags 状态到前端开关
+        async function syncFlagsFromBackend() {
+            try {
+                const resp = await fetch('/api/agent/flags');
+                if (!resp.ok) return false;
+                const data = await resp.json();
+                if (!data.success) return false;
+                
+                const flags = data.agent_flags || {};
+                const analyzerEnabled = data.analyzer_enabled || false;
+                
+                // 同步总开关状态（基于 analyzer_enabled）
+                if (analyzerEnabled && agentMasterCheckbox) {
+                    agentMasterCheckbox.checked = true;
+                    agentMasterCheckbox.disabled = false;
+                    syncCheckboxUI(agentMasterCheckbox);
+                }
+                
+                // 同步子开关状态
+                if (agentKeyboardCheckbox) {
+                    const cuEnabled = flags.computer_use_enabled || false;
+                    agentKeyboardCheckbox.checked = cuEnabled;
+                    agentKeyboardCheckbox.disabled = !analyzerEnabled;
+                    syncCheckboxUI(agentKeyboardCheckbox);
+                }
+                if (agentMcpCheckbox) {
+                    const mcpEnabled = flags.mcp_enabled || false;
+                    agentMcpCheckbox.checked = mcpEnabled;
+                    agentMcpCheckbox.disabled = !analyzerEnabled;
+                    syncCheckboxUI(agentMcpCheckbox);
+                }
+                
+                console.log('[App] 已从后端同步 flags 状态:', {analyzerEnabled, flags});
+                return true;
+            } catch (e) {
+                console.warn('[App] 同步 flags 状态失败:', e);
+                return false;
             }
-            
+        }
+        
+        // 监听 Agent 弹窗打开事件，在弹窗显示时检查服务器状态并同步 flags
+        window.addEventListener('live2d-agent-popup-opening', async () => {
             // 【兜底】禁用总开关，显示连接中状态，锁定title
             agentMasterCheckbox.disabled = true;
             agentMasterCheckbox.title = window.t ? window.t('settings.toggles.checking') : '查询中...';
@@ -3170,11 +3227,22 @@ function init_app(){
             try {
                 const ok = await checkToolServerHealth();
                 if (ok) {
-                    // 服务器在线，启用总开关，恢复title
+                    // 服务器在线，同步 flags 状态
+                    await syncFlagsFromBackend();
+                    
+                    // 启用总开关，恢复title
                     agentMasterCheckbox.disabled = false;
                     agentMasterCheckbox.title = window.t ? window.t('settings.toggles.agentMaster') : 'Agent总开关';
                     syncCheckboxUI(agentMasterCheckbox);
-                    setFloatingAgentStatus('Agent服务器就绪');
+                    
+                    // 根据当前状态显示提示
+                    if (agentMasterCheckbox.checked) {
+                        setFloatingAgentStatus('Agent模式已开启');
+                        // 如果 Agent 已开启，启动相关检查
+                        window.startAgentAvailabilityCheck();
+                    } else {
+                        setFloatingAgentStatus('Agent服务器就绪');
+                    }
                 } else {
                     // 服务器离线，保持禁用，设置离线提示
                     agentMasterCheckbox.disabled = true;

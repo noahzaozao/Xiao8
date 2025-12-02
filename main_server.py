@@ -5218,6 +5218,19 @@ async def update_agent_flags(request: Request):
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
 
+@app.get('/api/agent/flags')
+async def get_agent_flags():
+    """获取当前 agent flags 状态（供前端同步）"""
+    try:
+        async with httpx.AsyncClient(timeout=0.7) as client:
+            r = await client.get(f"http://localhost:{TOOL_SERVER_PORT}/agent/flags")
+            if not r.is_success:
+                return JSONResponse({"success": False, "error": "tool_server down"}, status_code=502)
+            return r.json()
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=502)
+
+
 @app.get('/api/agent/health')
 async def agent_health():
     """Check tool_server health via main_server proxy."""
@@ -5340,7 +5353,7 @@ async def get_task_status():
 
 
 @app.post('/api/agent/admin/control')
-async def proxy_admin_control(payload):
+async def proxy_admin_control(payload: dict = Body(...)):
     """Proxy admin control commands to tool server."""
     try:
         import httpx
