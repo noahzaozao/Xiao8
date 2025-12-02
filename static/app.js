@@ -41,68 +41,9 @@ function init_app(){
     const resetSessionButton = document.getElementById('resetSessionButton');
     const returnSessionButton = document.getElementById('returnSessionButton');
     const statusElement = document.getElementById('status');
-    const statusToast = document.getElementById('status-toast');
     
-    // Status 气泡框显示函数
-    let statusToastTimeout = null;
-    function showStatusToast(message, duration = 3000) {
-        console.log('[Status Toast] 显示消息:', message, '持续时间:', duration);
-        
-        if (!message || message.trim() === '') {
-            // 如果消息为空，隐藏气泡框
-            if (statusToast) {
-                statusToast.classList.remove('show');
-                statusToast.classList.add('hide');
-                setTimeout(() => {
-                    statusToast.textContent = '';
-                }, 300);
-            }
-            return;
-        }
-        
-        if (!statusToast) {
-            console.error('[Status Toast] statusToast 元素不存在！');
-            return;
-        }
-        
-        // 清除之前的定时器
-        if (statusToastTimeout) {
-            clearTimeout(statusToastTimeout);
-            statusToastTimeout = null;
-        }
-        
-        // 更新内容
-        statusToast.textContent = message;
-        
-        // 确保元素可见
-        statusToast.style.display = 'block';
-        statusToast.style.visibility = 'visible';
-        
-        // 显示气泡框
-        statusToast.classList.remove('hide');
-        // 使用 setTimeout 确保样式更新
-        setTimeout(() => {
-            statusToast.classList.add('show');
-            console.log('[Status Toast] 已添加 show 类，元素:', statusToast, '类列表:', statusToast.classList);
-        }, 10);
-        
-        // 自动隐藏
-        statusToastTimeout = setTimeout(() => {
-            statusToast.classList.remove('show');
-            statusToast.classList.add('hide');
-            setTimeout(() => {
-                statusToast.textContent = '';
-            }, 300);
-        }, duration);
-        
-        // 同时更新隐藏的 status 元素（保持兼容性）
-        if (statusElement) {
-            statusElement.textContent = message || '';
-        }
-    }
-    
-    // 将 showStatusToast 暴露到全局作用域，方便调试和测试
-    window.showStatusToast = showStatusToast;
+    // Status 气泡框功能已迁移到 React 组件 (StatusToast)
+    // showStatusToast 函数由 React 组件提供，通过 window.showStatusToast 访问
     const chatContainer = document.getElementById('chatContainer');
     const textInputBox = document.getElementById('textInputBox');
     const textSendButton = document.getElementById('textSendButton');
@@ -4010,7 +3951,7 @@ if (document.readyState === "complete" || document.readyState === "interactive")
 window.addEventListener("load", () => {
     setTimeout(() => {
         if (typeof window.showStatusToast === 'function' && typeof lanlan_config !== 'undefined' && lanlan_config.lanlan_name) {
-            window.showStatusToast(window.t ? window.t('app.started', {name: lanlan_config.lanlan_name}) : `${lanlan_config.lanlan_name}已启动`, 3000);
+            window.showStatusToast(window.t ? window.t('app.started', {name: lanlan_config.lanlan_name}) : `${lanlan_config.lanlan_name}已启动`, 300000);
         }
     }, 1000);
 });

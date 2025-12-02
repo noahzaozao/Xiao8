@@ -25,7 +25,7 @@
    - ✅ 纯客户端渲染，无需 Node SSR 服务器
 
 2. **独立组件构建系统**
-   - ✅ Vite 组件构建配置 (`vite.component.config.ts`)
+   - ✅ Vite 组件构建配置 (`vite.components.config.ts`)
    - ✅ ExampleButton 示例组件
    - ✅ 自动复制脚本 (`scripts/copy-component.js`)
    - ✅ CDN 外部依赖优化
@@ -420,7 +420,7 @@ mkdir -p app/components/MyComponent
 ```
 
 ### 步骤 3: 配置构建
-在 `vite.component.config.ts` 中添加新入口
+在 `vite.components.config.ts` 中添加新入口
 
 ### 步骤 4: 构建并集成
 ```bash

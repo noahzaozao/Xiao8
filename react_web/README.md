@@ -91,7 +91,7 @@ react_web/
 │   └── components/          # 独立组件构建（临时）
 ├── docs/                     # 文档（构建、使用、重构计划等）
 ├── vite.config.ts            # React Router 应用构建配置
-├── vite.component.config.ts  # 独立组件构建配置
+├── vite.components.config.ts  # 独立组件构建配置（多组件）
 ├── vite.global.config.ts     # 全局库构建配置（request.global.js 等）
 ├── vite.react_init.config.ts # react_init.js 构建配置
 ├── react-router.config.ts    # React Router 配置
@@ -299,7 +299,7 @@ npm run build:component
 
 流程：
 
-1. 使用 `vite.component.config.ts` 将 `ExampleButton` 打包为 ES Module（`build/components/ExampleButton.js`）
+1. 使用 `vite.components.config.ts` 将组件打包为 ES Module（`build/components/*.js`）
 2. 在构建过程中：
    - 将 React / ReactDOM 标记为外部依赖，改为从 CDN (`https://esm.sh`) 加载
    - 自动处理 `process.env.NODE_ENV`
@@ -568,12 +568,12 @@ if (typeof document !== 'undefined') {
 
 ### 🔧 添加新组件到构建
 
-#### 方式 1: 修改 vite.component.config.ts（多入口）
+#### 方式 1: 修改 vite.components.config.ts（多入口）
 
 如果需要构建多个独立组件：
 
 ```typescript
-// vite.component.config.ts
+// vite.components.config.ts
 export default defineConfig({
   // ...
   build: {
@@ -598,7 +598,7 @@ export default defineConfig({
 
 ```bash
 # 创建组件专属配置
-cp vite.component.config.ts vite.my-component.config.ts
+cp vite.components.config.ts vite.my-component.config.ts
 
 # 修改 entry 指向你的组件
 # 添加对应的 npm script
@@ -608,7 +608,7 @@ cp vite.component.config.ts vite.my-component.config.ts
 ```json
 {
   "scripts": {
-    "build:component": "vite build --config vite.component.config.ts && npm run copy:component",
+    "build:component": "vite build --config vite.components.config.ts && npm run copy:component",
     "build:my-component": "vite build --config vite.my-component.config.ts && npm run copy:my-component"
   }
 }

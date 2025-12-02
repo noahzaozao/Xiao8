@@ -1,0 +1,235 @@
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import { resolve, join } from "path";
+import { readFileSync, writeFileSync, existsSync, unlinkSync } from "fs";
+import type { Plugin } from "vite";
+
+// 组件配置
+const components = [
+  {
+    name: "ExampleButton",
+    entry: resolve(__dirname, "app/components/ExampleButton.tsx"),
+    output: "ExampleButton.js",
+    styleId: "example-button-styles",
+    cssFiles: ["react_web.css", "ExampleButton.css", "style.css"],
+    needsTailwind: true,
+  },
+  {
+    name: "StatusToast",
+    entry: resolve(__dirname, "app/components/StatusToast.tsx"),
+    output: "StatusToast.js",
+    styleId: "status-toast-styles",
+    cssFiles: ["react_web.css", "StatusToast.css", "style.css"],
+    needsTailwind: false,
+  },
+];
+
+// 插件：重写外部依赖的导入路径为 CDN URL，并处理 process.env
+function rewriteExternalImports(): Plugin {
+  return {
+    name: "rewrite-external-imports",
+    generateBundle(options, bundle) {
+      // 处理 JS 代码
+      for (const fileName in bundle) {
+        const chunk = bundle[fileName];
+        if (chunk.type === "chunk" && chunk.code) {
+          // 检查代码中是否包含组件代码（调试用）
+          const component = components.find(c => chunk.name === c.name || fileName.includes(c.name));
+          if (component) {
+            console.log(`📝 [${component.name}] 处理 chunk: ${fileName}, 代码长度: ${chunk.code.length}`);
+            // 确保导出被保留 - 检查是否有导出语句
+            if (!chunk.code.includes(`export`) && !chunk.code.includes(`function ${component.name}`)) {
+              console.warn(`⚠️  [${component.name}] 警告: 代码中可能缺少导出或组件定义`);
+            }
+          }
+          
+          // 将 react 和 react-dom 的导入重写为本地路径
+          // 处理 import ... from "react" 或 import ... from 'react'
+          chunk.code = chunk.code.replace(
+            /from\s+["']react["']/g,
+            'from "/static/bundles/react.js"'
+          );
+          chunk.code = chunk.code.replace(
+            /from\s+["']react-dom["']/g,
+            'from "/static/bundles/react-dom-client.js"'
+          );
+          chunk.code = chunk.code.replace(
+            /from\s+["']react-dom\/client["']/g,
+            'from "/static/bundles/react-dom-client.js"'
+          );
+          // 处理 import "react" 或 import 'react' (无 from 的导入，可能没有空格)
+          chunk.code = chunk.code.replace(
+            /import\s*["']react["']/g,
+            'import "/static/bundles/react.js"'
+          );
+          chunk.code = chunk.code.replace(
+            /import\s*["']react-dom["']/g,
+            'import "/static/bundles/react-dom-client.js"'
+          );
+          chunk.code = chunk.code.replace(
+            /import\s*["']react-dom\/client["']/g,
+            'import "/static/bundles/react-dom-client.js"'
+          );
+          // 处理 import{...}from"react" 格式（压缩后的格式，没有空格）
+          chunk.code = chunk.code.replace(
+            /from\s*["']react["']/g,
+            'from "/static/bundles/react.js"'
+          );
+          chunk.code = chunk.code.replace(
+            /from\s*["']react-dom["']/g,
+            'from "/static/bundles/react-dom-client.js"'
+          );
+          chunk.code = chunk.code.replace(
+            /from\s*["']react-dom\/client["']/g,
+            'from "/static/bundles/react-dom-client.js"'
+          );
+          // 处理 import() 动态导入
+          chunk.code = chunk.code.replace(
+            /import\(["']react["']\)/g,
+            'import("/static/bundles/react.js")'
+          );
+          chunk.code = chunk.code.replace(
+            /import\(["']react-dom["']\)/g,
+            'import("/static/bundles/react-dom-client.js")'
+          );
+          chunk.code = chunk.code.replace(
+            /import\(["']react-dom\/client["']\)/g,
+            'import("/static/bundles/react-dom-client.js")'
+          );
+          // 处理 process.env.NODE_ENV
+          chunk.code = chunk.code.replace(
+            /process\.env\.NODE_ENV/g,
+            '"production"'
+          );
+          // 处理 process.env 的其他引用
+          chunk.code = chunk.code.replace(
+            /process\.env(?!\.)/g,
+            '({ NODE_ENV: "production" })'
+          );
+        }
+      }
+    },
+    writeBundle(options, bundle) {
+      // 在文件写入后，为每个组件处理 CSS 注入
+      const outDir = options.dir || "build/components";
+      
+      // 从 bundle 中查找 CSS 文件
+      const cssFilesInBundle: string[] = [];
+      for (const fileName in bundle) {
+        const chunk = bundle[fileName];
+        if (chunk.type === "asset" && fileName.endsWith(".css")) {
+          cssFilesInBundle.push(fileName);
+        }
+      }
+      
+      // 收集所有 CSS 内容
+      let allCssContent = "";
+      for (const cssFile of cssFilesInBundle) {
+        const cssPath = join(outDir, cssFile);
+        if (existsSync(cssPath)) {
+          const content = readFileSync(cssPath, "utf-8");
+          allCssContent += content + "\n";
+          console.log(`📦 读取 CSS 文件: ${cssFile} (${content.length} 字符)`);
+          // 删除 CSS 文件
+          unlinkSync(cssPath);
+        }
+      }
+      
+      // 为每个组件注入 CSS 并处理 React 导入
+      for (const component of components) {
+        const jsPath = join(outDir, component.output);
+        if (existsSync(jsPath)) {
+          let jsContent = readFileSync(jsPath, "utf-8");
+          
+          // 处理 React 导入重写（处理各种格式）- 改为本地路径
+          // 处理 import "react" 或 import 'react' (可能没有空格)
+          jsContent = jsContent.replace(
+            /import\s*["']react["']/g,
+            'import "/static/bundles/react.js"'
+          );
+          // 处理 import "react-dom" 或 import 'react-dom' (可能没有空格)
+          jsContent = jsContent.replace(
+            /import\s*["']react-dom["']/g,
+            'import "/static/bundles/react-dom-client.js"'
+          );
+          // 处理 import "react-dom/client" 或 import 'react-dom/client' (可能没有空格)
+          jsContent = jsContent.replace(
+            /import\s*["']react-dom\/client["']/g,
+            'import "/static/bundles/react-dom-client.js"'
+          );
+          // 处理 import{...}from"react" 格式（压缩后的格式，没有空格）
+          jsContent = jsContent.replace(
+            /from\s*["']react["']/g,
+            'from "/static/bundles/react.js"'
+          );
+          jsContent = jsContent.replace(
+            /from\s*["']react-dom["']/g,
+            'from "/static/bundles/react-dom-client.js"'
+          );
+          jsContent = jsContent.replace(
+            /from\s*["']react-dom\/client["']/g,
+            'from "/static/bundles/react-dom-client.js"'
+          );
+          
+          // 注入 CSS（如果有）
+          if (allCssContent) {
+            const injectCSS = `// 注入 ${component.name} CSS 样式
+(function() {
+  if (document.getElementById('${component.styleId}')) return;
+  const style = document.createElement('style');
+  style.id = '${component.styleId}';
+  style.textContent = ${JSON.stringify(allCssContent)};
+  document.head.appendChild(style);
+})();
+`;
+            jsContent = injectCSS + jsContent;
+            console.log(`✅ [${component.name}] 已注入 CSS 到 ${component.output}，CSS 长度: ${allCssContent.length} 字符`);
+          }
+          
+          writeFileSync(jsPath, jsContent, "utf-8");
+        } else {
+          console.warn(`⚠️  [${component.name}] 未找到 JS 文件: ${component.output}`);
+        }
+      }
+    },
+  };
+}
+
+export default defineConfig({
+  plugins: [
+    react(),
+    tailwindcss(), // Tailwind 插件会处理所有文件，但只有使用 Tailwind 类的文件会生成 CSS
+    rewriteExternalImports(),
+  ],
+  define: {
+    "process.env.NODE_ENV": '"production"',
+  },
+  build: {
+    // 使用多入口构建
+    rollupOptions: {
+      input: components.reduce((acc, component) => {
+        acc[component.name] = component.entry;
+        return acc;
+      }, {} as Record<string, string>),
+      external: ["react", "react-dom", "react-dom/client"],
+      // 保留入口点的导出签名，防止 tree-shaking 移除导出
+      preserveEntrySignatures: "exports-only",
+      output: {
+        format: "es",
+        exports: "named",
+        entryFileNames: (chunkInfo) => {
+          // 根据入口名称返回对应的输出文件名
+          const component = components.find(c => c.name === chunkInfo.name);
+          return component ? component.output : "[name].js";
+        },
+        // 确保所有导出都被保留
+        preserveModules: false,
+      },
+    },
+    cssCodeSplit: false,
+    outDir: "build/components",
+    emptyOutDir: false, // 不清空目录，因为可能还有其他组件
+  },
+});
+

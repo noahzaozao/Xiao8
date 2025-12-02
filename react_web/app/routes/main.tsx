@@ -3,6 +3,7 @@ import "./main.css";
 import { request, buildApiUrl } from "../api/request";
 import { buildWebSocketUrl, getApiBaseUrl, getStaticServerUrl, getWebSocketUrl, buildStaticUrl } from "../api/config";
 import { ExampleButton } from "../components/ExampleButton";
+import { StatusToast } from "../components/StatusToast";
 import { RequestAPI } from "../api/request.api";
 import { waitForRequestInit, waitForRequestAPIInit, checkRequestAvailable } from "../api/global/react_init";
 
@@ -785,6 +786,7 @@ export default function Main() {
 
         {/* Status 气泡框 */}
         <div id="status-toast"></div>
+        <StatusToast />
 
         {/* 聊天容器 */}
         <div id="chat-container">

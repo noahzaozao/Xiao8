@@ -19,6 +19,85 @@
     <!-- 加载首页 API 封装模块（ES Module，可选） -->
     <!-- 构建命令：npm run build:global -->
     <script type="module" src="/static/bundles/request.api.global.js"></script>
+
+    <script type="module">
+    // 初始化消息队列（在组件挂载前缓存消息）
+    if (!window.__statusToastQueue) {
+        window.__statusToastQueue = [];
+    }
+    
+    // 提供临时的 showStatusToast 函数，在组件挂载前缓存消息
+    if (typeof window.showStatusToast !== 'function') {
+        window.showStatusToast = function(message, duration = 3000) {
+        console.log('[Status Toast] 组件未挂载，消息已加入队列:', message);
+        window.__statusToastQueue.push({ message, duration });
+        };
+    }
+
+    // 重要：先导入 React 和 ReactDOM，确保它们先初始化
+    import React from "/static/bundles/react.js";
+    import { createRoot } from "/static/bundles/react-dom-client.js";
+    // 然后导入组件（组件依赖 React 和 ReactDOM）
+    import { ExampleButton } from "/static/bundles/ExampleButton.js";
+    import { StatusToast } from "/static/bundles/StatusToast.js";
+
+    // 优先挂载 StatusToast（确保在 app.js 执行前就绪）
+    function mountStatusToast() {
+        const container = document.getElementById("status-toast");
+        if (container) {
+            try {
+                const root = createRoot(container);
+                // 确保 ReactDOM 已经初始化 hooks dispatcher
+                // 通过立即渲染一个空组件来触发初始化
+                root.render(React.createElement(StatusToast));
+                console.log("StatusToast 组件已挂载");
+            } catch (error) {
+                console.error("StatusToast 挂载失败:", error);
+                // 如果失败，延迟重试
+                setTimeout(mountStatusToast, 100);
+            }
+        } else {
+            console.error("StatusToast 容器不存在，延迟重试...");
+            // 如果容器不存在，延迟重试
+            setTimeout(mountStatusToast, 50);
+        }
+    }
+
+    // 等待 DOM 加载完成
+    function mountExampleButton() {
+        const container = document.getElementById("example-button-container");
+        if (container) {
+            const root = createRoot(container);
+            root.render(
+                React.createElement(ExampleButton, {
+                buttonText: "打开 Modal",
+                onSave: (text1, text2) => {
+                    console.log("保存的内容:", text1, text2);
+                    // 可以在这里添加保存逻辑
+                }
+                })
+            );
+            console.log("ExampleButton 组件已挂载");
+        }
+    }
+
+    function mountComponents() {
+        // 优先挂载 StatusToast
+        mountStatusToast();
+        // 然后挂载其他组件
+        mountExampleButton();
+    }
+
+    // 立即尝试挂载（不等待 DOMContentLoaded），确保尽早挂载
+    if (document.readyState === "loading") {
+        // 如果还在加载，立即挂载 StatusToast，其他组件等待 DOMContentLoaded
+        mountStatusToast();
+        document.addEventListener("DOMContentLoaded", mountExampleButton);
+    } else {
+        // 如果已经加载完成，立即挂载所有组件
+        mountComponents();
+    }
+    </script>
     
     <!-- i18next 加载器（统一处理 CDN 加载和初始化） -->
     <script src="/static/i18n-i18next.js"></script>
@@ -66,136 +145,7 @@
             }
         }
         
-        /* Status 气泡框样式 - 更显眼的样式 */
-        #status-toast {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 99999;
-            max-width: 500px;
-            min-width: 280px;
-            padding: 18px 24px;
-            padding-left: 50px;  /* 为左上角的猫爪留出空间 */
-            /* 自定义背景图片 */
-            background-image: url('/static/icons/toast_background.png');  /* 图片路径 */
-            background-size: 100% 100%;  /* 强制拉伸到100%覆盖，避免边缘露出 */
-            background-position: center;  /* 居中显示 */
-            background-repeat: no-repeat;  /* 不重复 */
-            background-origin: border-box;  /* 背景从边框区域开始 */
-            background-clip: border-box;  /* 背景裁剪到边框区域 */
-            /* 如果图片加载失败，使用备用背景色 */
-            background-color: transparent;  /* 移除备用背景色，避免白色边框 */
-            color: #fff;  /* 纯白色文字 */
-            text-shadow: none;  /* 移除文字阴影 */
-            border-radius: 12px;
-            font-size: 18px;  /* 字体大小 */
-            font-weight: 500;
-            line-height: 1.6;
-            box-shadow: none;  /* 移除阴影 */
-            border: none;  /* 移除边框，避免白色边框问题 */
-            overflow: hidden;  /* 确保背景图片不会超出圆角 */
-            opacity: 0;
-            transform: translateY(-20px) scale(0.95);
-            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-            pointer-events: none;  /* 默认不响应事件 */
-            word-wrap: break-word;
-            white-space: pre-wrap;
-            display: flex;  /* 使用flex布局 */
-            align-items: center;  /* 垂直居中对齐 */
-            visibility: visible;  /* 确保元素可见 */
-            text-align: center;
-        }
-        
-        /* 添加遮罩层以确保文字可读性（可选） */
-        #status-toast::after {
-            content: '';
-            position: absolute;
-            top: -1px;  /* 稍微超出，确保完全覆盖 */
-            left: -1px;
-            right: -1px;
-            bottom: -1px;
-            background: rgba(0, 0, 0, 0.1);  /* 半透明黑色遮罩，增强文字对比度 */
-            border-radius: 12px;
-            z-index: 0;  /* 在背景图片之上，文字和猫爪之下 */
-            pointer-events: none;
-        }
-        
-        /* 左上角的小猫爪爪 */
-        #status-toast::before {
-            content: '🐾';
-            position: absolute;
-            top: 50%;  /* 垂直居中 */
-            left: 12px;
-            transform: translateY(-50%);  /* 配合top: 50%实现垂直居中 */
-            font-size: 50px;  /* 增大猫爪图标 */
-            line-height: 1;
-            opacity: 1;
-            filter: brightness(0) invert(1);  /* 将emoji变成纯白色，移除阴影 */
-            animation: pawBounce 1.5s ease-in-out infinite;
-            z-index: 1;  /* 确保猫爪在遮罩层之上 */
-        }
-        
-        @keyframes pawBounce {
-            0%, 100% {
-                transform: translateY(-50%) rotate(0deg);  /* 保持垂直居中 */
-            }
-            25% {
-                transform: translateY(calc(-50% - 3px)) rotate(-5deg);  /* 保持垂直居中并添加动画 */
-            }
-            75% {
-                transform: translateY(calc(-50% - 3px)) rotate(5deg);  /* 保持垂直居中并添加动画 */
-            }
-        }
-        
-        #status-toast.show {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-            pointer-events: auto;
-            animation: slideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-        }
-        
-        @keyframes slideIn {
-            0% {
-                opacity: 0;
-                transform: translateY(-20px) scale(0.8);
-            }
-            100% {
-                opacity: 1;
-                transform: translateY(0) scale(1);
-            }
-        }
-        
-        #status-toast.hide {
-            opacity: 0;
-            transform: translateY(-20px) scale(0.95);
-            animation: none;
-        }
-        
-        @media (max-width: 600px) {
-            #status-toast {
-                top: 10px;
-                right: 10px;
-                left: 10px;
-                max-width: none;
-                font-size: 17px;  /* 移动端字体大小 */
-                padding: 16px 20px;
-                padding-left: 45px;  /* 为左上角的猫爪留出空间 */
-            }
-            
-            #status-toast::before {
-                top: 6px;
-                left: 10px;
-                font-size: 40px;  /* 增大移动端猫爪图标 */
-            }
-            
-            #status-toast.show {
-                transform: translateY(0) scale(1);
-            }
-            
-            #status-toast.hide {
-                transform: translateY(-20px) scale(0.95);
-            }
-        }
+        /* Status 气泡框样式已迁移到 StatusToast 组件 CSS 文件 */
         
         /* 全局按钮样式 - 防止文字被选中 */
         button {
@@ -1066,7 +1016,7 @@
     </div>
 </div>
 
-<!-- Status 气泡框 -->
+<!-- Status 气泡框 - 将由 React 组件挂载 -->
 <div id="status-toast"></div>
 <!-- ExampleButton 容器 -->
 <div id="example-button-container" style="position: fixed; top: 20px; left: 20px; z-index: 99998; pointer-events: auto;"></div>
@@ -1484,6 +1434,33 @@
             // 加载所有 live2d 模块
             await loadScriptsSequentially(live2dModules);
             
+            // 等待 StatusToast 组件就绪（最多等待 2 秒）
+            const waitForStatusToast = () => {
+                return new Promise((resolve) => {
+                    if (typeof window.showStatusToast === 'function' && 
+                        window.showStatusToast.toString().includes('showToast')) {
+                        // 检查是否是 React 组件提供的函数（不是临时队列函数）
+                        console.log('[App] StatusToast 组件已就绪');
+                        resolve(true);
+                        return;
+                    }
+                    
+                    // 监听就绪事件
+                    const timeout = setTimeout(() => {
+                        console.warn('[App] StatusToast 组件等待超时，继续加载 app.js');
+                        resolve(false);
+                    }, 2000);
+                    
+                    window.addEventListener('statusToastReady', () => {
+                        clearTimeout(timeout);
+                        console.log('[App] StatusToast 组件就绪事件触发');
+                        resolve(true);
+                    }, { once: true });
+                });
+            };
+            
+            await waitForStatusToast();
+            
             // 等待 live2d 模块加载完成后再加载 app.js
             const appScript = document.createElement('script');
             appScript.src = '/static/app.js';
@@ -1492,36 +1469,6 @@
             console.error('加载脚本时出错:', error);
         }
     })();
-</script>
-
-<script type="module">
-  import { ExampleButton } from "/static/bundles/ExampleButton.js";
-  import React from "https://esm.sh/react@19";
-  import { createRoot } from "https://esm.sh/react-dom@19/client";
-
-  // 等待 DOM 加载完成
-  function mountExampleButton() {
-    const container = document.getElementById("example-button-container");
-    if (container) {
-      const root = createRoot(container);
-      root.render(
-        React.createElement(ExampleButton, {
-          buttonText: "打开 Modal",
-          onSave: (text1, text2) => {
-            console.log("保存的内容:", text1, text2);
-            // 可以在这里添加保存逻辑
-          }
-        })
-      );
-      console.log("ExampleButton 组件已挂载");
-    }
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", mountExampleButton);
-  } else {
-    mountExampleButton();
-  }
 </script>
 
 <script>
