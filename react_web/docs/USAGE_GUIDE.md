@@ -80,6 +80,7 @@
 
 ```typescript
 // app/routes/some-route.tsx
+import { useEffect } from 'react';
 import { request, buildApiUrl, buildStaticUrl, buildWebSocketUrl } from '~/api/request';
 
 export default function SomeRoute() {
@@ -117,7 +118,7 @@ export function createWebSocketConnection(path: string) {
 
 1. **window.API_BASE_URL** / **window.STATIC_SERVER_URL**（HTML 中设置）
 2. **环境变量**（VITE_API_BASE_URL / VITE_STATIC_SERVER_URL）
-3. **默认值**（http://localhost:48911）
+3. **默认值**（`http://localhost:48911`）
 
 ## 📝 API 参考
 
