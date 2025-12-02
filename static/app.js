@@ -273,6 +273,14 @@ function init_app(){
                         console.log('模式切换中，忽略"已离开"状态消息');
                         return;
                     }
+                    
+                    // 检测严重错误，自动隐藏准备提示（兜底机制）
+                    const criticalErrorKeywords = ['连续失败', '已停止', '自动重试', '崩溃', '欠费', 'API Key被'];
+                    if (criticalErrorKeywords.some(keyword => response.message.includes(keyword))) {
+                        console.log('检测到严重错误，隐藏准备提示');
+                        hideVoicePreparingToast();
+                    }
+                    
                     // 翻译后端发送的状态消息
                     const translatedMessage = window.translateStatusMessage ? window.translateStatusMessage(response.message) : response.message;
                     showStatusToast(translatedMessage, 4000);
@@ -328,6 +336,7 @@ function init_app(){
                                     showStatusToast(window.t ? window.t('app.restartComplete', {name: lanlan_config.lanlan_name}) : `重启完成，${lanlan_config.lanlan_name}回来了！`, 4000);
                                 } catch (error) {
                                     console.error("重启时出错:", error);
+                                    hideVoicePreparingToast(); // 确保重启失败时隐藏准备提示
                                     showStatusToast(window.t ? window.t('app.restartFailed', {error: error.message}) : `重启失败: ${error.message}`, 5000);
                                 }
                             }, 7500); // 7.5秒后执行
@@ -353,8 +362,17 @@ function init_app(){
                     if (proactiveChatEnabled && !isRecording) {
                         resetProactiveChatBackoff();
                     }
+                } else if (response.type === 'session_preparing') {
+                    console.log('收到session_preparing事件，模式:', response.input_mode);
+                    // 显示持续性的准备中提示
+                    const preparingMessage = response.input_mode === 'text' 
+                        ? (window.t ? window.t('app.textSystemPreparing') : '文本系统准备中，请稍候...')
+                        : (window.t ? window.t('app.voiceSystemPreparing') : '语音系统准备中，请稍候...');
+                    showVoicePreparingToast(preparingMessage);
                 } else if (response.type === 'session_started') {
                     console.log('收到session_started事件，模式:', response.input_mode);
+                    // 隐藏准备中提示
+                    hideVoicePreparingToast();
                     // 解析 session_started Promise
                     if (sessionStartedResolver) {
                         // 清除可能存在的超时定时器（通过全局变量）
@@ -377,20 +395,10 @@ function init_app(){
                     }, 2500);
                 } else if (response.type === 'auto_close_mic') {
                     console.log('收到auto_close_mic事件，自动关闭麦克风');
-                    // 长时间无语音输入，自动关闭麦克风但不关闭live2d
+                    // 长时间无语音输入，模拟用户手动关闭语音会话
                     if (isRecording) {
-                        // 停止录音，但不隐藏live2d
-                        stopRecording();
-                        
-                        // 复位按钮状态
-                        micButton.disabled = false;
-                        muteButton.disabled = true;
-                        screenButton.disabled = true;
-                        stopButton.disabled = true;
-                        resetSessionButton.disabled = false;
-                        
-                        // 移除录音状态类
-                        micButton.classList.remove('recording');
+                        // 直接触发闭麦按钮点击，走完整的关闭流程（包括通知后端）
+                        muteButton.click();
                         
                         // 显示提示信息
                         showStatusToast(response.message || (window.t ? window.t('app.autoMuteTimeout') : '长时间无语音输入，已自动关闭麦克风'), 4000);
@@ -460,6 +468,13 @@ function init_app(){
             // 如果是Gemini消息，更新当前消息引用
             if (sender === 'gemini') {
                 currentGeminiMessage = messageDiv;
+                
+                // 如果是AI第一次回复，更新状态并检查成就
+                if (isFirstAIResponse) {
+                    isFirstAIResponse = false;
+                    console.log('检测到AI第一次回复');
+                    checkAndUnlockFirstDialogueAchievement();
+                }
             }
         }
         chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -470,6 +485,34 @@ function init_app(){
     let cachedMicrophones = null;
     let cacheTimestamp = 0;
     const CACHE_DURATION = 30000; // 缓存30秒
+    
+    // 首次交互跟踪
+    let isFirstUserInput = true; // 跟踪是否为用户第一次输入
+    let isFirstAIResponse = true; // 跟踪是否为AI第一次回复
+    
+    // 检查并解锁首次对话成就
+    async function checkAndUnlockFirstDialogueAchievement() {
+        // 当用户和AI都完成首次交互后调用API
+        if (!isFirstUserInput && !isFirstAIResponse) {
+            try {
+                console.log('首次对话完成，尝试解锁成就');
+                const response = await fetch('/api/steam/set-achievement-status/ACH_FIRST_DIALOGUE', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    console.log('成就解锁API调用成功');
+                } else {
+                    console.error('成就解锁API调用失败');
+                }
+            } catch (error) {
+                console.error('成就解锁过程中发生错误:', error);
+            }
+        }
+    }
 
     // 麦克风选择器UI已移除（旧sidebar系统），保留核心函数供live2d.js浮动按钮系统使用
     
@@ -637,6 +680,9 @@ function init_app(){
         // 移除active类
         micButton.classList.remove('active');
         screenButton.classList.remove('active');
+        
+        // 同步浮动按钮状态
+        syncFloatingMicButtonState(false);
         
         stopRecording();
         micButton.disabled = false;
@@ -1403,6 +1449,7 @@ function init_app(){
                 showStatusToast(window.t ? window.t('app.textChattingShort') : '正在文本聊天中', 2000);
             } catch (error) {
                 console.error('启动文本session失败:', error);
+                hideVoicePreparingToast(); // 确保失败时隐藏准备提示
                 showStatusToast(window.t ? window.t('app.startFailed', {error: error.message}) : `启动失败: ${error.message}`, 5000);
                 
                 // 重新启用按钮，允许用户重试
@@ -1453,6 +1500,13 @@ function init_app(){
                 
                 // 在聊天界面显示用户消息
                 appendMessage(text, 'user', true);
+                
+                // 如果是用户第一次输入，更新状态并检查成就
+                if (isFirstUserInput) {
+                    isFirstUserInput = false;
+                    console.log('检测到用户第一次输入');
+                    checkAndUnlockFirstDialogueAchievement();
+                }
             }
             
             // 文本聊天后，重置主动搭话计时器（如果已开启）
@@ -1754,6 +1808,28 @@ function init_app(){
     async function startAudioWorklet(stream) {
         isRecording = true;
         window.isRecording = true;
+
+        // 先清理旧的音频上下文，防止多个 worklet 同时发送数据导致 QPS 超限
+        if (audioContext) {
+            try {
+                await audioContext.close();
+            } catch (e) {
+                console.warn('关闭旧音频上下文时出错:', e);
+                // 强制复位所有状态，防止状态不一致
+                isRecording = false;
+                window.isRecording = false;
+                micButton.classList.remove('recording', 'active');
+                syncFloatingMicButtonState(false);
+                micButton.disabled = false;
+                muteButton.disabled = true;
+                screenButton.disabled = true;
+                stopButton.disabled = true;
+                showStatusToast(window.t ? window.t('app.audioContextError') : '音频系统异常，请重试', 3000);
+                throw e; // 重新抛出错误，阻止后续执行
+            }
+            audioContext = null;
+            workletNode = null;
+        }
 
         // 创建音频上下文
         audioContext = new AudioContext();
@@ -3100,13 +3176,48 @@ function init_app(){
             () => ++mcpOperationSeq
         );
         
-        // 监听 Agent 弹窗打开事件，在弹窗显示时检查服务器状态
-        window.addEventListener('live2d-agent-popup-opening', async () => {
-            // 如果总开关已经是开启状态，不需要检查
-            if (agentMasterCheckbox.checked) {
-                return;
+        // 从后端同步 flags 状态到前端开关
+        async function syncFlagsFromBackend() {
+            try {
+                const resp = await fetch('/api/agent/flags');
+                if (!resp.ok) return false;
+                const data = await resp.json();
+                if (!data.success) return false;
+                
+                const flags = data.agent_flags || {};
+                const analyzerEnabled = data.analyzer_enabled || false;
+                
+                // 同步总开关状态（基于 analyzer_enabled）
+                if (analyzerEnabled && agentMasterCheckbox) {
+                    agentMasterCheckbox.checked = true;
+                    agentMasterCheckbox.disabled = false;
+                    syncCheckboxUI(agentMasterCheckbox);
+                }
+                
+                // 同步子开关状态
+                if (agentKeyboardCheckbox) {
+                    const cuEnabled = flags.computer_use_enabled || false;
+                    agentKeyboardCheckbox.checked = cuEnabled;
+                    agentKeyboardCheckbox.disabled = !analyzerEnabled;
+                    syncCheckboxUI(agentKeyboardCheckbox);
+                }
+                if (agentMcpCheckbox) {
+                    const mcpEnabled = flags.mcp_enabled || false;
+                    agentMcpCheckbox.checked = mcpEnabled;
+                    agentMcpCheckbox.disabled = !analyzerEnabled;
+                    syncCheckboxUI(agentMcpCheckbox);
+                }
+                
+                console.log('[App] 已从后端同步 flags 状态:', {analyzerEnabled, flags});
+                return true;
+            } catch (e) {
+                console.warn('[App] 同步 flags 状态失败:', e);
+                return false;
             }
-            
+        }
+        
+        // 监听 Agent 弹窗打开事件，在弹窗显示时检查服务器状态并同步 flags
+        window.addEventListener('live2d-agent-popup-opening', async () => {
             // 【兜底】禁用总开关，显示连接中状态，锁定title
             agentMasterCheckbox.disabled = true;
             agentMasterCheckbox.title = window.t ? window.t('settings.toggles.checking') : '查询中...';
@@ -3116,11 +3227,22 @@ function init_app(){
             try {
                 const ok = await checkToolServerHealth();
                 if (ok) {
-                    // 服务器在线，启用总开关，恢复title
+                    // 服务器在线，同步 flags 状态
+                    await syncFlagsFromBackend();
+                    
+                    // 启用总开关，恢复title
                     agentMasterCheckbox.disabled = false;
                     agentMasterCheckbox.title = window.t ? window.t('settings.toggles.agentMaster') : 'Agent总开关';
                     syncCheckboxUI(agentMasterCheckbox);
-                    setFloatingAgentStatus('Agent服务器就绪');
+                    
+                    // 根据当前状态显示提示
+                    if (agentMasterCheckbox.checked) {
+                        setFloatingAgentStatus('Agent模式已开启');
+                        // 如果 Agent 已开启，启动相关检查
+                        window.startAgentAvailabilityCheck();
+                    } else {
+                        setFloatingAgentStatus('Agent服务器就绪');
+                    }
                 } else {
                     // 服务器离线，保持禁用，设置离线提示
                     agentMasterCheckbox.disabled = true;
