@@ -48,8 +48,11 @@ npm run dev
 
 ```bash
 cd react_web
-npm run build        # 构建 React Router SPA (build/client)
-npm run build:all    # 构建 global + component，并复制到 static/bundles
+npm run build              # 构建 React Router SPA (build/client)
+npm run build:react-bundles # 构建 React/ReactDOM bundles (首次或更新时)
+npm run build:global       # 构建全局库 (request + react_init)
+npm run build:component   # 构建独立组件 (ExampleButton + StatusToast)
+npm run build:all         # 全量构建 (react-bundles + global + component)
 ```
 
 更多细节见 **`docs/BUILD_GUIDE.md`**。
@@ -71,6 +74,7 @@ react_web/
 │   │       └── request.api.global.ts  # 首页 API 全局库
 │   ├── components/           # 可复用的 React 组件
 │   │   ├── ExampleButton.tsx # 示例：可独立打包的组件
+│   │   ├── StatusToast.tsx   # 状态提示组件（已完成 ✅）
 │   │   └── ...               # 其他组件
 │   ├── routes/
 │   │   └── main.tsx          # Lanlan Terminal 主页面
@@ -88,7 +92,8 @@ react_web/
 ├── build/                    # 构建输出
 │   ├── client/               # React Router SPA 静态资源（HTML/JS/CSS）
 │   ├── global/               # 全局库构建输出（临时）
-│   └── components/          # 独立组件构建（临时）
+│   ├── components/           # 独立组件构建（临时）
+│   └── react-bundles/        # React/ReactDOM bundles（临时）
 ├── docs/                     # 文档（构建、使用、重构计划等）
 ├── vite.config.ts            # React Router 应用构建配置
 ├── vite.components.config.ts  # 独立组件构建配置（多组件）
@@ -112,6 +117,7 @@ react_web/
 - **`packages/effects/request/`** - 统一 Request 库（`@project_neko/request`）
 - **`build/global/`** - 临时目录，全局库构建的中转站
 - **`build/components/`** - 临时目录，独立组件构建的中转站
+- **`build/react-bundles/`** - 临时目录，React/ReactDOM bundles 构建的中转站
 - **`../static/bundles/`** - 最终输出目录，供传统 HTML 页面使用
 
 ---
@@ -294,34 +300,47 @@ export function MyComponent({ title = 'Default', onAction }: MyComponentProps) {
 
 ```bash
 cd react_web
+# 构建 React/ReactDOM bundles（首次构建或更新 React 版本时）
+npm run build:react-bundles
+
+# 构建独立组件
 npm run build:component
 ```
 
 流程：
 
-1. 使用 `vite.components.config.ts` 将组件打包为 ES Module（`build/components/*.js`）
-2. 在构建过程中：
-   - 将 React / ReactDOM 标记为外部依赖，改为从 CDN (`https://esm.sh`) 加载
-   - 自动处理 `process.env.NODE_ENV`
-   - 自动把 Tailwind CSS 样式内联到 JS，中途注入到 `<head>`
-3. 最后通过 `scripts/copy-component.js` 将结果复制到 **上级项目的** `static/ExampleButton.js`
+1. **React Bundles 构建**（`build:react-bundles`）：
+   - 构建 `react.js` 和 `react-dom-client.js` 到 `static/bundles/`
+   - 这些 bundles 供独立组件使用，避免重复打包 React
+
+2. **组件构建**（`build:component`）：
+   - 使用 `vite.components.config.ts` 将组件打包为 ES Module（`build/components/*.js`）
+   - 在构建过程中：
+     - 将 React / ReactDOM 标记为外部依赖，改为从本地 `/static/bundles/` 加载
+     - 自动处理 `process.env.NODE_ENV`
+     - 自动把 CSS 样式内联到 JS，注入到 `<head>`
+   - 通过 `scripts/copy-component.js` 和 `scripts/copy-status-toast.js` 复制到 `static/bundles/`
 
 构建输出：
 
-- `build/components/ExampleButton.js`（临时文件）
-- `../static/ExampleButton.js`（供模板页面使用）
+- `static/bundles/react.js` - React 库（来自 `build:react-bundles`）
+- `static/bundles/react-dom-client.js` - ReactDOM 客户端库（来自 `build:react-bundles`）
+- `static/bundles/ExampleButton.js` - ExampleButton 组件
+- `static/bundles/StatusToast.js` - StatusToast 组件
 
 ### 在传统 HTML 中使用组件
 
 #### 方式 1：ES Module 导入（推荐）
 
+**ExampleButton 组件：**
+
 ```html
 <div id="example-button-container"></div>
 
 <script type="module">
-  import { ExampleButton } from "/static/ExampleButton.js";
-  import React from "https://esm.sh/react@19";
-  import { createRoot } from "https://esm.sh/react-dom@19/client";
+  import { ExampleButton } from "/static/bundles/ExampleButton.js";
+  import React from "/static/bundles/react.js";
+  import { createRoot } from "/static/bundles/react-dom-client.js";
 
   function mountComponent() {
     const container = document.getElementById("example-button-container");
@@ -342,6 +361,31 @@ npm run build:component
   } else {
     mountComponent();
   }
+</script>
+```
+
+**StatusToast 组件：**
+
+StatusToast 组件已集成到 React Router 主界面，同时支持全局 API 调用：
+
+```html
+<!-- 在 HTML 中提供容器 -->
+<div id="status-toast"></div>
+
+<!-- 加载 React bundles 和 StatusToast 组件 -->
+<script type="module" src="/static/bundles/react.js"></script>
+<script type="module" src="/static/bundles/react-dom-client.js"></script>
+<script type="module" src="/static/bundles/StatusToast.js"></script>
+
+<script>
+  // 等待组件加载后，使用全局 API
+  window.addEventListener('statusToastReady', () => {
+    // 使用全局函数显示提示
+    window.showStatusToast('消息内容', 3000);
+  });
+  
+  // 或者直接调用（组件会自动处理延迟）
+  window.showStatusToast('欢迎使用 N.E.K.O', 5000);
 </script>
 ```
 
@@ -617,9 +661,12 @@ cp vite.components.config.ts vite.my-component.config.ts
 ### 📊 渐进式迁移优先级
 
 #### 第一阶段：独立组件（低风险）
-1. ✅ StatusToast - 独立显示，无复杂交互
-2. ✅ Modal/Dialog - 独立弹窗组件
-3. ✅ Button - 基础 UI 组件
+1. ✅ **StatusToast** - 独立显示，无复杂交互（已完成 ✅）
+   - 已集成到 React Router 主界面
+   - 支持全局 `window.showStatusToast()` API
+   - 已构建为独立组件，可在传统 HTML 中使用
+2. ⏳ Modal/Dialog - 独立弹窗组件
+3. ⏳ Button - 基础 UI 组件
 
 #### 第二阶段：中等复杂度组件
 1. ⚠️ ChatContainer - 需要 WebSocket 集成

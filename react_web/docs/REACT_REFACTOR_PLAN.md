@@ -167,10 +167,15 @@ react_web/
 **目标**: 迁移独立的 UI 组件，建立迁移模式
 
 **优先级列表**:
-1. **StatusToast** (高优先级) 🔥
+1. **StatusToast** (高优先级) ✅ **已完成**
    - 当前位置: `static/app.js` 中的 `showStatusToast` 函数
    - 复杂度: 低 (独立组件，无复杂交互)
    - 预计工作量: 0.5 天
+   - **状态**: ✅ 已完成并集成到 React Router 主界面
+   - **特性**: 
+     - 支持全局 `window.showStatusToast()` API
+     - 已构建为独立组件 (`static/bundles/StatusToast.js`)
+     - 向后兼容旧代码调用方式
    
 2. **Modal/Dialog** (高优先级) 🔥
    - 当前位置: `static/app.js` 的通用弹窗逻辑
@@ -183,10 +188,11 @@ react_web/
    - 预计工作量: 0.5 天
 
 **成功指标**:
-- 至少 3 个组件完成迁移
-- 事件总线通信机制验证
-- 性能无明显下降
-- 旧代码可以回退
+- ✅ StatusToast 组件已完成迁移
+- ⏳ 至少 3 个组件完成迁移（1/3 完成）
+- ⏳ 事件总线通信机制验证（StatusToast 使用全局 API 方式）
+- ✅ 性能无明显下降
+- ✅ 旧代码可以回退（StatusToast 保持向后兼容）
 
 ### Phase 2: 聊天系统迁移（3-4 周）
 
