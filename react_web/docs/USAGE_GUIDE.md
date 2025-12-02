@@ -19,14 +19,24 @@
     window.STATIC_SERVER_URL = window.API_BASE_URL;
   </script>
   
-  <!-- 2. 加载通用初始化 & 请求库（同步阻塞方式） -->
+  <!-- 2. 加载库（注意加载顺序和脚本类型） -->
+  <!-- 初始化工具（IIFE 格式，普通 script 标签） -->
   <script src="/static/bundles/react_init.js"></script>
-  <script src="/static/bundles/request.global.js"></script>
+  <!-- Request 库（ES Module 格式） -->
+  <script type="module" src="/static/bundles/request.global.js"></script>
+  <!-- 首页 API 封装（ES Module 格式，可选） -->
+  <script type="module" src="/static/bundles/request.api.global.js"></script>
 </head>
 <body>
   <script>
     // 等待库加载完成
-    window.addEventListener('load', () => {
+    window.addEventListener('load', async () => {
+      // 方式 1：使用 window.ReactInit 等待初始化（推荐）
+      if (window.ReactInit) {
+        await window.ReactInit.waitForRequestInit();
+        await window.ReactInit.waitForRequestAPIInit();
+      }
+      
       // 使用 window.request 发起请求
       window.request.get('/api/users')
         .then(data => console.log('Users:', data))
@@ -44,6 +54,13 @@
       // 使用 WebSocket
       const ws = new WebSocket(wsUrl);
       ws.onopen = () => console.log('WebSocket connected');
+      
+      // 使用 window.RequestAPI（如果已加载 request.api.global.js）
+      if (window.RequestAPI) {
+        window.RequestAPI.getPageConfig()
+          .then(config => console.log('页面配置:', config))
+          .catch(error => console.error('Error:', error));
+      }
     });
   </script>
 </body>
@@ -60,8 +77,13 @@
   window.STATIC_SERVER_URL = window.API_BASE_URL;
 </script>
 <script src="/static/bundles/react_init.js"></script>
-<script src="/static/bundles/request.global.js"></script>
-<script>
+<script type="module" src="/static/bundles/request.global.js"></script>
+<script type="module">
+  // 等待 request 初始化
+  if (window.ReactInit) {
+    await window.ReactInit.waitForRequestInit();
+  }
+  
   // 使用配置工具函数
   const apiUrl = window.buildApiUrl('/api/users');
   const wsUrl = window.buildWebSocketUrl('/ws/chat');
@@ -141,6 +163,51 @@ window.request.put('/api/users/1', { name: 'Jane' })
 window.request.delete('/api/users/1')
 ```
 
+**注意**：`window.request` 会自动处理 token 刷新，401 错误时会自动尝试刷新 access token。
+
+### window.RequestAPI
+
+首页 API 封装命名空间（需要加载 `request.api.global.js`）：
+
+```javascript
+// 页面配置
+const config = await window.RequestAPI.getPageConfig('LanLan1');
+
+// 角色配置
+const characters = await window.RequestAPI.getCharacters();
+const catgirlConfig = await window.RequestAPI.getCurrentCatgirlConfig('LanLan1');
+
+// Live2D 模型
+const models = await window.RequestAPI.getLive2DModels();
+const model = await window.RequestAPI.findLive2DModelByName('model_name');
+
+// 用户偏好
+const preferences = await window.RequestAPI.getUserPreferences();
+await window.RequestAPI.saveUserPreferences(modelPath, position, scale);
+
+// Agent 控制
+const health = await window.RequestAPI.checkAgentHealth();
+const flags = await window.RequestAPI.getAgentFlags();
+await window.RequestAPI.setAgentFlags('LanLan1', { someFlag: true });
+
+// 更多 API 请参考 global.d.ts 中的类型定义
+```
+
+### window.ReactInit
+
+初始化工具命名空间（通过 `react_init.js` 暴露）：
+
+```javascript
+// 等待 request.global.js 初始化完成
+await window.ReactInit.waitForRequestInit(5000); // 最多等待 5 秒
+
+// 等待 request.api.global.js 初始化完成
+await window.ReactInit.waitForRequestAPIInit(5000);
+
+// 检查 request 相关全局对象是否已初始化（调试用）
+window.ReactInit.checkRequestAvailable();
+```
+
 ### window.buildApiUrl(path: string)
 
 构建完整的 API URL。
@@ -214,28 +281,63 @@ fetch(window.buildApiUrl('/api/users'))
 
 ## ⚠️ 注意事项
 
-1. **加载顺序**：确保在加载 `request.global.js` 之前设置 `window.API_BASE_URL`（如果需要自定义）
-2. **脚本类型**：`react_init.js` 和 `request.global.js` 以普通脚本形式输出，可直接使用 `<script src="..."></script>` 同步加载
-3. **构建路径**：所有构建产物位于 `static/bundles/` 目录，便于全量构建时清理
-4. **构建推荐**：统一使用 `build:global` + `build:component` 或 `build:all`，不再单独构建 request
-5. **向后兼容**：`api_interceptor.js` 仍然可以继续使用，但建议逐步迁移到新方式
-6. **TypeScript**：React 项目中使用 TypeScript 源码，享受类型检查和自动补全
+1. **加载顺序**：
+   - 先设置 `window.API_BASE_URL`（如果需要自定义）
+   - 然后加载 `react_init.js`（IIFE 格式，普通 script 标签）
+   - 再加载 `request.global.js`（ES Module 格式，需要 `type="module"`）
+   - 最后加载 `request.api.global.js`（ES Module 格式，可选）
+
+2. **脚本类型**：
+   - `react_init.js` 是 IIFE 格式，使用 `<script src="..."></script>`
+   - `request.global.js` 和 `request.api.global.js` 是 ES Module 格式，使用 `<script type="module" src="..."></script>`
+
+3. **等待初始化**：由于 ES Module 是异步加载的，建议使用 `window.ReactInit.waitForRequestInit()` 等待初始化完成后再使用 `window.request`
+
+4. **构建路径**：所有构建产物位于 `static/bundles/` 目录，便于全量构建时清理
+
+5. **构建推荐**：统一使用 `build:global` + `build:component` 或 `build:all`，不再单独构建 request
+
+6. **向后兼容**：`api_interceptor.js` 仍然可以继续使用，但建议逐步迁移到新方式
+
+7. **TypeScript**：React 项目中使用 TypeScript 源码，享受类型检查和自动补全
 
 ## 🐛 故障排除
 
 ### 问题：`window.request is undefined`
 
-**原因**：库还未加载完成。
+**原因**：ES Module 是异步加载的，库还未加载完成。
 
 **解决**：
 ```javascript
-// 等待 DOM 加载完成
-window.addEventListener('load', () => {
+// 方式 1：使用 ReactInit 等待初始化（推荐）
+window.addEventListener('load', async () => {
+  if (window.ReactInit) {
+    await window.ReactInit.waitForRequestInit();
+  }
+  
   if (window.request) {
     // 使用 window.request
   } else {
     console.error('request.global.js 未正确加载');
   }
+});
+
+// 方式 2：轮询检查
+window.addEventListener('load', () => {
+  const checkRequest = setInterval(() => {
+    if (window.request) {
+      clearInterval(checkRequest);
+      // 使用 window.request
+    }
+  }, 50);
+  
+  // 超时处理
+  setTimeout(() => {
+    clearInterval(checkRequest);
+    if (!window.request) {
+      console.error('request.global.js 加载超时');
+    }
+  }, 5000);
 });
 ```
 

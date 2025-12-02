@@ -61,25 +61,41 @@ npm run build:all    # 构建 global + component，并复制到 static/bundles
 ```txt
 react_web/
 ├── app/                      # React Router 应用源码
+│   ├── api/                  # API 相关代码
+│   │   ├── config.ts         # 配置管理（URL 构建等）
+│   │   ├── request.ts        # Request 客户端（React 专用）
+│   │   ├── request.api.ts    # 首页 API 封装
+│   │   └── global/           # 全局库源码（用于 HTML/JS）
+│   │       ├── react_init.ts           # 初始化工具
+│   │       ├── request.global.ts      # Request 全局库
+│   │       └── request.api.global.ts  # 首页 API 全局库
 │   ├── components/           # 可复用的 React 组件
 │   │   ├── ExampleButton.tsx # 示例：可独立打包的组件
 │   │   └── ...               # 其他组件
 │   ├── routes/
 │   │   └── main.tsx          # Lanlan Terminal 主页面
-│   ├── utils/                # 工具函数
-│   │   ├── api.ts            # API 封装
-│   │   └── eventBus.ts       # 事件总线（新旧代码通信）*待创建
+│   ├── utils/                # 工具函数（目前为空）
 │   ├── root.tsx              # 应用根布局（注入全局脚本）
 │   └── routes.ts             # 路由配置
+├── packages/                 # 内部包
+│   └── effects/
+│       └── request/          # 统一 Request 库（@project_neko/request）
 ├── scripts/
-│   └── copy-component.js     # 复制组件到 static/ 目录
+│   ├── copy-component.js    # 复制组件到 static/ 目录
+│   ├── copy-global.js        # 复制全局库到 static/ 目录
+│   └── clean-bundles.js      # 清理构建产物
 ├── public/                   # 静态资源
 ├── build/                    # 构建输出
 │   ├── client/               # React Router SPA 静态资源（HTML/JS/CSS）
-│   └── components/           # 独立组件构建（临时）
+│   ├── global/               # 全局库构建输出（临时）
+│   └── components/          # 独立组件构建（临时）
 ├── docs/                     # 文档（构建、使用、重构计划等）
 ├── vite.config.ts            # React Router 应用构建配置
 ├── vite.component.config.ts  # 独立组件构建配置
+├── vite.global.config.ts     # 全局库构建配置（request.global.js 等）
+├── vite.react_init.config.ts # react_init.js 构建配置
+├── react-router.config.ts    # React Router 配置
+├── global.d.ts               # 全局类型声明
 ├── tsconfig.json
 ├── package.json
 └── README.md
@@ -87,9 +103,16 @@ react_web/
 
 ### 目录说明
 
+- **`app/api/`** - API 相关代码
+  - `config.ts` - 配置管理（URL 构建等）
+  - `request.ts` - Request 客户端（React 专用）
+  - `request.api.ts` - 首页 API 封装
+  - `global/` - 全局库源码（用于 HTML/JS 环境）
 - **`app/components/`** - 既可以用于 React Router 应用，也可以独立打包
+- **`packages/effects/request/`** - 统一 Request 库（`@project_neko/request`）
+- **`build/global/`** - 临时目录，全局库构建的中转站
 - **`build/components/`** - 临时目录，独立组件构建的中转站
-- **`../static/`** - 最终输出目录，供传统 HTML 页面使用
+- **`../static/bundles/`** - 最终输出目录，供传统 HTML 页面使用
 
 ---
 
@@ -97,9 +120,10 @@ react_web/
 
 - **此目录位置**：`N.E.K.O/react_web`
 - **静态资源来源**：依赖根项目的 `static/` 目录（`N.E.K.O/static`）
-- **脚本依赖**：`static/request.global.js`, `static/common_ui.js`, `static/app.js`, `static/libs/*.js`, `static/live2d.js` 等
+- **脚本依赖**：`static/bundles/request.global.js`, `static/bundles/request.api.global.js`, `static/bundles/react_init.js`, `static/common_ui.js`, `static/app.js`, `static/libs/*.js`, `static/live2d.js` 等
 - **API 地址**：通过环境变量 `VITE_API_BASE_URL` 统一配置，默认 `http://localhost:48911`
 - **静态资源服务器地址**：通过 `VITE_STATIC_SERVER_URL` 配置，默认 `http://localhost:48911`
+- **构建产物输出**：所有构建产物输出到 `N.E.K.O/static/bundles/` 目录
 
 ---
 
@@ -124,19 +148,17 @@ react_web/
 ### 两套前端架构
 
 **1. React Web (`react_web/`)**
-- ✅ 使用统一的 `@project_neko/request` 模块
+- ✅ 使用统一的 `@project_neko/request` 模块（位于 `packages/effects/request/`）
 - 在 `app/api/request.ts` 中创建请求客户端实例
-- 通过 `exposeRequestToGlobal()` 暴露到全局：
-  - `window.request` - 统一的请求实例（基于 Axios）
-  - `window.buildApiUrl(path)` - 构建 API URL
-  - `window.buildStaticUrl(path)` - 构建静态资源 URL
-  - `window.buildWebSocketUrl(path)` - 构建 WebSocket URL
 - React 组件中直接使用 `import { request } from '~/api/request'`
+- 配置工具函数：`import { buildApiUrl, buildStaticUrl, buildWebSocketUrl } from '~/api/config'`
 
 **2. 静态模板 (`templates/index.html`)**
 - ✅ 使用 `request.global.js`（打包了 axios 和 axios-auth-refresh）
-- 自动初始化 `window.request` 等工具函数
-- 旧版 JS 代码应使用 `window.request` 或 `window.buildApiUrl` 等工具函数
+- ✅ 使用 `request.api.global.js`（首页 API 封装，暴露 `window.RequestAPI`）
+- ✅ 使用 `react_init.js`（初始化工具，暴露 `window.ReactInit`）
+- 自动初始化 `window.request`、`window.RequestAPI` 等全局对象
+- 旧版 JS 代码应使用 `window.request` 或 `window.RequestAPI` 等工具函数
 
 ### Request 模块特性
 
@@ -165,17 +187,22 @@ const apiUrl = window.buildApiUrl('/api/users');
 const wsUrl = window.buildWebSocketUrl('/ws/chat');
 ```
 
-### 构建 request.global.js
+### 构建全局库
 
-通常不需要单独构建 `request.global.js`，推荐使用：
+构建全局库（用于 HTML/JS 环境）：
 
 ```bash
-npm run build:global   # 构建 request.global.js + react_init.js
+npm run build:global   # 构建 request.global.js + request.api.global.js + react_init.js
 # 或
 npm run build:all      # 全量构建（global + component）
 ```
 
-这会打包 `app/api/global/request.global.ts` 及其所有依赖，并复制到 `static/bundles/request.global.js`
+构建产物：
+- `static/bundles/request.global.js` - Request 库（暴露 `window.request` 等）
+- `static/bundles/request.api.global.js` - 首页 API 封装（暴露 `window.RequestAPI`）
+- `static/bundles/react_init.js` - 初始化工具（暴露 `window.ReactInit`）
+
+这些文件会从 `app/api/global/` 目录的源码构建，并自动复制到 `static/bundles/` 目录。
 
 ---
 
@@ -351,9 +378,11 @@ npm run build:component
 
 对于需要与 `static/app.js` 交互的组件，推荐使用事件总线：
 
+> **注意**：事件总线工具尚未实现，如需使用请先创建 `app/utils/eventBus.ts`。
+
 #### 1. 创建事件总线
 
-`app/utils/eventBus.ts`：
+`app/utils/eventBus.ts`（待创建）：
 
 ```typescript
 class EventBus {
