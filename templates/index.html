@@ -1165,21 +1165,46 @@
 <script>
     // Beacon功能 - 页面关闭时发送信号给服务器
     let beaconSent = false;
+    
+    // 缓存 RequestAPI 的 sendShutdownBeacon 方法引用（在页面加载时初始化）
+    let cachedSendShutdownBeacon = null;
 
-    async function sendBeacon() {
+    function sendBeacon() {
         if (beaconSent) return; // 防止重复发送
         beaconSent = true;
         
         try {
-            // 等待 RequestAPI 初始化（如果还未初始化）
-            if (window.ReactInit && window.ReactInit.waitForRequestAPIInit) {
-                await window.ReactInit.waitForRequestAPIInit(2000); // 超时时间较短，因为页面可能正在关闭
+            // 优先使用缓存的 RequestAPI.sendShutdownBeacon（如果已初始化）
+            if (cachedSendShutdownBeacon) {
+                // 调用缓存的函数（异步执行，不等待结果）
+                cachedSendShutdownBeacon(true).catch(err => {
+                    console.warn('RequestAPI.sendShutdownBeacon 调用失败:', err);
+                });
+                return;
             }
-            // 使用 RequestAPI 发送关闭信号
-            if (window.RequestAPI) {
-                await window.RequestAPI.sendShutdownBeacon(true);
+            
+            // 如果 RequestAPI 在此时可用但未缓存，直接尝试使用
+            if (window.RequestAPI && typeof window.RequestAPI.sendShutdownBeacon === 'function') {
+                window.RequestAPI.sendShutdownBeacon(true).catch(err => {
+                    console.warn('RequestAPI.sendShutdownBeacon 调用失败:', err);
+                });
+                return;
+            }
+            
+            // 备用方案：直接使用 navigator.sendBeacon
+            if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+                const payload = JSON.stringify({
+                    timestamp: Date.now(),
+                    action: 'shutdown'
+                });
+                const success = navigator.sendBeacon('/api/beacon/shutdown', payload);
+                if (success) {
+                    console.log('Beacon信号已发送（使用 navigator.sendBeacon）');
+                } else {
+                    console.warn('navigator.sendBeacon 发送失败');
+                }
             } else {
-                console.warn('RequestAPI 未初始化，无法发送关闭信号');
+                console.warn('RequestAPI 未初始化且 navigator.sendBeacon 不可用，无法发送关闭信号');
             }
         } catch (e) {
             console.error('Beacon发送异常:', e);
@@ -1189,6 +1214,46 @@
     // 监听页面关闭事件
     window.addEventListener('beforeunload', sendBeacon);
     window.addEventListener('unload', sendBeacon);
+</script>
+<script>
+    // 在页面加载时缓存 RequestAPI 的 sendShutdownBeacon 方法
+    // 使用 DOMContentLoaded 和 load 事件确保在模块加载后检查
+    function cacheRequestAPIShutdownBeacon() {
+        // 检查 RequestAPI 是否已初始化
+        if (window.RequestAPI && typeof window.RequestAPI.sendShutdownBeacon === 'function') {
+            cachedSendShutdownBeacon = window.RequestAPI.sendShutdownBeacon.bind(window.RequestAPI);
+            console.log('[Beacon] RequestAPI.sendShutdownBeacon 已缓存');
+            return true;
+        }
+        return false;
+    }
+    
+    // 立即检查一次（可能模块已经加载完成）
+    if (cacheRequestAPIShutdownBeacon()) {
+        // 已经缓存，无需继续
+    } else {
+        // 模块可能还在加载，使用事件监听和轮询
+        let checkCount = 0;
+        const maxChecks = 50; // 最多检查 50 次（约 5 秒）
+        
+        const checkInterval = setInterval(() => {
+            checkCount++;
+            if (cacheRequestAPIShutdownBeacon() || checkCount >= maxChecks) {
+                clearInterval(checkInterval);
+            }
+        }, 100);
+        
+        // DOMContentLoaded 时也检查一次
+        document.addEventListener('DOMContentLoaded', () => {
+            cacheRequestAPIShutdownBeacon();
+        });
+        
+        // load 事件时最终检查
+        window.addEventListener('load', () => {
+            cacheRequestAPIShutdownBeacon();
+            clearInterval(checkInterval);
+        });
+    }
 </script>
 <script src="/static/libs/live2dcubismcore.min.js"></script>  <!-- Cubism 4核心库（支持Cubism 3/4模型） -->
 <script>

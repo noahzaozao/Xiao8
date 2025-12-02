@@ -24,7 +24,7 @@ declare global {
  */
 export async function waitForRequestInit(maxWait = 5000): Promise<void> {
   // 如果已经初始化，直接返回
-  if (typeof window !== 'undefined' && (window as any).request || (window as any).buildApiUrl) {
+  if (typeof window !== 'undefined' && ((window as any).request || (window as any).buildApiUrl)) {
     return;
   }
 

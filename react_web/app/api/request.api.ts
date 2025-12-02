@@ -1,17 +1,18 @@
 /**
- * 首页 API 封装模块（React 专用）
+ * 首页 API 封装模块（核心逻辑）
  * 
- * 封装首页常用的 API 调用，专为 React 环境设计
+ * 封装首页常用的 API 调用，包含所有业务逻辑
  * 
  * 特性：
- * - 专用于 React 环境，直接使用 request 模块
  * - 提供类型安全的 API 调用函数
  * - 统一的错误处理
  * - 使用命名空间对象，方便通过关键字搜索（如 "RequestAPI." 或 "requestApi."）
+ * - 支持 React 环境和 HTML 环境（通过 setRequestInstance 切换 request 实例）
  * 
  * 注意：
- * - 此模块仅用于 React 环境，直接导入并使用 request
- * - HTML 环境请使用 request.api.global.ts 构建的 window.RequestAPI
+ * - 此模块包含所有业务逻辑代码
+ * - React 环境：直接导入并使用，默认使用 React 环境的 request
+ * - HTML 环境：通过 request.api.global.ts 使用，会自动设置使用 window.request
  * 
  * 使用方式：
  * 
@@ -37,7 +38,39 @@
  */
 
 // 直接导入 React 环境的 request 模块
-import { request } from './request';
+import { request as defaultRequest } from './request';
+
+/**
+ * Request 实例管理
+ * 
+ * 默认使用 React 环境的 request 实例
+ * 在 HTML 环境中，request.api.global.ts 会通过 setRequestInstance 设置为 window.request
+ */
+let requestInstance: any = defaultRequest;
+
+/**
+ * 设置 request 实例（用于全局环境）
+ * 
+ * 此函数由 request.api.global.ts 调用，用于在 HTML 环境中使用 window.request
+ * React 环境不需要调用此函数，直接使用默认的 request 实例即可
+ * 
+ * @internal
+ */
+export function setRequestInstance(instance: any) {
+  requestInstance = instance;
+}
+
+/**
+ * 获取 request 实例
+ * 
+ * 所有 API 函数都通过此函数获取 request 实例
+ * 在 React 环境中返回默认的 request，在 HTML 环境中返回 window.request
+ * 
+ * @internal
+ */
+function getRequest(): any {
+  return requestInstance;
+}
 
 // 类型定义
 interface PageConfigResponse {
@@ -75,6 +108,7 @@ interface BeaconShutdownRequest {
  */
 export async function getPageConfig(lanlanName?: string): Promise<PageConfigResponse> {
   try {
+    const request = getRequest();
     const apiPath = lanlanName
       ? `/api/config/page_config?lanlan_name=${encodeURIComponent(lanlanName)}`
       : '/api/config/page_config';
@@ -98,6 +132,7 @@ export async function getPageConfig(lanlanName?: string): Promise<PageConfigResp
  */
 export async function getCharacters(): Promise<CharactersResponse> {
   try {
+    const request = getRequest();
     const data = await request.get('/api/characters') as CharactersResponse;
     return data;
   } catch (error: any) {
@@ -112,6 +147,7 @@ export async function getCharacters(): Promise<CharactersResponse> {
  */
 export async function getLive2DModels(): Promise<Live2DModel[]> {
   try {
+    const request = getRequest();
     const data = await request.get('/api/live2d/models');
     return Array.isArray(data) ? data : [];
   } catch (error: any) {
@@ -165,6 +201,7 @@ export async function sendShutdownBeacon(useBeacon: boolean = true): Promise<boo
     }
 
     // 备用方案：使用 request.post
+    const request = getRequest();
     await request.post('/api/beacon/shutdown', payload);
     console.log('[sendShutdownBeacon] 使用 request 发送关闭信号成功');
     return true;
@@ -254,6 +291,7 @@ export async function shouldReloadModel(
  */
 export async function getUserPreferences(): Promise<any[]> {
   try {
+    const request = getRequest();
     const data = await request.get('/api/preferences') as any[];
     return Array.isArray(data) ? data : [];
   } catch (error: any) {
@@ -300,6 +338,7 @@ export async function saveUserPreferences(
       scale: scale
     };
 
+    const request = getRequest();
     const result = await request.post('/api/preferences', preferences) as any;
     return result?.success === true;
   } catch (error: any) {
@@ -326,6 +365,7 @@ export async function getEmotionMapping(modelName: string): Promise<{
       return null;
     }
 
+    const request = getRequest();
     const data = await request.get(`/api/live2d/emotion_mapping/${encodeURIComponent(modelName)}`) as any;
     
     if (data && data.success && data.config) {
@@ -347,6 +387,7 @@ export async function getEmotionMapping(modelName: string): Promise<{
  */
 export async function unlockSteamAchievement(achievementId: string): Promise<boolean> {
   try {
+    const request = getRequest();
     const result = await request.post(`/api/steam/set-achievement-status/${achievementId}`, {}) as any;
     return result?.success === true;
   } catch (error: any) {
@@ -362,6 +403,7 @@ export async function unlockSteamAchievement(achievementId: string): Promise<boo
  */
 export async function setMicrophone(microphoneId: string | null): Promise<boolean> {
   try {
+    const request = getRequest();
     const result = await request.post('/api/characters/set_microphone', {
       microphone_id: microphoneId
     }) as any;
@@ -378,6 +420,7 @@ export async function setMicrophone(microphoneId: string | null): Promise<boolea
  */
 export async function getMicrophone(): Promise<string | null> {
   try {
+    const request = getRequest();
     const data = await request.get('/api/characters/get_microphone') as any;
     return data?.microphone_id || null;
   } catch (error: any) {
@@ -394,6 +437,7 @@ export async function getMicrophone(): Promise<string | null> {
  */
 export async function analyzeEmotion(text: string, lanlanName: string): Promise<any | null> {
   try {
+    const request = getRequest();
     const data = await request.post('/api/emotion/analysis', {
       text: text,
       lanlan_name: lanlanName
@@ -418,6 +462,7 @@ export async function analyzeEmotion(text: string, lanlanName: string): Promise<
  */
 export async function getCurrentLive2DModel(catgirlName: string): Promise<any | null> {
   try {
+    const request = getRequest();
     const data = await request.get(`/api/characters/current_live2d_model?catgirl_name=${encodeURIComponent(catgirlName)}`) as any;
     return data;
   } catch (error: any) {
@@ -432,6 +477,7 @@ export async function getCurrentLive2DModel(catgirlName: string): Promise<any | 
  */
 export async function checkAgentHealth(): Promise<boolean> {
   try {
+    const request = getRequest();
     const data = await request.get('/api/agent/health') as any;
     return data?.success === true || data === true;
   } catch (error: any) {
@@ -458,6 +504,7 @@ export async function checkAgentCapability(capability: 'computer_use' | 'mcp'): 
       return false;
     }
     
+    const request = getRequest();
     const data = await request.get(url) as any;
     return data?.ready === true;
   } catch (error: any) {
@@ -472,6 +519,7 @@ export async function checkAgentCapability(capability: 'computer_use' | 'mcp'): 
  */
 export async function getAgentFlags(): Promise<any | null> {
   try {
+    const request = getRequest();
     const data = await request.get('/api/agent/flags') as any;
     if (data?.success) {
       return data;
@@ -491,6 +539,7 @@ export async function getAgentFlags(): Promise<any | null> {
  */
 export async function setAgentFlags(lanlanName: string, flags: Record<string, boolean>): Promise<boolean> {
   try {
+    const request = getRequest();
     const result = await request.post('/api/agent/flags', {
       lanlan_name: lanlanName,
       flags: flags
@@ -509,6 +558,7 @@ export async function setAgentFlags(lanlanName: string, flags: Record<string, bo
  */
 export async function controlAgent(action: 'enable_analyzer' | 'disable_analyzer'): Promise<boolean> {
   try {
+    const request = getRequest();
     const result = await request.post('/api/agent/admin/control', {
       action: action
     }) as any;
@@ -525,6 +575,7 @@ export async function controlAgent(action: 'enable_analyzer' | 'disable_analyzer
  */
 export async function getAgentTaskStatus(): Promise<any | null> {
   try {
+    const request = getRequest();
     const data = await request.get('/api/agent/task_status') as any;
     if (data?.success) {
       return data;
@@ -543,12 +594,37 @@ export async function getAgentTaskStatus(): Promise<any | null> {
  */
 export async function triggerProactiveChat(lanlanName: string): Promise<any | null> {
   try {
+    const request = getRequest();
     const data = await request.post('/api/proactive_chat', {
       lanlan_name: lanlanName
     }) as any;
     return data;
   } catch (error: any) {
     console.error('[triggerProactiveChat] 触发主动搭话失败:', error);
+    return null;
+  }
+}
+
+/**
+ * 获取 Steam 语言设置
+ * @returns Steam 语言设置数据，失败返回 null
+ */
+export async function getSteamLanguage(): Promise<{
+  success: boolean;
+  steam_language?: string;
+  i18n_language?: string;
+  error?: string;
+} | null> {
+  try {
+    const request = getRequest();
+    // 使用 axios 的配置对象传递超时设置
+    const data = await request.get('/api/steam_language', {
+      timeout: 2000 // 设置超时，避免阻塞太久
+    } as any) as any;
+    return data;
+  } catch (error: any) {
+    // 可能是超时或网络错误，静默处理
+    console.log('[getSteamLanguage] 无法从 Steam 获取语言设置:', error.message);
     return null;
   }
 }
@@ -605,8 +681,9 @@ export const RequestAPI = {
   getUserPreferences,
   saveUserPreferences,
   
-  // Steam 成就
+  // Steam
   unlockSteamAchievement,
+  getSteamLanguage,
   
   // 麦克风
   setMicrophone,

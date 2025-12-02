@@ -3762,7 +3762,12 @@ function init_app(){
         
         // 重新连接 WebSocket
         console.log('[猫娘切换] 重新连接 WebSocket，新猫娘:', newCatgirl);
-        await connectWebSocket();
+        try {
+            await connectWebSocket();
+        } catch (error) {
+            console.warn('[猫娘切换] WebSocket 连接失败，但继续执行后续操作:', error);
+            // 允许继续执行，不中断 Live2D 模型加载
+        }
         
         // 更新页面标题
         document.title = `${newCatgirl} Terminal - Project N.E.K.O.`;
