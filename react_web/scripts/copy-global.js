@@ -8,6 +8,7 @@ const __dirname = path.dirname(__filename);
 // 要复制的文件列表
 const filesToCopy = [
   { src: "request.global.js", dest: "request.global.js" },
+  { src: "request.api.global.js", dest: "request.api.global.js" },
   // HTML/JS 通用初始化工具（封装 waitForRequestInit 等）
   { src: "react_init.js", dest: "react_init.js" },
 ];

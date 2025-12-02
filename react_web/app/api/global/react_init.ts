@@ -12,6 +12,7 @@ declare global {
   interface Window {
     ReactInit?: {
       waitForRequestInit: (maxWait?: number) => Promise<void>;
+      waitForRequestAPIInit: (maxWait?: number) => Promise<void>;
       checkRequestAvailable: () => void;
     };
   }
@@ -39,6 +40,31 @@ export async function waitForRequestInit(maxWait = 5000): Promise<void> {
 
   if (typeof window !== 'undefined' && ((window as any).request || (window as any).buildApiUrl)) {
     console.log('request.global.js 初始化完成');
+  }
+}
+
+/**
+ * 等待 request.api.global.js 初始化完成
+ * 在需要使用 window.RequestAPI 之前调用
+ */
+export async function waitForRequestAPIInit(maxWait = 5000): Promise<void> {
+  // 如果已经初始化，直接返回
+  if (typeof window !== 'undefined' && (window as any).RequestAPI) {
+    return;
+  }
+
+  const startTime = Date.now();
+
+  while (typeof window !== 'undefined' && !(window as any).RequestAPI) {
+    if (Date.now() - startTime > maxWait) {
+      console.warn(`等待 request.api.global.js 初始化超时（${maxWait}ms），继续执行`);
+      break;
+    }
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+
+  if (typeof window !== 'undefined' && (window as any).RequestAPI) {
+    console.log('request.api.global.js 初始化完成');
   }
 }
 
@@ -83,6 +109,12 @@ export function checkRequestAvailable(): void {
   } else {
     console.warn('✗ window.API_BASE_URL 不可用');
   }
+
+  if (win.RequestAPI) {
+    console.log('✓ window.RequestAPI 可用');
+  } else {
+    console.warn('✗ window.RequestAPI 不可用');
+  }
 }
 
 /**
@@ -102,5 +134,6 @@ if (typeof window !== 'undefined') {
     win.ReactInit = {} as any;
   }
   win.ReactInit.waitForRequestInit = waitForRequestInit;
+  win.ReactInit.waitForRequestAPIInit = waitForRequestAPIInit;
   win.ReactInit.checkRequestAvailable = checkRequestAvailable;
 }

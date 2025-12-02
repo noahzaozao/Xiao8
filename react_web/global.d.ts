@@ -11,8 +11,55 @@ interface Window {
     patch: <T = any>(url: string, data?: any, config?: any) => Promise<T>;
   };
   buildApiUrl?: (path: string) => string;
+  buildWebSocketUrl?: (path: string) => string;
+  buildStaticUrl?: (path: string) => string;
   fetchWithBaseUrl?: (url: string, options?: RequestInit) => Promise<Response>;
   API_BASE_URL?: string;
+  STATIC_SERVER_URL?: string;
+  WEBSOCKET_URL?: string;
+  
+  // React 初始化工具（通过 react_init.js 暴露）
+  ReactInit?: {
+    waitForRequestInit: (maxWait?: number) => Promise<void>;
+    waitForRequestAPIInit: (maxWait?: number) => Promise<void>;
+    checkRequestAvailable: () => void;
+  };
+  
+  // 首页 API 命名空间（通过 request.api.global.js 暴露）
+  RequestAPI?: {
+    // 页面配置
+    getPageConfig: (lanlanName?: string) => Promise<any>;
+    // 角色配置
+    getCharacters: () => Promise<any>;
+    getCurrentCatgirlConfig: (lanlanName?: string) => Promise<any>;
+    // Live2D 模型
+    getLive2DModels: () => Promise<any[]>;
+    findLive2DModelByName: (modelName: string) => Promise<any | null>;
+    shouldReloadModel: (currentModelPath: string, newModelName: string) => Promise<boolean>;
+    getEmotionMapping: (modelName: string) => Promise<any | null>;
+    getCurrentLive2DModel: (catgirlName: string) => Promise<any | null>;
+    // 用户偏好
+    getUserPreferences: () => Promise<any[]>;
+    saveUserPreferences: (modelPath: string, position: { x: number; y: number }, scale: { x: number; y: number }) => Promise<boolean>;
+    // Steam 成就
+    unlockSteamAchievement: (achievementId: string) => Promise<boolean>;
+    // 麦克风
+    setMicrophone: (microphoneId: string | null) => Promise<boolean>;
+    getMicrophone: () => Promise<string | null>;
+    // 情感分析
+    analyzeEmotion: (text: string, lanlanName: string) => Promise<any | null>;
+    // Agent
+    checkAgentHealth: () => Promise<boolean>;
+    checkAgentCapability: (capability: 'computer_use' | 'mcp') => Promise<boolean>;
+    getAgentFlags: () => Promise<any | null>;
+    setAgentFlags: (lanlanName: string, flags: Record<string, boolean>) => Promise<boolean>;
+    controlAgent: (action: 'enable_analyzer' | 'disable_analyzer') => Promise<boolean>;
+    getAgentTaskStatus: () => Promise<any | null>;
+    // 主动搭话
+    triggerProactiveChat: (lanlanName: string) => Promise<any | null>;
+    // 系统功能
+    sendShutdownBeacon: (useBeacon?: boolean) => Promise<boolean>;
+  };
 
   // 配置相关
   lanlan_config?: {

@@ -1,7 +1,10 @@
 import { useEffect, useRef } from "react";
 import "./main.css";
 import { request, buildApiUrl } from "../api/request";
+import { buildWebSocketUrl, getApiBaseUrl, getStaticServerUrl, getWebSocketUrl, buildStaticUrl } from "../api/config";
 import { ExampleButton } from "../components/ExampleButton";
+import { RequestAPI } from "../api/request.api";
+import { waitForRequestInit, waitForRequestAPIInit, checkRequestAvailable } from "../api/global/react_init";
 
 export function meta() {
   return [
@@ -107,23 +110,45 @@ export default function Main() {
     //    document.getElementById() 或 window.document.getElementById()
     // ============================================
 
-    // 构建静态资源 URL 的工具函数，供外部 JS 文件使用
-    (window as any).buildStaticUrl = (path: string): string => {
-      // 如果 path 已经是完整 URL，直接返回
-      if (path.startsWith("http://") || path.startsWith("https://")) {
-        return path;
-      }
-      // 确保 path 以 / 开头
-      const cleanPath = path.startsWith("/") ? path : `/${path}`;
-      // 移除 STATIC_SERVER_URL 末尾的 /，避免双斜杠
-      const base = STATIC_SERVER_URL.replace(/\/$/, "");
-      return `${base}${cleanPath}`;
-    };
-
-    // 设置全局变量，供外部 JS 文件使用
-    (window as any).STATIC_SERVER_URL = STATIC_SERVER_URL;
-    // 设置 API_BASE_URL（与 HTML 版本保持一致）
-    (window as any).API_BASE_URL = (window as any).API_BASE_URL || STATIC_SERVER_URL;
+    // ============================================
+    // 暴露所有 window.* 对象，与 HTML/JS 版本保持一致
+    // 供外部 JS 文件（如 app.js）使用
+    // ============================================
+    
+    // 1. 暴露 request 实例和工具函数（与 request.global.js 保持一致）
+    (window as any).request = request;
+    (window as any).buildApiUrl = buildApiUrl;
+    (window as any).buildStaticUrl = buildStaticUrl;
+    (window as any).buildWebSocketUrl = buildWebSocketUrl;
+    
+    // 2. 暴露配置变量（与 request.global.js 保持一致）
+    (window as any).API_BASE_URL = getApiBaseUrl();
+    (window as any).STATIC_SERVER_URL = getStaticServerUrl();
+    (window as any).WEBSOCKET_URL = getWebSocketUrl();
+    
+    // 3. 暴露 RequestAPI 命名空间对象（与 request.api.global.js 保持一致）
+    (window as any).RequestAPI = RequestAPI;
+    
+    // 4. 暴露 ReactInit 工具对象（与 react_init.js 保持一致）
+    if (!(window as any).ReactInit) {
+      (window as any).ReactInit = {} as any;
+    }
+    (window as any).ReactInit.waitForRequestInit = waitForRequestInit;
+    (window as any).ReactInit.waitForRequestAPIInit = waitForRequestAPIInit;
+    (window as any).ReactInit.checkRequestAvailable = checkRequestAvailable;
+    
+    console.log('[React Main] 所有 window.* 对象已暴露，与 HTML/JS 版本兼容');
+    console.log('[React Main] 初始化完成:', {
+      request: !!(window as any).request,
+      buildApiUrl: !!(window as any).buildApiUrl,
+      buildStaticUrl: !!(window as any).buildStaticUrl,
+      buildWebSocketUrl: !!(window as any).buildWebSocketUrl,
+      API_BASE_URL: (window as any).API_BASE_URL,
+      STATIC_SERVER_URL: (window as any).STATIC_SERVER_URL,
+      WEBSOCKET_URL: (window as any).WEBSOCKET_URL,
+      RequestAPI: !!(window as any).RequestAPI,
+      ReactInit: !!(window as any).ReactInit,
+    });
 
     // 拦截机制：在外部 JS 文件加载之前，设置路径拦截
     // 拦截所有以 /static/ 开头的路径，自动转换为使用 STATIC_SERVER_URL 的完整路径
@@ -226,7 +251,7 @@ export default function Main() {
     window.lanlan_config = lanlan_config;
     let cubism4Model = "";
     
-    // 异步获取页面配置
+    // 异步获取页面配置（使用新的 API 模块）
     async function loadPageConfig(): Promise<boolean> {
       try {
         // 优先从 URL 获取 lanlan_name
@@ -244,40 +269,24 @@ export default function Main() {
           }
         }
 
-        // 从 API 获取配置
-        const apiUrl = lanlanNameFromUrl
-          ? `/api/config/page_config?lanlan_name=${encodeURIComponent(
-              lanlanNameFromUrl
-            )}`
-          : "/api/config/page_config";
+        // 使用新的 API 模块获取配置（命名空间方式，方便搜索）
+        const data = await RequestAPI.getPageConfig(lanlanNameFromUrl || undefined);
 
-        const data = await request.get(apiUrl) as any;
+        // 使用 URL 中的 lanlan_name（如果有），否则使用 API 返回的
+        lanlan_config.lanlan_name =
+          lanlanNameFromUrl || data.lanlan_name || "";
+        window.lanlan_config = lanlan_config;
+        cubism4Model = data.model_path || "";
+        window.cubism4Model = cubism4Model;
 
-        if (data.success) {
-          // 使用 URL 中的 lanlan_name（如果有），否则使用 API 返回的
-          lanlan_config.lanlan_name =
-            lanlanNameFromUrl || data.lanlan_name || "";
-          window.lanlan_config = lanlan_config;
-          cubism4Model = data.model_path || "";
-          window.cubism4Model = cubism4Model;
+        // 动态设置页面标题（与 HTML 版本保持一致）
+        document.title = `${lanlan_config.lanlan_name} Terminal - Project N.E.K.O.`;
 
-          // 动态设置页面标题（与 HTML 版本保持一致）
-          document.title = `${lanlan_config.lanlan_name} Terminal - Project N.E.K.O.`;
-
-          console.log("页面配置加载成功:", {
-            lanlan_name: lanlan_config.lanlan_name,
-            model_path: cubism4Model,
-          });
-          return true;
-        } else {
-          console.error("获取页面配置失败:", data.error);
-          // 使用默认值
-          lanlan_config.lanlan_name = "";
-          window.lanlan_config = lanlan_config;
-          cubism4Model = "";
-          window.cubism4Model = cubism4Model;
-          return false;
-        }
+        console.log("页面配置加载成功:", {
+          lanlan_name: lanlan_config.lanlan_name,
+          model_path: cubism4Model,
+        });
+        return true;
       } catch (error) {
         console.error("加载页面配置时出错:", error);
         // 使用默认值
@@ -311,34 +320,13 @@ export default function Main() {
     // 方法3: 直接访问（如果已在 global.d.ts 中声明）
     // activeMenuCount = 0;
 
-    // Beacon功能 - 页面关闭时发送信号给服务器
+    // Beacon功能 - 页面关闭时发送信号给服务器（使用新的 API 模块）
     let beaconSent = false;
-    function sendBeacon() {
+    async function sendBeacon() {
       if (beaconSent) return;
       beaconSent = true;
 
-      try {
-        const beaconUrl = buildApiUrl("/api/beacon/shutdown");
-        const success = navigator.sendBeacon(
-          beaconUrl,
-          JSON.stringify({
-            timestamp: Date.now(),
-            action: "shutdown",
-          })
-        );
-
-        if (success) {
-          console.log("Beacon信号已发送");
-        } else {
-          console.warn("Beacon发送失败，尝试使用request");
-          request.post("/api/beacon/shutdown", {
-            timestamp: Date.now(),
-            action: "shutdown",
-          }).catch((err: any) => console.log("备用beacon发送失败:", err));
-        }
-      } catch (e) {
-        console.log("Beacon发送异常:", e);
-      }
+      await RequestAPI.sendShutdownBeacon(true);
     }
 
     window.addEventListener("beforeunload", sendBeacon);
@@ -412,19 +400,8 @@ export default function Main() {
         let currentLanlanName = window.lanlan_config?.lanlan_name;
         console.log("BEFORE currentLanlanName: ", currentLanlanName);
         
-        // 2. 获取最新的角色配置（包含所有猫娘的完整配置）
-        // 使用 window.request 如果可用（与 HTML 版本保持一致），否则使用 request
-        let charactersData: any;
-        if ((window as any).request) {
-          const charResponse = await (window as any).request.get("/api/characters");
-          if (!charResponse.ok) {
-            console.warn("获取角色配置失败，跳过模型检查");
-            return;
-          }
-          charactersData = await charResponse.json();
-        } else {
-          charactersData = await request.get("/api/characters") as any;
-        }
+        // 2. 获取最新的角色配置（使用新的 API 模块，命名空间方式）
+        const charactersData = await RequestAPI.getCharacters();
 
         // 确保 lanlan_config.lanlan_name 更新到 chara_manager.html 当前选中的猫娘
         currentLanlanName = window.lanlan_config!.lanlan_name = charactersData["当前猫娘"];
@@ -445,18 +422,8 @@ export default function Main() {
         const newModelName = catgirlConfig.live2d || "mao_pro";
         console.log("AFTER newModelName: ", newModelName);
         
-        // 3. 获取所有可用模型列表
-        let models: any;
-        if ((window as any).request) {
-          const modelsResponse = await (window as any).request.get("/api/live2d/models");
-          if (!modelsResponse.ok) {
-            console.warn("获取模型列表失败，跳过模型检查");
-            return;
-          }
-          models = await modelsResponse.json();
-        } else {
-          models = await request.get("/api/live2d/models") as any;
-        }
+        // 3. 获取所有可用模型列表（使用新的 API 模块，命名空间方式）
+        const models = await RequestAPI.getLive2DModels();
         
         // 4. 根据模型名称查找对应的模型路径
         const modelInfo = models.find((m: any) => m.name === newModelName);

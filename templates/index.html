@@ -16,6 +16,10 @@
     <!-- 加载统一的 request 模块（ES Module） -->
     <script type="module" src="/static/bundles/request.global.js"></script>
     
+    <!-- 加载首页 API 封装模块（ES Module，可选） -->
+    <!-- 构建命令：npm run build:global -->
+    <script type="module" src="/static/bundles/request.api.global.js"></script>
+    
     <!-- i18next 加载器（统一处理 CDN 加载和初始化） -->
     <script src="/static/i18n-i18next.js"></script>
     <!-- 
@@ -26,6 +30,11 @@
         - 如需自定义后端地址，可在此处显式设置：
           window.API_BASE_URL = 'http://your-backend-host:port';
           window.STATIC_SERVER_URL = window.API_BASE_URL;
+        
+        首页 API 封装模块（request.api.global.js）
+        - 提供 window.RequestAPI 对象，封装常用的 API 调用
+        - 使用方式：await window.RequestAPI.getPageConfig()
+        - 详见：react_web/app/api/request.api.ts
     -->
     <script src="/static/common_dialogs.js"></script>
     <style>
@@ -1116,23 +1125,11 @@
                 }
             }
             
-            // 从 API 获取配置（相对路径，request 会自动加上 baseURL）
-            const apiPath = lanlanNameFromUrl 
-                ? `/api/config/page_config?lanlan_name=${encodeURIComponent(lanlanNameFromUrl)}`
-                : '/api/config/page_config';
-
-            // 统一通过 ReactInit 中的方法：优先使用 window.request，否则回退到 fetch
-            let data;
+            // 从 API 获取配置（使用 RequestAPI）
+            // 等待 request 和 RequestAPI 都初始化完成
             await window.ReactInit.waitForRequestInit();
-            if (window.request) {
-                // request 已配置 baseURL，直接使用相对路径
-                data = await window.request.get(apiPath);
-            } else {
-                // 使用 fetch 时需要构建完整 URL
-                const apiUrl = window.buildApiUrl ? window.buildApiUrl(apiPath) : apiPath;
-                const response = await fetch(apiUrl);
-                data = await response.json();
-            }
+            await window.ReactInit.waitForRequestAPIInit();
+            const data = await window.RequestAPI.getPageConfig(lanlanNameFromUrl || undefined);
             
             if (data && data.success) {
                 // 使用 URL 中的 lanlan_name（如果有），否则使用 API 返回的
@@ -1169,34 +1166,23 @@
     // Beacon功能 - 页面关闭时发送信号给服务器
     let beaconSent = false;
 
-    function sendBeacon() {
+    async function sendBeacon() {
         if (beaconSent) return; // 防止重复发送
         beaconSent = true;
         
         try {
-            // 使用navigator.sendBeacon确保信号不被拦截
-            const success = navigator.sendBeacon('/api/beacon/shutdown', JSON.stringify({
-                timestamp: Date.now(),
-                action: 'shutdown'
-            }));
-            
-            if (success) {
-                console.log('Beacon信号已发送');
+            // 等待 RequestAPI 初始化（如果还未初始化）
+            if (window.ReactInit && window.ReactInit.waitForRequestAPIInit) {
+                await window.ReactInit.waitForRequestAPIInit(2000); // 超时时间较短，因为页面可能正在关闭
+            }
+            // 使用 RequestAPI 发送关闭信号
+            if (window.RequestAPI) {
+                await window.RequestAPI.sendShutdownBeacon(true);
             } else {
-                console.warn('Beacon发送失败，尝试使用fetch');
-                // 备用方案：使用fetch
-                fetch('/api/beacon/shutdown', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        timestamp: Date.now(),
-                        action: 'shutdown'
-                    }),
-                    keepalive: true // 确保请求在页面关闭时仍能发送
-                }).catch(err => console.log('备用beacon发送失败:', err));
+                console.warn('RequestAPI 未初始化，无法发送关闭信号');
             }
         } catch (e) {
-            console.log('Beacon发送异常:', e);
+            console.error('Beacon发送异常:', e);
         }
     }
 
@@ -1282,17 +1268,17 @@
         try {
             console.log('检查模型配置是否有更新...');
             
+            // 等待 RequestAPI 初始化
+            if (window.ReactInit && window.ReactInit.waitForRequestAPIInit) {
+                await window.ReactInit.waitForRequestAPIInit();
+            }
+            
             // 1. 获取当前角色名称
             let currentLanlanName = lanlan_config.lanlan_name;
             console.log('BEFORE currentLanlanName: ', currentLanlanName);
             
-            // 2. 获取最新的角色配置（包含所有猫娘的完整配置）
-            const charResponse = await window.request.get('/api/characters');
-            if (!charResponse.ok) {
-                console.warn('获取角色配置失败，跳过模型检查');
-                return;
-            }
-            const charactersData = await charResponse.json();
+            // 2. 获取最新的角色配置（使用 RequestAPI）
+            const charactersData = await window.RequestAPI.getCharacters();
 
             // 确保 lanlan_config.lanlan_name 更新到 chara_manager.html 当前选中的猫娘
             currentLanlanName = lanlan_config.lanlan_name = charactersData['当前猫娘'];
@@ -1307,13 +1293,8 @@
             const newModelName = catgirlConfig.live2d || 'mao_pro';
             console.log('AFTER newModelName: ', newModelName);
             
-            // 3. 获取所有可用模型列表
-            const modelsResponse = await window.request.get('/api/live2d/models');
-            if (!modelsResponse.ok) {
-                console.warn('获取模型列表失败，跳过模型检查');
-                return;
-            }
-            const models = await modelsResponse.json();
+            // 3. 获取所有可用模型列表（使用 RequestAPI）
+            const models = await window.RequestAPI.getLive2DModels();
             
             // 4. 根据模型名称查找对应的模型路径
             const modelInfo = models.find(m => m.name === newModelName);
