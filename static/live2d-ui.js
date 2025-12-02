@@ -2041,6 +2041,11 @@ Live2DManager.prototype.closePopupById = function(buttonId) {
         return false;
     }
 
+    // 如果是 agent 弹窗关闭，派发关闭事件
+    if (buttonId === 'agent') {
+        window.dispatchEvent(new CustomEvent('live2d-agent-popup-closed'));
+    }
+
     popup.style.opacity = '0';
     popup.style.transform = 'translateX(-10px)';
     setTimeout(() => {
@@ -2461,6 +2466,11 @@ Live2DManager.prototype.showPopup = function(buttonId, popup) {
         // 如果已经显示，则隐藏
         popup.style.opacity = '0';
         popup.style.transform = 'translateX(-10px)';
+        
+        // 如果是 agent 弹窗关闭，派发关闭事件
+        if (buttonId === 'agent') {
+            window.dispatchEvent(new CustomEvent('live2d-agent-popup-closed'));
+        }
         
         setTimeout(() => {
             popup.style.display = 'none';
