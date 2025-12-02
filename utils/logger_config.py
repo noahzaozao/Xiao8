@@ -610,6 +610,7 @@ HTTPX_SUPPRESSED_PATTERNS = [
 # HTTPX 客户端的速率限制配置（每 N 秒显示一次）
 HTTPX_RATE_LIMITED_PATTERNS = [
     "/mcp",  # MCP 相关请求日志限流
+    "/tasks",  # 任务状态轮询请求限流
 ]
 
 

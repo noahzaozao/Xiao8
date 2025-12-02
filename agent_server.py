@@ -569,6 +569,16 @@ async def capabilities():
         return JSONResponse(content={"success": False, "capabilities": {}, "error": str(e)})
 
 
+@app.get("/agent/flags")
+async def get_agent_flags():
+    """获取当前 agent flags 状态（供前端同步）"""
+    return {
+        "success": True, 
+        "agent_flags": Modules.agent_flags,
+        "analyzer_enabled": Modules.analyzer_enabled
+    }
+
+
 @app.post("/agent/flags")
 async def set_agent_flags(payload: Dict[str, Any]):
     mf = (payload or {}).get("mcp_enabled")
