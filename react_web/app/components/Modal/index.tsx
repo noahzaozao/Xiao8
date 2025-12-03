@@ -50,6 +50,14 @@ export function Modal() {
     resolve: null,
   });
 
+  // 使用 ref 跟踪最新的 dialogState，以便在清理函数中访问最新值
+  const dialogStateRef = useRef<DialogState>(dialogState);
+
+  // 当 dialogState 改变时更新 ref
+  useEffect(() => {
+    dialogStateRef.current = dialogState;
+  }, [dialogState]);
+
   // 创建对话框的通用函数
   const createDialog = useCallback((config: DialogConfig): Promise<any> => {
     return new Promise((resolve) => {
@@ -215,16 +223,19 @@ export function Modal() {
     // 触发就绪事件
     setTimeout(() => {
       window.dispatchEvent(new CustomEvent("modalReady"));
+      // 标记 Modal 组件已就绪
+      window.__modalReady = true;
     }, 50);
 
     // 清理函数（注意：不删除全局函数，因为可能被其他代码使用）
     return () => {
       // 组件卸载时，如果有打开的对话框，关闭它
-      if (dialogState.isOpen) {
+      // 使用 ref 读取最新状态，避免闭包捕获过时的值
+      if (dialogStateRef.current.isOpen) {
         closeDialog();
       }
     };
-  }, [createDialog, closeDialog, dialogState.isOpen]);
+  }, [createDialog, closeDialog]);
 
   // 渲染对话框
   const renderDialog = () => {

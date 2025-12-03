@@ -11974,7 +11974,10 @@ function requireClient() {
   return client.exports;
 }
 var clientExports = requireClient();
+var reactDomExports = requireReactDom();
+const createPortal = reactDomExports.createPortal;
 const createRoot = clientExports.createRoot;
 export {
+  createPortal,
   createRoot
 };

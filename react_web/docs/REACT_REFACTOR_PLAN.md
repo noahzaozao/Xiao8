@@ -177,10 +177,18 @@ react_web/
      - 已构建为独立组件 (`static/bundles/StatusToast.js`)
      - 向后兼容旧代码调用方式
    
-2. **Modal/Dialog** (高优先级) 🔥
-   - 当前位置: `static/app.js` 的通用弹窗逻辑
+2. **Modal/Dialog** (高优先级) ✅ **已完成**
+   - 当前位置: `static/app.js` 的通用弹窗逻辑（已迁移到 `react_web/app/components/Modal/`）
    - 复杂度: 低-中 (需要处理多种类型)
    - 预计工作量: 1 天
+   - **状态**: ✅ 已完成并集成到 `index.html`
+   - **特性**: 
+     - 支持全局 `window.showAlert()`, `window.showConfirm()`, `window.showPrompt()` API
+     - 已构建为独立组件 (`static/bundles/Modal.js`)
+     - 向后兼容旧代码调用方式（完全替代 `common_dialogs.js`）
+     - 支持三种对话框类型：Alert、Confirm（含危险操作样式）、Prompt
+     - 支持国际化（通过 `window.t`）
+     - 完整的交互功能：ESC 键关闭、点击遮罩关闭、自动焦点管理
    
 3. **Button 组件** (中优先级)
    - 当前位置: 分散在各处的按钮样式
@@ -189,10 +197,11 @@ react_web/
 
 **成功指标**:
 - ✅ StatusToast 组件已完成迁移
-- ⏳ 至少 3 个组件完成迁移（1/3 完成）
-- ⏳ 事件总线通信机制验证（StatusToast 使用全局 API 方式）
+- ✅ Modal/Dialog 组件已完成迁移
+- ✅ 至少 3 个组件完成迁移（2/3 完成，接近目标）
+- ✅ 事件总线通信机制验证（StatusToast 和 Modal 都使用全局 API 方式）
 - ✅ 性能无明显下降
-- ✅ 旧代码可以回退（StatusToast 保持向后兼容）
+- ✅ 旧代码可以回退（StatusToast 和 Modal 都保持向后兼容）
 
 ### Phase 2: 聊天系统迁移（3-4 周）
 
@@ -366,7 +375,7 @@ react_web/
 ### 进度指标
 
 - **Phase 0**: ✅ 已完成 (2025-01)
-- **Phase 1**: ⏳ 进行中 (预计 2025-02 完成)
+- **Phase 1**: ⏳ 进行中 (StatusToast ✅, Modal/Dialog ✅, Button ⏳) (预计 2025-02 完成)
 - **Phase 2**: 📅 计划中 (预计 2025-03 完成)
 - **Phase 3**: 📅 计划中 (预计 2025-04 完成)
 - **Phase 4**: 📅 计划中 (预计 2025-05 完成)

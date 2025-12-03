@@ -33,6 +33,142 @@ const components = [
   },
 ];
 
+// 辅助函数：去除注释和字符串字面量，用于代码分析
+function stripCommentsAndStrings(code: string): string {
+  let result = "";
+  let i = 0;
+  const len = code.length;
+  
+  while (i < len) {
+    // 单行注释 //
+    if (code[i] === "/" && code[i + 1] === "/") {
+      while (i < len && code[i] !== "\n" && code[i] !== "\r") {
+        i++;
+      }
+      continue;
+    }
+    
+    // 多行注释 /* */
+    if (code[i] === "/" && code[i + 1] === "*") {
+      i += 2;
+      while (i < len - 1) {
+        if (code[i] === "*" && code[i + 1] === "/") {
+          i += 2;
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+    
+    // 单引号字符串
+    if (code[i] === "'") {
+      i++;
+      while (i < len) {
+        if (code[i] === "\\") {
+          i += 2; // 跳过转义字符
+          continue;
+        }
+        if (code[i] === "'") {
+          i++;
+          break;
+        }
+        i++;
+      }
+      result += " "; // 用空格替换字符串内容
+      continue;
+    }
+    
+    // 双引号字符串
+    if (code[i] === '"') {
+      i++;
+      while (i < len) {
+        if (code[i] === "\\") {
+          i += 2; // 跳过转义字符
+          continue;
+        }
+        if (code[i] === '"') {
+          i++;
+          break;
+        }
+        i++;
+      }
+      result += " "; // 用空格替换字符串内容
+      continue;
+    }
+    
+    // 模板字符串 `...`
+    if (code[i] === "`") {
+      i++;
+      while (i < len) {
+        if (code[i] === "\\") {
+          i += 2; // 跳过转义字符
+          continue;
+        }
+        if (code[i] === "`") {
+          i++;
+          break;
+        }
+        i++;
+      }
+      result += " "; // 用空格替换字符串内容
+      continue;
+    }
+    
+    result += code[i];
+    i++;
+  }
+  
+  return result;
+}
+
+// 辅助函数：检测代码中是否存在导出或组件定义
+function hasExportOrComponent(code: string, componentName: string): boolean {
+  // 先去除注释和字符串，避免误匹配
+  const cleaned = stripCommentsAndStrings(code);
+  
+  // 检测导出模式
+  const exportPatterns = [
+    // export default
+    /\bexport\s+default\b/,
+    // export const/let/var/function/class
+    /\bexport\s+(?:const|let|var|function|class)\s+/,
+    // export { ... } 或 export * from
+    /\bexport\s*\{/,
+    /\bexport\s+\*/,
+  ];
+  
+  // 检测组件定义模式
+  const componentPatterns = [
+    // export default function ComponentName
+    new RegExp(`\\bexport\\s+default\\s+function\\s+${componentName}\\b`),
+    // export function ComponentName
+    new RegExp(`\\bexport\\s+function\\s+${componentName}\\b`),
+    // export const ComponentName = ...
+    new RegExp(`\\bexport\\s+const\\s+${componentName}\\s*=`),
+    // export class ComponentName
+    new RegExp(`\\bexport\\s+class\\s+${componentName}\\b`),
+    // function ComponentName(...)
+    new RegExp(`\\bfunction\\s+${componentName}\\s*\\(`),
+    // const ComponentName = (...) => ...
+    new RegExp(`\\bconst\\s+${componentName}\\s*=\\s*\\([^)]*\\)\\s*=>`),
+    // const ComponentName = function(...)
+    new RegExp(`\\bconst\\s+${componentName}\\s*=\\s*function\\s*\\(`),
+    // class ComponentName
+    new RegExp(`\\bclass\\s+${componentName}\\b`),
+    // const ComponentName = React.forwardRef(...) 或类似
+    new RegExp(`\\bconst\\s+${componentName}\\s*=\\s*React\\.`),
+  ];
+  
+  // 检查是否有任何导出
+  const hasExport = exportPatterns.some(pattern => pattern.test(cleaned));
+  
+  // 检查是否有组件定义
+  const hasComponent = componentPatterns.some(pattern => pattern.test(cleaned));
+  
+  return hasExport || hasComponent;
+}
+
 // 辅助函数：重写 React 导入为本地路径
 // 处理所有格式：from/import/dynamic import，包括压缩后的格式（无空格）
 function rewriteReactImports(code: string): string {
@@ -76,8 +212,8 @@ function rewriteExternalImports(): Plugin {
           const component = components.find(c => chunk.name === c.name || fileName.includes(c.name));
           if (component) {
             console.log(`📝 [${component.name}] 处理 chunk: ${fileName}, 代码长度: ${chunk.code.length}`);
-            // 确保导出被保留 - 检查是否有导出语句
-            if (!chunk.code.includes(`export`) && !chunk.code.includes(`function ${component.name}`)) {
+            // 确保导出被保留 - 使用健壮的检测方法
+            if (!hasExportOrComponent(chunk.code, component.name)) {
               console.warn(`⚠️  [${component.name}] 警告: 代码中可能缺少导出或组件定义`);
             }
           }

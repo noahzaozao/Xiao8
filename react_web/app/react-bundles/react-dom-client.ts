@@ -5,4 +5,6 @@ import "react";
 export * from "react-dom/client";
 // 确保 createRoot 被导出
 export { createRoot } from "react-dom/client";
+// 导出 createPortal（用于 Portal 功能）
+export { createPortal } from "react-dom";
 

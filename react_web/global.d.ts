@@ -98,6 +98,22 @@ interface Window {
   // StatusToast 消息队列
   __statusToastQueue?: Array<{message: string; duration: number}>;
   
+  // Modal 组件就绪标志
+  __modalReady?: boolean;
+  
+  // Modal 对话框全局 API
+  showAlert?: (message: string, title?: string | null) => Promise<boolean>;
+  showConfirm?: (
+    message: string,
+    title?: string | null,
+    options?: { okText?: string; cancelText?: string; danger?: boolean }
+  ) => Promise<boolean>;
+  showPrompt?: (
+    message: string,
+    defaultValue?: string,
+    title?: string | null
+  ) => Promise<string | null>;
+  
   // 静态资源错误处理器（开发环境使用）
   __staticErrorHandlers?: {
     handleError: (event: ErrorEvent) => boolean | void;

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import type { ReactNode } from "react";
 import "./Modal.css";
 
@@ -75,7 +76,8 @@ export function BaseModal({
 
   if (!isOpen) return null;
 
-  return (
+  // 使用 Portal 将 Modal 渲染到 body，避免受父容器样式影响
+  return createPortal(
     <div
       ref={overlayRef}
       className="modal-overlay"
@@ -94,7 +96,8 @@ export function BaseModal({
         )}
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

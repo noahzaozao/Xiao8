@@ -75,6 +75,13 @@ react_web/
 │   ├── components/           # 可复用的 React 组件
 │   │   ├── ExampleButton.tsx # 示例：可独立打包的组件
 │   │   ├── StatusToast.tsx   # 状态提示组件（已完成 ✅）
+│   │   ├── Modal/            # 对话框组件（已完成 ✅）
+│   │   │   ├── BaseModal.tsx      # 基础容器组件
+│   │   │   ├── AlertDialog.tsx    # 警告对话框
+│   │   │   ├── ConfirmDialog.tsx  # 确认对话框
+│   │   │   ├── PromptDialog.tsx   # 输入对话框
+│   │   │   ├── Modal.css          # 样式文件
+│   │   │   └── index.tsx          # 主入口（全局 API）
 │   │   └── ...               # 其他组件
 │   ├── routes/
 │   │   └── main.tsx          # Lanlan Terminal 主页面
@@ -327,6 +334,7 @@ npm run build:component
 - `static/bundles/react-dom-client.js` - ReactDOM 客户端库（来自 `build:react-bundles`）
 - `static/bundles/ExampleButton.js` - ExampleButton 组件
 - `static/bundles/StatusToast.js` - StatusToast 组件
+- `static/bundles/Modal.js` - Modal 对话框组件（Alert/Confirm/Prompt）
 
 ### 在传统 HTML 中使用组件
 
@@ -388,6 +396,69 @@ StatusToast 组件已集成到 React Router 主界面，同时支持全局 API �
   window.showStatusToast('欢迎使用 N.E.K.O', 5000);
 </script>
 ```
+
+**Modal 组件：**
+
+Modal 组件已集成到 `index.html` 主界面，提供三种对话框类型，支持全局 API 调用：
+
+```html
+<!-- 在 HTML 中提供容器 -->
+<div id="modal-container" style="display: none;"></div>
+
+<!-- 加载 React bundles 和 Modal 组件 -->
+<script type="module">
+  import { Modal } from "/static/bundles/Modal.js";
+  import React from "/static/bundles/react.js";
+  import { createRoot } from "/static/bundles/react-dom-client.js";
+  
+  // 挂载 Modal 组件
+  function mountModal() {
+    const container = document.getElementById("modal-container");
+    if (container) {
+      const root = createRoot(container);
+      root.render(React.createElement(Modal));
+    }
+  }
+  
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", mountModal);
+  } else {
+    mountModal();
+  }
+</script>
+
+<script>
+  // 使用全局 API（组件会自动暴露这些函数）
+  
+  // Alert 对话框
+  await window.showAlert('这是一条提示消息', '提示');
+  
+  // Confirm 对话框（普通样式）
+  const confirmed = await window.showConfirm('确定要执行此操作吗？', '确认');
+  if (confirmed) {
+    console.log('用户点击了确定');
+  }
+  
+  // Confirm 对话框（危险操作样式）
+  const deleteConfirmed = await window.showConfirm(
+    '确定要删除吗？此操作不可恢复！',
+    '删除确认',
+    { danger: true }
+  );
+  
+  // Prompt 对话框
+  const input = await window.showPrompt(
+    '请输入您的名称：',
+    '默认值',
+    '输入'
+  );
+  if (input) {
+    console.log('用户输入:', input);
+  }
+</script>
+```
+
+> **注意**：Modal 组件会自动暴露 `window.showAlert`、`window.showConfirm`、`window.showPrompt` 全局函数，完全替代 `common_dialogs.js`。所有调用方式保持向后兼容。
 
 #### 方式 2：通过全局 API 挂载（推荐用于复杂组件）
 
@@ -665,7 +736,13 @@ cp vite.components.config.ts vite.my-component.config.ts
    - 已集成到 React Router 主界面
    - 支持全局 `window.showStatusToast()` API
    - 已构建为独立组件，可在传统 HTML 中使用
-2. ⏳ Modal/Dialog - 独立弹窗组件
+2. ✅ **Modal/Dialog** - 独立弹窗组件（已完成 ✅）
+   - 已集成到 `index.html` 主界面
+   - 支持全局 `window.showAlert()`, `window.showConfirm()`, `window.showPrompt()` API
+   - 已构建为独立组件 (`static/bundles/Modal.js`)
+   - 完全替代 `common_dialogs.js`，向后兼容
+   - 支持三种对话框类型：Alert、Confirm（含危险操作样式）、Prompt
+   - 完整的交互功能：ESC 键关闭、点击遮罩关闭、自动焦点管理
 3. ⏳ Button - 基础 UI 组件
 
 #### 第二阶段：中等复杂度组件

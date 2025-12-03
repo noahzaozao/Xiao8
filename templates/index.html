@@ -163,7 +163,11 @@
         - 使用方式：await window.RequestAPI.getPageConfig()
         - 详见：react_web/app/api/request.api.ts
     -->
-    <script src="/static/common_dialogs.js"></script>
+    <!-- 
+        注意：Modal 对话框功能已迁移到 React 组件
+        - 全局 API: window.showAlert, window.showConfirm, window.showPrompt
+        - 由 Modal 组件自动提供，无需加载 common_dialogs.js
+    -->
     <style>
         *:focus {
             outline: none !important;
