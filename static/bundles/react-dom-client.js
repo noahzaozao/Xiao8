@@ -2084,7 +2084,7 @@ function requireReactDomClient_production() {
       });
       if (!window.dispatchEvent(event)) return;
     } else if ("object" === typeof undefined /* process removed for browser */ && "function" === typeof undefined /* process.emit removed for browser */) {
-      (function(){})(/* process.emit removed for browser */"uncaughtException", error);
+      void 0 /* process.emit removed for browser */;
       return;
     }
     console.error(error);

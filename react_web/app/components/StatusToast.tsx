@@ -114,28 +114,33 @@ export function StatusToast() {
     const messageQueue = (window as any).__statusToastQueue || [];
     const pendingMessages = messageQueue.length > 0 ? [...messageQueue] : [];
     
-    // 创建一个包装函数，确保在 ReactDOM 完全初始化后再调用 showToast
+    // 创建一个包装函数，确保在 React 完全初始化后再调用 showToast
     const wrappedShowToast = (message: string, duration: number = 3000) => {
-      // 检查 ReactDOM 是否已初始化（通过检查 hooks dispatcher）
-      try {
-        // 尝试获取 React 实例
-        const ReactModule = (window as any).React;
-        if (ReactModule && ReactModule.default) {
-          const internals = ReactModule.default.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
-          if (internals && internals.H) {
-            // ReactDOM 已初始化，直接调用
-            showToast(message, duration);
-            return;
-          }
-        }
-      } catch (e) {
-        console.warn('[Status Toast] 检查 ReactDOM 初始化状态时出错:', e);
+      // 首先检查公共的 React 就绪信号
+      if ((window as any).__REACT_READY) {
+        // React 已就绪，直接调用
+        showToast(message, duration);
+        return;
       }
       
-      // ReactDOM 还未初始化，延迟调用
-      setTimeout(() => {
+      // React 还未就绪，使用安全的 try/catch 并排队等待
+      try {
         showToast(message, duration);
-      }, 200);
+      } catch (e) {
+        console.warn('[Status Toast] React 未就绪，消息已加入队列:', e);
+        // 将消息加入队列，等待 React 就绪
+        if (!(window as any).__statusToastQueue) {
+          (window as any).__statusToastQueue = [];
+        }
+        (window as any).__statusToastQueue.push({ message, duration });
+        
+        // 监听 react-ready 事件
+        const handleReactReady = () => {
+          showToast(message, duration);
+          window.removeEventListener('react-ready', handleReactReady);
+        };
+        window.addEventListener('react-ready', handleReactReady, { once: true });
+      }
     };
     
     // 设置新的全局函数（React 组件优先）

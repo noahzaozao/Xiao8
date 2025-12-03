@@ -25,6 +25,36 @@ const components = [
   },
 ];
 
+// 辅助函数：重写 React 导入为本地路径
+// 处理所有格式：from/import/dynamic import，包括压缩后的格式（无空格）
+function rewriteReactImports(code: string): string {
+  // 定义所有替换规则：按优先级排序，更具体的模式在前
+  const replacements: Array<{ pattern: RegExp; replacement: string }> = [
+    // 1. 处理 react-dom/client（最具体的路径，优先处理）
+    { pattern: /from\s*["']react-dom\/client["']/g, replacement: 'from "/static/bundles/react-dom-client.js"' },
+    { pattern: /import\s*["']react-dom\/client["']/g, replacement: 'import "/static/bundles/react-dom-client.js"' },
+    { pattern: /import\(["']react-dom\/client["']\)/g, replacement: 'import("/static/bundles/react-dom-client.js")' },
+    
+    // 2. 处理 react-dom
+    { pattern: /from\s*["']react-dom["']/g, replacement: 'from "/static/bundles/react-dom-client.js"' },
+    { pattern: /import\s*["']react-dom["']/g, replacement: 'import "/static/bundles/react-dom-client.js"' },
+    { pattern: /import\(["']react-dom["']\)/g, replacement: 'import("/static/bundles/react-dom-client.js")' },
+    
+    // 3. 处理 react
+    { pattern: /from\s*["']react["']/g, replacement: 'from "/static/bundles/react.js"' },
+    { pattern: /import\s*["']react["']/g, replacement: 'import "/static/bundles/react.js"' },
+    { pattern: /import\(["']react["']\)/g, replacement: 'import("/static/bundles/react.js")' },
+  ];
+  
+  // 应用所有替换规则
+  let result = code;
+  for (const { pattern, replacement } of replacements) {
+    result = result.replace(pattern, replacement);
+  }
+  
+  return result;
+}
+
 // 插件：重写外部依赖的导入路径为 CDN URL，并处理 process.env
 function rewriteExternalImports(): Plugin {
   return {
@@ -45,58 +75,8 @@ function rewriteExternalImports(): Plugin {
           }
           
           // 将 react 和 react-dom 的导入重写为本地路径
-          // 处理 import ... from "react" 或 import ... from 'react'
-          chunk.code = chunk.code.replace(
-            /from\s+["']react["']/g,
-            'from "/static/bundles/react.js"'
-          );
-          chunk.code = chunk.code.replace(
-            /from\s+["']react-dom["']/g,
-            'from "/static/bundles/react-dom-client.js"'
-          );
-          chunk.code = chunk.code.replace(
-            /from\s+["']react-dom\/client["']/g,
-            'from "/static/bundles/react-dom-client.js"'
-          );
-          // 处理 import "react" 或 import 'react' (无 from 的导入，可能没有空格)
-          chunk.code = chunk.code.replace(
-            /import\s*["']react["']/g,
-            'import "/static/bundles/react.js"'
-          );
-          chunk.code = chunk.code.replace(
-            /import\s*["']react-dom["']/g,
-            'import "/static/bundles/react-dom-client.js"'
-          );
-          chunk.code = chunk.code.replace(
-            /import\s*["']react-dom\/client["']/g,
-            'import "/static/bundles/react-dom-client.js"'
-          );
-          // 处理 import{...}from"react" 格式（压缩后的格式，没有空格）
-          chunk.code = chunk.code.replace(
-            /from\s*["']react["']/g,
-            'from "/static/bundles/react.js"'
-          );
-          chunk.code = chunk.code.replace(
-            /from\s*["']react-dom["']/g,
-            'from "/static/bundles/react-dom-client.js"'
-          );
-          chunk.code = chunk.code.replace(
-            /from\s*["']react-dom\/client["']/g,
-            'from "/static/bundles/react-dom-client.js"'
-          );
-          // 处理 import() 动态导入
-          chunk.code = chunk.code.replace(
-            /import\(["']react["']\)/g,
-            'import("/static/bundles/react.js")'
-          );
-          chunk.code = chunk.code.replace(
-            /import\(["']react-dom["']\)/g,
-            'import("/static/bundles/react-dom-client.js")'
-          );
-          chunk.code = chunk.code.replace(
-            /import\(["']react-dom\/client["']\)/g,
-            'import("/static/bundles/react-dom-client.js")'
-          );
+          chunk.code = rewriteReactImports(chunk.code);
+          
           // 处理 process.env.NODE_ENV
           chunk.code = chunk.code.replace(
             /process\.env\.NODE_ENV/g,
@@ -143,34 +123,7 @@ function rewriteExternalImports(): Plugin {
           let jsContent = readFileSync(jsPath, "utf-8");
           
           // 处理 React 导入重写（处理各种格式）- 改为本地路径
-          // 处理 import "react" 或 import 'react' (可能没有空格)
-          jsContent = jsContent.replace(
-            /import\s*["']react["']/g,
-            'import "/static/bundles/react.js"'
-          );
-          // 处理 import "react-dom" 或 import 'react-dom' (可能没有空格)
-          jsContent = jsContent.replace(
-            /import\s*["']react-dom["']/g,
-            'import "/static/bundles/react-dom-client.js"'
-          );
-          // 处理 import "react-dom/client" 或 import 'react-dom/client' (可能没有空格)
-          jsContent = jsContent.replace(
-            /import\s*["']react-dom\/client["']/g,
-            'import "/static/bundles/react-dom-client.js"'
-          );
-          // 处理 import{...}from"react" 格式（压缩后的格式，没有空格）
-          jsContent = jsContent.replace(
-            /from\s*["']react["']/g,
-            'from "/static/bundles/react.js"'
-          );
-          jsContent = jsContent.replace(
-            /from\s*["']react-dom["']/g,
-            'from "/static/bundles/react-dom-client.js"'
-          );
-          jsContent = jsContent.replace(
-            /from\s*["']react-dom\/client["']/g,
-            'from "/static/bundles/react-dom-client.js"'
-          );
+          jsContent = rewriteReactImports(jsContent);
           
           // 注入 CSS（如果有）
           if (allCssContent) {

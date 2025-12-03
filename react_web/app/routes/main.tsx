@@ -741,6 +741,14 @@ export default function Main() {
     };
   }, []);
 
+  // 设置 React 就绪信号，供 StatusToast 和其他组件使用
+  useEffect(() => {
+    // 设置全局标志
+    (window as any).__REACT_READY = true;
+    // 派发自定义事件
+    window.dispatchEvent(new CustomEvent('react-ready'));
+  }, []);
+
   return (
     <div className="container">
         {/* ExampleButton 在左上角 */}

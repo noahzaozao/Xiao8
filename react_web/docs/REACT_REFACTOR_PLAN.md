@@ -114,7 +114,7 @@
 
 **架构说明**:
 
-```
+```tree
 react_web/
 │
 ├─ 主轨道: React Router v7 SPA 应用
@@ -384,8 +384,17 @@ react_web/
 
 ### 1. 环境准备
 
+> **注意**: 以下示例中的路径是示例性的，请根据你的实际项目路径进行调整。
+
 ```bash
-cd /Users/noahwang/projects/N.E.K.O/react_web
+cd /path/to/your/N.E.K.O/react_web
+npm install
+```
+
+或者，如果你已经在项目根目录，可以使用相对路径：
+
+```bash
+cd react_web
 npm install
 ```
 

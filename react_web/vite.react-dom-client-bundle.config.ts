@@ -44,8 +44,8 @@ function replaceProcessEnv(): Plugin {
         // 替换 process.env 的其他引用
         content = content.replace(/process\.env(?!\.)/g, '({ NODE_ENV: "production" })');
         // 替换 process 相关的条件检查（在浏览器中不需要）
-        // 先替换 process.emit，避免影响后续替换
-        content = content.replace(/process\.emit\(/g, '(function(){})(/* process.emit removed for browser */');
+        // 先替换 process.emit，匹配整个函数调用（包括参数和闭括号）
+        content = content.replace(/process\.emit\([^)]*\)/g, 'void 0 /* process.emit removed for browser */');
         // 替换 typeof process 检查（确保不会匹配到 process.emit）
         content = content.replace(/"object"\s*===\s*typeof\s+process/g, '"object" === typeof undefined /* process removed for browser */');
         content = content.replace(/"function"\s*===\s*typeof\s+process\.emit/g, '"function" === typeof undefined /* process.emit removed for browser */');
@@ -74,10 +74,8 @@ export default defineConfig({
         format: "es",
         exports: "named",
         banner: `/* ReactDOM Client ${reactDomVersion} - Bundled locally at build time */\n`,
-        // 确保 React 从正确的路径导入
-        globals: {
-          react: "/static/bundles/react.js",
-        },
+        // 注意：globals 选项只对 UMD/IIFE 格式有效，对 ES 模块无效
+        // React 导入路径的重写由 writeBundle 钩子中的字符串替换处理
       },
     },
     outDir: "build/react-bundles",
