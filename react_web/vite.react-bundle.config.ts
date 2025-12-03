@@ -47,6 +47,46 @@ function replaceProcessEnv(): Plugin {
         content = content.replace(/"object"\s*===\s*typeof\s+process/g, '"object" === typeof undefined /* process removed for browser */');
         content = content.replace(/"function"\s*===\s*typeof\s+process\.emit/g, '"function" === typeof undefined /* process.emit removed for browser */');
         
+        /**
+         * ============================================================================
+         * ⚠️ 重要说明：为什么必须使用字符串替换而不是源码层面的修改
+         * ============================================================================
+         * 
+         * 问题背景：
+         * - React 19 的 hooks 实现依赖于 ReactSharedInternals.H（hooks dispatcher）
+         * - ReactDOM 在初始化时会设置这个 dispatcher
+         * - 但在某些场景下（如独立组件加载），React 可能在 ReactDOM 初始化之前被调用
+         * - 这会导致 hooks 无法正常工作
+         * 
+         * 为什么不能源码层面解决：
+         * - React 是第三方库，我们无法修改其源码
+         * - 即使 fork React，维护成本极高，且无法跟上 React 的更新
+         * - React 的内部实现（ReactSharedInternals）是私有 API，不对外暴露
+         * 
+         * 为什么使用字符串替换而不是 Vite transform hook：
+         * - Vite 的 transform hook 在模块级别工作，但 React 的 hooks dispatcher
+         *   是在打包后的代码中通过对象属性访问的（react_production.useState = ...）
+         * - 这些属性赋值发生在打包后的代码中，无法在源码层面拦截
+         * - 必须在打包完成后，对生成的代码进行后处理
+         * 
+         * 方案的脆弱性：
+         * - ⚠️ 此方案依赖 React 打包后的代码格式
+         * - ⚠️ 如果 React 内部实现改变（如 hooks 的导出方式），此方案可能失效
+         * - ⚠️ 需要定期检查 React 版本更新是否影响此替换逻辑
+         * 
+         * 维护建议：
+         * 1. 每次升级 React 版本时，检查构建后的 react.js 文件格式是否变化
+         * 2. 如果替换失败，构建会成功但运行时可能报错，需要测试验证
+         * 3. 考虑在 CI/CD 中添加自动化测试，验证 hooks 是否正常工作
+         * 
+         * 替代方案（未来考虑）：
+         * - 等待 React 官方提供更好的 hooks dispatcher 初始化机制
+         * - 或者使用 React 的官方 CDN 版本（但失去了本地打包的控制）
+         * - 或者等待 React 支持更好的独立组件加载方式
+         * 
+         * ============================================================================
+         */
+        
         // 修复：确保所有 hooks 从 __CLIENT_INTERNALS 获取 ReactSharedInternals
         // 这样 ReactDOM 设置的 H 可以被 React 的 hooks 使用
         // 在文件开头添加一个临时的 hooks dispatcher，用于在 ReactDOM 初始化之前
@@ -108,23 +148,55 @@ function getHooksDispatcher() {
           `$1${tempDispatcherCode}`
         );
         
-        // 修复所有 hooks，使其使用 getHooksDispatcher()
-        const hookNames = ['useState', 'useEffect', 'useCallback', 'useMemo', 'useRef', 'useContext', 'useReducer', 'useLayoutEffect', 'useImperativeHandle', 'useId', 'useSyncExternalStore', 'useInsertionEffect', 'useTransition', 'useDeferredValue', 'useActionState', 'useOptimistic', 'use', 'cache', 'useMemoCache'];
+        /**
+         * 修复所有 hooks，使其使用 getHooksDispatcher()
+         * 
+         * ⚠️ 安全说明：
+         * - hookNames 是固定的字符串数组，不包含用户输入，因此不存在 ReDoS 风险
+         * - 但为了代码清晰和防御性编程，我们仍然对 hookName 进行转义
+         * - 使用 String.prototype.replace 而不是直接字符串拼接来构建正则表达式
+         */
+        const hookNames = [
+          'useState', 'useEffect', 'useCallback', 'useMemo', 'useRef',
+          'useContext', 'useReducer', 'useLayoutEffect', 'useImperativeHandle',
+          'useId', 'useSyncExternalStore', 'useInsertionEffect', 'useTransition',
+          'useDeferredValue', 'useActionState', 'useOptimistic', 'use', 'cache', 'useMemoCache'
+        ] as const;
+        
+        // 转义函数：将字符串中的特殊正则字符转义
+        // 虽然 hookNames 是固定的，但转义可以确保代码更安全
+        const escapeRegex = (str: string): string => {
+          return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        };
         
         for (const hookName of hookNames) {
-          // 匹配 react_production.hookName = function(...) { return ReactSharedInternals.H.hookName(...); }
-          const pattern = new RegExp(
-            `react_production\\.${hookName}\\s*=\\s*function\\s*\\([^)]*\\)\\s*\\{[^}]*return\\s+ReactSharedInternals\\.H\\.${hookName}\\([^)]*\\)[^}]*\\}`,
+          // 转义 hookName 以确保正则表达式安全（防御性编程）
+          const escapedHookName = escapeRegex(hookName);
+          
+          /**
+           * 匹配模式：react_production.hookName = function(...) { return ReactSharedInternals.H.hookName(...); }
+           * 
+           * 说明：
+           * - 这个模式匹配 React 打包后的 hooks 定义格式
+           * - 单行格式：所有代码在一行内
+           * - 多行格式：代码可能跨多行（使用 [\s\S]*? 非贪婪匹配）
+           * 
+           * ⚠️ 注意：如果 React 的打包格式改变，这个正则可能失效
+           */
+          
+          // 单行格式匹配（更常见）
+          const singleLinePattern = new RegExp(
+            `react_production\\.${escapedHookName}\\s*=\\s*function\\s*\\([^)]*\\)\\s*\\{[^}]*return\\s+ReactSharedInternals\\.H\\.${escapedHookName}\\([^)]*\\)[^}]*\\}`,
             'g'
           );
           content = content.replace(
-            pattern,
+            singleLinePattern,
             `react_production.${hookName} = function(...args) { var dispatcher = getHooksDispatcher(); return dispatcher.${hookName}(...args); }`
           );
           
-          // 也处理多行格式
+          // 多行格式匹配（处理格式化后的代码）
           const multilinePattern = new RegExp(
-            `react_production\\.${hookName}\\s*=\\s*function\\s*\\([^)]*\\)\\s*\\{[\\s\\S]*?return\\s+ReactSharedInternals\\.H\\.${hookName}\\([^)]*\\)[\\s\\S]*?\\}`,
+            `react_production\\.${escapedHookName}\\s*=\\s*function\\s*\\([^)]*\\)\\s*\\{[\\s\\S]*?return\\s+ReactSharedInternals\\.H\\.${escapedHookName}\\([^)]*\\)[\\s\\S]*?\\}`,
             'g'
           );
           content = content.replace(
@@ -133,13 +205,25 @@ function getHooksDispatcher() {
           );
         }
         
-        // 处理其他使用 ReactSharedInternals.H 的地方
+        /**
+         * 处理其他使用 ReactSharedInternals.H 的地方
+         * 
+         * 这个替换是兜底方案，处理可能遗漏的 hooks 调用
+         * 使用 \w+ 匹配任何标识符（hook 名称）
+         */
         content = content.replace(
           /ReactSharedInternals\.H\.(\w+)/g,
           'getHooksDispatcher().$1'
         );
         
-        // 修复 __COMPILER_RUNTIME.c 调用，添加安全检查
+        /**
+         * 修复 __COMPILER_RUNTIME.c 调用，添加安全检查
+         * 
+         * React 19 的编译器运行时使用 useMemoCache，需要确保它能正常工作
+         * 这个替换处理编译后的代码格式（可能跨多行）
+         * 
+         * ⚠️ 注意：使用 /s 标志允许 . 匹配换行符
+         */
         content = content.replace(
           /react_production\.__COMPILER_RUNTIME\s*=\s*\{[^}]*c:\s*function\s*\(size\)\s*\{[^}]*return\s+getHooksDispatcher\(\)\.useMemoCache\(size\);[^}]*\}/s,
           `react_production.__COMPILER_RUNTIME = {
