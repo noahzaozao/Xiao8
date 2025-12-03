@@ -23,6 +23,14 @@ const components = [
     cssFiles: ["react_web.css", "StatusToast.css", "style.css"],
     needsTailwind: false,
   },
+  {
+    name: "Modal",
+    entry: resolve(__dirname, "app/components/Modal/index.tsx"),
+    output: "Modal.js",
+    styleId: "modal-styles",
+    cssFiles: ["react_web.css", "Modal.css", "style.css"],
+    needsTailwind: false,
+  },
 ];
 
 // 辅助函数：重写 React 导入为本地路径

@@ -77,7 +77,7 @@ interface Window {
   // Live2D 相关
   live2dManager?: {
     getCurrentModel: () => any;
-    loadModel: (path: string, options?: any) => Promise<void>;
+    loadModel: (configOrPath: any, options?: any) => Promise<void>;
     loadUserPreferences: () => Promise<any[]>;
     getEmotionMapping: () => any;
     modelRootPath?: string;

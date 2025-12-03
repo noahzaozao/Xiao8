@@ -2,56 +2,73 @@ function getDefaultExportFromCjs(x) {
   return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
 }
 var react = { exports: {} };
-var react_production = {};
+var react_production = {};;
+
 // 临时 hooks dispatcher，用于在 ReactDOM 初始化之前
-var __tempHooksDispatcher = null;
-function getHooksDispatcher() {
-  var internals = react_production.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
-  if (internals.H) return internals.H;
-  // 如果 ReactDOM 还没有初始化，创建一个临时的 dispatcher
-  if (!__tempHooksDispatcher) {
-    __tempHooksDispatcher = {
-      useState: function(initialState) {
-        console.warn('[React] useState called before ReactDOM initialization, using temporary implementation');
-        var state = typeof initialState === 'function' ? initialState() : initialState;
-        // 创建一个可以工作的 setState，在 ReactDOM 初始化后会自动切换到真正的实现
-        return [state, function(newState) {
-          console.warn('[React] setState called before ReactDOM initialization, state update will be ignored');
-          // 注意：这个 setState 不会真正更新状态，但至少不会崩溃
-          // 当 ReactDOM 初始化后，组件会重新渲染，使用真正的 hooks dispatcher
-        }];
-      },
-      useEffect: function() { return function() {}; },
-      useCallback: function(fn) { return fn; },
-      useMemo: function(fn) { return fn(); },
-      useRef: function(initialValue) { return { current: initialValue }; },
-      useContext: function() { return null; },
-      useReducer: function() { return [null, function() {}]; },
-      useLayoutEffect: function() { return function() {}; },
-      useImperativeHandle: function() {},
-      useId: function() { return ''; },
-      useSyncExternalStore: function() { return null; },
-      useInsertionEffect: function() { return function() {}; },
-      useTransition: function() { return [false, function() {}]; },
-      useDeferredValue: function(value) { return value; },
-      useActionState: function() { return [null, function() {}]; },
-      useOptimistic: function() { return null; },
-      use: function() { return null; },
-      cache: function(fn) { return fn; },
-      useMemoCache: function(size) {
-        console.warn('[React] useMemoCache called before ReactDOM initialization, using temporary implementation');
-        // 返回一个指定大小的数组，每个元素初始化为 undefined
-        // 这是一个安全的 no-op 实现，在 ReactDOM 初始化后会切换到真正的实现
-        var cache = [];
-        for (var i = 0; i < size; i++) {
-          cache[i] = undefined;
+(function() {
+  var __tempHooksDispatcher = null;
+  window.getHooksDispatcher = function getHooksDispatcher() {
+    var internals = react_production.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+    if (internals && internals.H) {
+      return internals.H;
+    }
+    // 如果 ReactDOM 还没有初始化，创建一个临时的 dispatcher
+    if (!__tempHooksDispatcher) {
+      __tempHooksDispatcher = {
+        useState: function(initialState) {
+          console.warn('[React] useState called before ReactDOM initialization, using temporary implementation');
+          var state = typeof initialState === 'function' ? initialState() : initialState;
+          // 创建一个可以工作的 setState，在 ReactDOM 初始化后会自动切换到真正的实现
+          return [state, function(newState) {
+            console.warn('[React] setState called before ReactDOM initialization, state update will be ignored');
+            // 注意：这个 setState 不会真正更新状态，但至少不会崩溃
+            // 当 ReactDOM 初始化后，组件会重新渲染，使用真正的 hooks dispatcher
+          }];
+        },
+        useEffect: function() {},
+        useCallback: function(fn) { return fn; },
+        useMemo: function(fn) { return fn(); },
+        useRef: function(initialValue) { return { current: initialValue }; },
+        useContext: function() { return null; },
+        useReducer: function(reducer, initialState, init) {
+          var state = init ? init(initialState) : initialState;
+          return [state, function() {}];
+        },
+        useLayoutEffect: function() {},
+        useImperativeHandle: function() {},
+        useId: function() { return ''; },
+        useSyncExternalStore: function(subscribe, getSnapshot) {
+          // 提供 no-op subscribe/unsubscribe 以避免类型错误
+          // subscribe 接受一个 callback 并返回一个 unsubscribe 函数
+          if (typeof subscribe === 'function') {
+            var unsubscribe = subscribe(function() {}); // no-op callback
+            // unsubscribe 是一个函数，但我们不需要调用它（这是临时实现）
+          }
+          // 返回 getSnapshot() 的结果，如果 getSnapshot 是函数
+          return typeof getSnapshot === 'function' ? getSnapshot() : null;
+        },
+        useInsertionEffect: function() { return function() {}; },
+        useTransition: function() { return [false, function() {}]; },
+        useDeferredValue: function(value) { return value; },
+        useActionState: function() { return [null, function() {}]; },
+        useOptimistic: function() { return null; },
+        use: function() { return null; },
+        cache: function(fn) { return fn; },
+        useMemoCache: function(size) {
+          console.warn('[React] useMemoCache called before ReactDOM initialization, using temporary implementation');
+          // 返回一个指定大小的数组，每个元素初始化为 undefined
+          // 这是一个安全的 no-op 实现，在 ReactDOM 初始化后会切换到真正的实现
+          var cache = [];
+          for (var i = 0; i < size; i++) {
+            cache[i] = undefined;
+          }
+          return cache;
         }
-        return cache;
-      }
-    };
-  }
-  return __tempHooksDispatcher;
-}
+      };
+    }
+    return __tempHooksDispatcher;
+  };
+})();
 
 var hasRequiredReact_production;
 function requireReact_production() {
@@ -325,7 +342,6 @@ function requireReact_production() {
         return cache;
       }());
     }
-  }
   };
   react_production.cache = function(fn) {
     return function() {

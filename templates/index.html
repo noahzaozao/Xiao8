@@ -40,6 +40,17 @@
     // 然后导入组件（组件依赖 React 和 ReactDOM）
     import { ExampleButton } from "/static/bundles/ExampleButton.js";
     import { StatusToast } from "/static/bundles/StatusToast.js";
+    
+    // 导入 Modal 组件（支持命名导出和默认导出）
+    let Modal;
+    import("/static/bundles/Modal.js").then(module => {
+        Modal = module.Modal || module.default;
+        console.log("[Modal] Modal 组件导入成功:", typeof Modal);
+        // 导入成功后尝试挂载
+        mountModal();
+    }).catch(error => {
+        console.error("[Modal] Modal 组件导入失败:", error);
+    });
 
     // 优先挂载 StatusToast（确保在 app.js 执行前就绪）
     function mountStatusToast() {
@@ -81,21 +92,58 @@
         }
     }
 
+    // 挂载 Modal 组件
+    function mountModal() {
+        console.log("[Modal] 开始挂载 Modal 组件...");
+        console.log("[Modal] Modal 变量类型:", typeof Modal);
+        
+        if (!Modal) {
+            console.warn("[Modal] Modal 组件尚未导入，延迟重试...");
+            setTimeout(mountModal, 100);
+            return;
+        }
+        
+        const container = document.getElementById("modal-container");
+        console.log("[Modal] 容器查找结果:", container);
+        if (container) {
+            try {
+                console.log("[Modal] 创建 React Root...");
+                const root = createRoot(container);
+                console.log("[Modal] 渲染 Modal 组件...");
+                root.render(React.createElement(Modal));
+                console.log("✅ Modal 组件已挂载");
+            } catch (error) {
+                console.error("❌ Modal 挂载失败:", error);
+                console.error("错误堆栈:", error.stack);
+                // 如果失败，延迟重试
+                setTimeout(mountModal, 100);
+            }
+        } else {
+            console.error("❌ Modal 容器不存在，延迟重试...");
+            // 如果容器不存在，延迟重试
+            setTimeout(mountModal, 50);
+        }
+    }
+
     function mountComponents() {
         // 优先挂载 StatusToast
         mountStatusToast();
+        // 挂载 Modal（尽早挂载，确保全局 API 可用）
+        mountModal();
         // 然后挂载其他组件
         mountExampleButton();
     }
 
     // 立即尝试挂载（不等待 DOMContentLoaded），确保尽早挂载
     if (document.readyState === "loading") {
-        // 如果还在加载，立即挂载 StatusToast，其他组件等待 DOMContentLoaded
+        // 如果还在加载，立即挂载 StatusToast，Modal 会在导入完成后自动挂载
         mountStatusToast();
+        // mountModal() 会在 Modal 导入成功后自动调用
         document.addEventListener("DOMContentLoaded", mountExampleButton);
     } else {
         // 如果已经加载完成，立即挂载所有组件
         mountComponents();
+        // mountModal() 会在 Modal 导入成功后自动调用（如果还没挂载）
     }
     </script>
     
@@ -1018,6 +1066,8 @@
 
 <!-- Status 气泡框 - 将由 React 组件挂载 -->
 <div id="status-toast"></div>
+<!-- Modal 容器 - 将由 React 组件挂载 -->
+<div id="modal-container" style="display: none;"></div>
 <!-- ExampleButton 容器 -->
 <div id="example-button-container" style="position: fixed; top: 20px; left: 20px; z-index: 99998; pointer-events: auto;"></div>
 <div id="chat-container">
