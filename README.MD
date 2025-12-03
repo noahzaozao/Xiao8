@@ -176,7 +176,7 @@ networks:
 | `NEKO_EMOTION_MODEL` | 情感分析模型 | `qwen-turbo` |
 | `NEKO_VISION_MODEL` | 视觉模型 | `qwen3-vl-plus-2025-09-23` |
 
-#### 目前docker部署方案由 *倒霉蛋HINS* 提供
+**注：** 目前docker部署方案由 *倒霉蛋HINS* 提供
 
 ## 进阶使用
 
