@@ -5,8 +5,8 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const src = path.join(__dirname, "..", "build", "components", "StatusToast.js");
-const dest = path.join(__dirname, "..", "..", "static", "bundles", "StatusToast.js");
+const src = path.join(__dirname, "..", "build", "components", "Button.js");
+const dest = path.join(__dirname, "..", "..", "static", "bundles", "Button.js");
 
 try {
   if (fs.existsSync(src)) {
@@ -17,7 +17,7 @@ try {
     }
     
     fs.copyFileSync(src, dest);
-    console.log("✅ 已复制 StatusToast.js 到 static/bundles 目录:", dest);
+    console.log("✅ 已复制 Button.js 到 static/bundles 目录:", dest);
   } else {
     console.error("❌ 构建文件不存在:", src);
     process.exit(1);

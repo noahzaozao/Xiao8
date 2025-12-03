@@ -38,8 +38,8 @@
     import React from "/static/bundles/react.js";
     import { createRoot } from "/static/bundles/react-dom-client.js";
     // 然后导入组件（组件依赖 React 和 ReactDOM）
-    import { ExampleButton } from "/static/bundles/ExampleButton.js";
     import { StatusToast } from "/static/bundles/StatusToast.js";
+    import { Button } from "/static/bundles/Button.js";
     
     // 导入 Modal 组件（支持命名导出和默认导出）
     let Modal;
@@ -74,23 +74,7 @@
         }
     }
 
-    // 等待 DOM 加载完成
-    function mountExampleButton() {
-        const container = document.getElementById("example-button-container");
-        if (container) {
-            const root = createRoot(container);
-            root.render(
-                React.createElement(ExampleButton, {
-                buttonText: "打开 Modal",
-                onSave: (text1, text2) => {
-                    console.log("保存的内容:", text1, text2);
-                    // 可以在这里添加保存逻辑
-                }
-                })
-            );
-            console.log("ExampleButton 组件已挂载");
-        }
-    }
+    // ExampleButton 相关逻辑已移除，示例按钮不再在生产页面中使用
 
     // 挂载 Modal 组件
     function mountModal() {
@@ -125,21 +109,102 @@
         }
     }
 
+    // 通用 Button 挂载辅助函数，避免重复代码
+    function mountReactButton(containerId, buttonProps, children) {
+        const container = document.getElementById(containerId);
+        if (!container) {
+            return;
+        }
+        try {
+            const root = createRoot(container);
+            root.render(
+                React.createElement(
+                    Button,
+                    buttonProps,
+                    ...children,
+                ),
+            );
+        } catch (error) {
+            console.error(`[Button] 挂载 ${buttonProps && buttonProps.id ? buttonProps.id : containerId} 失败:`, error);
+        }
+    }
+
+    // 挂载通用 Button 组件到现有按钮位置
+    function mountButtons() {
+        // 清空全部截图按钮
+        mountReactButton(
+            "clear-all-screenshots-container",
+            {
+                id: "clear-all-screenshots",
+                variant: "danger",
+                size: "sm",
+            },
+            [
+                React.createElement("span", { "data-i18n": "chat.clearAll" }, "清空全部"),
+            ],
+        );
+
+        // 文本发送按钮
+        mountReactButton(
+            "textSendButton-container",
+            {
+                id: "textSendButton",
+                variant: "primary",
+                size: "md",
+            },
+            [
+                React.createElement("img", {
+                    src: "/static/icons/send_icon.png",
+                    alt: "",
+                }),
+                React.createElement("span", { "data-i18n": "chat.send" }, "发送"),
+            ],
+        );
+
+        // 截图 / 拍照按钮
+        mountReactButton(
+            "screenshotButton-container",
+            {
+                id: "screenshotButton",
+                variant: "secondary",
+                size: "md",
+            },
+            [
+                React.createElement("img", {
+                    src: "/static/icons/screenshot_icon.png",
+                    alt: "",
+                }),
+                React.createElement(
+                    "span",
+                    { className: "desktop-text", "data-i18n": "chat.screenshot" },
+                    "截图",
+                ),
+                React.createElement(
+                    "span",
+                    { className: "mobile-text", "data-i18n": "chat.takePhoto" },
+                    "拍照",
+                ),
+            ],
+        );
+    }
+
     function mountComponents() {
         // 优先挂载 StatusToast
         mountStatusToast();
         // 挂载 Modal（尽早挂载，确保全局 API 可用）
         mountModal();
         // 然后挂载其他组件
-        mountExampleButton();
+        mountButtons();
     }
 
     // 立即尝试挂载（不等待 DOMContentLoaded），确保尽早挂载
     if (document.readyState === "loading") {
         // 如果还在加载，立即挂载 StatusToast，Modal 会在导入完成后自动挂载
         mountStatusToast();
-        // mountModal() 会在 Modal 导入成功后自动调用
-        document.addEventListener("DOMContentLoaded", mountExampleButton);
+        // 其余组件在 DOMContentLoaded 后挂载
+        document.addEventListener("DOMContentLoaded", () => {
+            mountButtons();
+        });
     } else {
         // 如果已经加载完成，立即挂载所有组件
         mountComponents();
@@ -555,20 +620,7 @@
             font-weight: 600;
         }
         
-        #clear-all-screenshots {
-            padding: 2px 8px;
-            font-size: 0.75rem;
-            background: #dc3545;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        
-        #clear-all-screenshots:hover {
-            background: #c82333;
-        }
+        /* #clear-all-screenshots 按钮的视觉样式由 React Button 组件的 Button.css 提供 */
         
         /* 截图列表 - 横向滚动 */
         #screenshots-list {
@@ -742,74 +794,7 @@
             gap: 6px;
         }
         
-        #textSendButton, #screenshotButton {
-            pointer-events: auto;
-            padding: 8px 16px;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: background 0.2s, border-color 0.2s;
-            font-size: 0.85rem;
-            font-weight: 500;
-            white-space: nowrap;
-            min-width: 80px;
-            display: flex;
-            align-items: center; /* 图标和文字垂直居中对齐 */
-            justify-content: flex-start; /* 内容左对齐，图标在左边 */
-            gap: 6px;
-            box-sizing: border-box;
-        }
-        
-        /* 确保两个按钮的图标和文字对齐 */
-        #textSendButton img, #screenshotButton img {
-            flex-shrink: 0; /* 图标不收缩 */
-            width: 22px; /* 统一图标宽度，确保对齐 */
-            height: 22px;
-            object-fit: contain;
-            pointer-events: none;
-        }
-        
-        #textSendButton span, #screenshotButton span {
-            flex-shrink: 0; /* 文字不收缩 */
-            text-align: left; /* 文字左对齐 */
-        }
-        
-        /* 发送按钮：蓝色背景 */
-        #textSendButton {
-            border: 2px solid transparent;
-            background: #44b7fe;
-            color: #fff;
-        }
-        
-        #textSendButton:hover:not(:disabled) {
-            background: #2ea0e0;
-        }
-        
-        #textSendButton:disabled {
-            background: #b0c4de;
-            cursor: not-allowed;
-            opacity: 0.6;
-        }
-        
-        /* 截图按钮：白色背景 + 蓝色边框 */
-        #screenshotButton {
-            border: 2px solid #44b7fe;
-            background: #fff;
-            color: #44b7fe;
-        }
-        
-        #screenshotButton:hover:not(:disabled) {
-            background: #f0f9ff;
-            border-color: #2ea0e0;
-            border-width: 2px;
-        }
-        
-        #screenshotButton:disabled {
-            border-color: #b0c4de;
-            border-width: 2px;
-            color: #b0c4de;
-            cursor: not-allowed;
-            opacity: 0.6;
-        }
+        /* #textSendButton 与 #screenshotButton 的视觉样式由 React Button 组件的 Button.css 提供 */
         
         /* 桌面端和移动端文本显示控制 */
         .desktop-text {
@@ -1087,7 +1072,7 @@
         <div id="screenshot-thumbnail-container">
             <div id="screenshots-header">
                 <span id="screenshots-title" data-i18n="chat.screenshotsTitle">📸 待发送截图</span> (<span id="screenshot-count">0</span>)
-                <button id="clear-all-screenshots" data-i18n="chat.clearAll">清空全部</button>
+                <div id="clear-all-screenshots-container"></div>
             </div>
             <div id="screenshots-list">
                 <!-- 截图项将动态添加到这里 -->
@@ -1096,8 +1081,8 @@
         <div id="text-input-row">
             <textarea id="textInputBox" data-i18n-placeholder="chat.textInputPlaceholder" placeholder="文字聊天模式...回车发送，Shift+回车换行" tabindex="0"></textarea>
             <div id="button-group">
-                <button id="textSendButton"><img src="/static/icons/send_icon.png" alt=""><span data-i18n="chat.send">发送</span></button>
-                <button id="screenshotButton"><img src="/static/icons/screenshot_icon.png" alt=""><span class="desktop-text" data-i18n="chat.screenshot">截图</span><span class="mobile-text" data-i18n="chat.takePhoto">拍照</span></button>
+                <div id="textSendButton-container"></div>
+                <div id="screenshotButton-container"></div>
             </div>
         </div>
     </div>

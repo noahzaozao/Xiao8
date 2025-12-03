@@ -2,8 +2,8 @@ import { useEffect, useRef } from "react";
 import "./main.css";
 import { request, buildApiUrl } from "../api/request";
 import { buildWebSocketUrl, getApiBaseUrl, getStaticServerUrl, getWebSocketUrl, buildStaticUrl } from "../api/config";
-import { ExampleButton } from "../components/ExampleButton";
 import { StatusToast } from "../components/StatusToast";
+import { Button } from "../components/Button";
 import { RequestAPI } from "../api/request.api";
 import { waitForRequestInit, waitForRequestAPIInit, checkRequestAvailable } from "../api/global/react_init";
 
@@ -779,43 +779,15 @@ export default function Main() {
 
   return (
     <div className="container">
-        {/* ExampleButton 在左上角 */}
-        <div style={{ 
-          position: "fixed", 
-          top: "20px", 
-          left: "20px", 
-          zIndex: 99998,
-          pointerEvents: "auto"
-        }}>
-          <ExampleButton 
-            buttonText="打开 Modal"
-            onSave={(text1, text2) => {
-              console.log("保存的内容:", text1, text2);
-            }}
-          />
-        </div>
-
         {/* 旧的按钮面板 */}
         <div id="sidebar" style={{ display: "none" }}>
           <div id="sidebarbox">
-            <button id="micButton" className="side-btn">
-              🎤 开始语音
-            </button>
-            <button id="muteButton" className="side-btn" disabled>
-              ⏸️ 休息一下
-            </button>
-            <button id="screenButton" className="side-btn" disabled>
-              🖥️ 屏幕共享
-            </button>
-            <button id="stopButton" className="side-btn" disabled>
-              🛑 停止共享
-            </button>
-            <button id="resetSessionButton" className="side-btn">
-              👋 请她离开
-            </button>
-            <button id="returnSessionButton" className="side-btn">
-              🫴 请她回来
-            </button>
+            <button id="micButton" className="side-btn" data-i18n="voiceControl.startVoice">🎤 开始语音</button>
+            <button id="muteButton" className="side-btn" disabled data-i18n="voiceControl.rest">⏸️ 休息一下</button>
+            <button id="screenButton" className="side-btn" disabled data-i18n="voiceControl.screenShare">🖥️ 屏幕共享</button>
+            <button id="stopButton" className="side-btn" disabled data-i18n="voiceControl.stopShare">🛑 停止共享</button>
+            <button id="resetSessionButton" className="side-btn" data-i18n="voiceControl.leave">👋 请她离开</button>
+            <button id="returnSessionButton" className="side-btn" data-i18n="voiceControl.return">🫴 请她回来</button>
             <div id="status"></div>
           </div>
         </div>
@@ -827,53 +799,86 @@ export default function Main() {
         {/* 聊天容器 */}
         <div id="chat-container">
           <div id="chat-header">
-            <span id="chat-title">💬 对话</span>
+            <span id="chat-title" data-i18n="chat.title">💬 对话</span>
           </div>
-          <button id="toggle-chat-btn" title="最小化">
+          <button
+            id="toggle-chat-btn"
+            title="最小化"
+            data-i18n-title="common.minimize"
+          >
             <img 
               src={`${STATIC_SERVER_URL}/static/icons/minimize_icon.png`} 
-              alt="最小化" 
+              alt="最小化"
+              data-i18n-alt="common.minimize"
               style={{ width: "24px", height: "24px", objectFit: "contain", pointerEvents: "none" }}
             />
           </button>
-          <div id="chat-tooltip">✨ 对话区</div>
+          <div id="chat-tooltip" data-i18n="chat.tooltip">✨ 对话区</div>
           <div id="chat-content-wrapper">
             <div id="chatContainer"></div>
           </div>
           <div id="text-input-area">
             <div id="screenshot-thumbnail-container">
               <div id="screenshots-header">
-                <span id="screenshots-title">
+                <span
+                  id="screenshots-title"
+                  data-i18n="chat.screenshotsTitle"
+                >
                   📸 待发送截图 (<span id="screenshot-count">0</span>)
                 </span>
-                <button id="clear-all-screenshots">清空全部</button>
+                <Button
+                  id="clear-all-screenshots"
+                  variant="danger"
+                  size="sm"
+                >
+                  <span data-i18n="chat.clearAll">清空全部</span>
+                </Button>
               </div>
               <div id="screenshots-list"></div>
             </div>
             <div id="text-input-row">
               <textarea
                 id="textInputBox"
+                data-i18n-placeholder="chat.textInputPlaceholder"
                 placeholder="文字聊天模式...回车发送，Shift+回车换行"
                 tabIndex={0}
               ></textarea>
               <div id="button-group">
-                <button id="textSendButton">
+                <Button
+                  id="textSendButton"
+                  variant="primary"
+                  size="md"
+                >
                   <img 
                     src={`${STATIC_SERVER_URL}/static/icons/send_icon.png`} 
                     alt=""
                     style={{ width: "22px", height: "22px", objectFit: "contain", pointerEvents: "none" }}
                   />
-                  <span>发送</span>
-                </button>
-                <button id="screenshotButton">
+                  <span data-i18n="chat.send">发送</span>
+                </Button>
+                <Button
+                  id="screenshotButton"
+                  variant="secondary"
+                  size="md"
+                >
                   <img 
                     src={`${STATIC_SERVER_URL}/static/icons/screenshot_icon.png`} 
                     alt=""
                     style={{ width: "22px", height: "22px", objectFit: "contain", pointerEvents: "none" }}
                   />
-                  <span className="desktop-text">截图</span>
-                  <span className="mobile-text">拍照</span>
-                </button>
+                  <span
+                    className="desktop-text"
+                    data-i18n="chat.screenshot"
+                  >
+                    截图
+                  </span>
+                  <span
+                    className="mobile-text"
+                    data-i18n="chat.takePhoto"
+                  >
+                    拍照
+                  </span>
+                </Button>
               </div>
             </div>
           </div>

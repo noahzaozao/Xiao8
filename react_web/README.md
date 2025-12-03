@@ -13,7 +13,6 @@
 2. **独立组件构建系统**（渐进式迁移轨道）
    - 将 React 组件打包为 **ES Module**，供传统 HTML/JS 页面使用
    - 支持逐个组件替换旧代码，实现渐进式迁移
-   - 示例：`ExampleButton` 组件
 
 ### 🎯 设计目标
 
@@ -51,7 +50,7 @@ cd react_web
 npm run build              # 构建 React Router SPA (build/client)
 npm run build:react-bundles # 构建 React/ReactDOM bundles (首次或更新时)
 npm run build:global       # 构建全局库 (request + react_init)
-npm run build:component   # 构建独立组件 (ExampleButton + StatusToast)
+npm run build:component   # 构建独立组件 (StatusToast)
 npm run build:all         # 全量构建 (react-bundles + global + component)
 ```
 
@@ -73,7 +72,7 @@ react_web/
 │   │       ├── request.global.ts      # Request 全局库
 │   │       └── request.api.global.ts  # 首页 API 全局库
 │   ├── components/           # 可复用的 React 组件
-│   │   ├── ExampleButton.tsx # 示例：可独立打包的组件
+│   │   ├── ExampleButton.tsx # 示例：可独立打包的组件（示例，已废弃）
 │   │   ├── StatusToast.tsx   # 状态提示组件（已完成 ✅）
 │   │   ├── Modal/            # 对话框组件（已完成 ✅）
 │   │   │   ├── BaseModal.tsx      # 基础容器组件
@@ -332,7 +331,6 @@ npm run build:component
 
 - `static/bundles/react.js` - React 库（来自 `build:react-bundles`）
 - `static/bundles/react-dom-client.js` - ReactDOM 客户端库（来自 `build:react-bundles`）
-- `static/bundles/ExampleButton.js` - ExampleButton 组件
 - `static/bundles/StatusToast.js` - StatusToast 组件
 - `static/bundles/Modal.js` - Modal 对话框组件（Alert/Confirm/Prompt）
 
@@ -340,13 +338,13 @@ npm run build:component
 
 #### 方式 1：ES Module 导入（推荐）
 
-**ExampleButton 组件：**
+**ExampleButton 组件（示例，已废弃）：**
 
 ```html
 <div id="example-button-container"></div>
 
 <script type="module">
-  import { ExampleButton } from "/static/bundles/ExampleButton.js";
+  import { ExampleButton } from "/static/bundles/ExampleButton.js"; // 仅示例，实际项目中已不再使用
   import React from "/static/bundles/react.js";
   import { createRoot } from "/static/bundles/react-dom-client.js";
 
@@ -355,7 +353,7 @@ npm run build:component
     if (!container) return;
     const root = createRoot(container);
     root.render(
-      React.createElement(ExampleButton, {
+      React.createElement(ExampleButton, { // 示例用法
         buttonText: "打开 Modal",
         onSave: (text1, text2) => {
           console.log("保存的内容:", text1, text2);
@@ -694,7 +692,6 @@ export default defineConfig({
   build: {
     lib: {
       entry: {
-        ExampleButton: resolve(__dirname, "app/components/ExampleButton.tsx"),
         MyComponent: resolve(__dirname, "app/components/MyComponent/index.ts"),
         AnotherComponent: resolve(__dirname, "app/components/AnotherComponent/index.ts"),
       },

@@ -226,7 +226,7 @@ export function StatusToast() {
               const message = window.t 
                 ? window.t('app.started', {name: window.lanlan_config.lanlan_name})
                 : `${window.lanlan_config.lanlan_name}已启动`;
-              wrappedShowToast(message, 300000);
+              wrappedShowToast(message, 3000);
             }
           }
         }, 1500);

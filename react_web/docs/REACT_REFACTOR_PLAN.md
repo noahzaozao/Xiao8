@@ -156,7 +156,7 @@ react_web/
 ### Phase 0: 项目初始化 ✅ **已完成**
 - ✅ 创建 React Router v7 项目（SPA 模式）
 - ✅ 配置双轨构建（应用 + 组件）
-- ✅ 创建第一个示例组件（ExampleButton）
+- ✅ 创建第一个示例组件（ExampleButton，现已废弃，仅保留文档示例）
 - ✅ 建立与 static/ 目录的集成
 - ✅ API 拦截器机制
 - ✅ 文档体系

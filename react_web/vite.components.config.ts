@@ -8,14 +8,6 @@ import type { Plugin } from "vite";
 // 组件配置
 const components = [
   {
-    name: "ExampleButton",
-    entry: resolve(__dirname, "app/components/ExampleButton.tsx"),
-    output: "ExampleButton.js",
-    styleId: "example-button-styles",
-    cssFiles: ["react_web.css", "ExampleButton.css", "style.css"],
-    needsTailwind: true,
-  },
-  {
     name: "StatusToast",
     entry: resolve(__dirname, "app/components/StatusToast.tsx"),
     output: "StatusToast.js",
@@ -29,6 +21,14 @@ const components = [
     output: "Modal.js",
     styleId: "modal-styles",
     cssFiles: ["react_web.css", "Modal.css", "style.css"],
+    needsTailwind: false,
+  },
+  {
+    name: "Button",
+    entry: resolve(__dirname, "app/components/Button.tsx"),
+    output: "Button.js",
+    styleId: "button-styles",
+    cssFiles: ["react_web.css", "Button.css", "style.css"],
     needsTailwind: false,
   },
 ];
