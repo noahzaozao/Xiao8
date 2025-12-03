@@ -190,15 +190,19 @@ react_web/
      - 支持国际化（通过 `window.t`）
      - 完整的交互功能：ESC 键关闭、点击遮罩关闭、自动焦点管理
    
-3. **Button 组件** (中优先级)
-   - 当前位置: 分散在各处的按钮样式
+3. **Button 组件** (中优先级) ✅ **已完成**
+   - 当前位置: `react_web/app/components/Button.tsx`，并已在 `main.tsx` 中用于对话区按钮
    - 复杂度: 低
    - 预计工作量: 0.5 天
+   - **状态**: ✅ 已完成并集成到 React Router 主界面
+   - **特性**:
+     - 提供统一的 Button 外观和变体（primary / secondary / danger 等）
+     - 已构建为独立组件 (`static/bundles/Button.js`)，可在传统 HTML 中复用
 
 **成功指标**:
 - ✅ StatusToast 组件已完成迁移
 - ✅ Modal/Dialog 组件已完成迁移
-- ✅ 至少 3 个组件完成迁移（2/3 完成，接近目标）
+- ✅ 至少 3 个组件完成迁移（3/3 完成）
 - ✅ 事件总线通信机制验证（StatusToast 和 Modal 都使用全局 API 方式）
 - ✅ 性能无明显下降
 - ✅ 旧代码可以回退（StatusToast 和 Modal 都保持向后兼容）
@@ -449,7 +453,7 @@ mkdir -p app/components/MyComponent
 ### 步骤 4: 构建并集成
 ```bash
 npm run build:component
-# 输出到 ../static/MyComponent.js
+# 输出到 ../static/bundles/MyComponent.js
 ```
 
 ### 步骤 5: 在 HTML 中使用

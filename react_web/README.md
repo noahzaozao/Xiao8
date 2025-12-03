@@ -325,7 +325,7 @@ npm run build:component
      - 将 React / ReactDOM 标记为外部依赖，改为从本地 `/static/bundles/` 加载
      - 自动处理 `process.env.NODE_ENV`
      - 自动把 CSS 样式内联到 JS，注入到 `<head>`
-   - 通过 `scripts/copy-component.js` 和 `scripts/copy-status-toast.js` 复制到 `static/bundles/`
+   - 通过 `scripts/copy-component.js`、`scripts/copy-status-toast.js`、`scripts/copy-modal.js`、`scripts/copy-button.js` 复制到 `static/bundles/`
 
 构建输出：
 
@@ -333,6 +333,7 @@ npm run build:component
 - `static/bundles/react-dom-client.js` - ReactDOM 客户端库（来自 `build:react-bundles`）
 - `static/bundles/StatusToast.js` - StatusToast 组件
 - `static/bundles/Modal.js` - Modal 对话框组件（Alert/Confirm/Prompt）
+- `static/bundles/Button.js` - Button 基础按钮组件
 
 ### 在传统 HTML 中使用组件
 
@@ -740,7 +741,9 @@ cp vite.components.config.ts vite.my-component.config.ts
    - 完全替代 `common_dialogs.js`，向后兼容
    - 支持三种对话框类型：Alert、Confirm（含危险操作样式）、Prompt
    - 完整的交互功能：ESC 键关闭、点击遮罩关闭、自动焦点管理
-3. ⏳ Button - 基础 UI 组件
+3. ✅ Button - 基础 UI 组件（已完成 ✅）
+   - 已在 React Router 主界面用于对话区按钮
+   - 已构建为独立组件 (`static/bundles/Button.js`)，可按需在传统 HTML 中使用
 
 #### 第二阶段：中等复杂度组件
 1. ⚠️ ChatContainer - 需要 WebSocket 集成
