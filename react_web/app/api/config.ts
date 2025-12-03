@@ -9,8 +9,8 @@
  */
 export function getApiBaseUrl(): string {
   // 浏览器环境：优先从 window 获取（HTML 中设置）
-  if (typeof window !== 'undefined' && (window as any).API_BASE_URL) {
-    return (window as any).API_BASE_URL;
+  if (typeof window !== 'undefined' && window.API_BASE_URL) {
+    return window.API_BASE_URL;
   }
   
   // 构建时环境变量（React 项目）
@@ -28,8 +28,8 @@ export function getApiBaseUrl(): string {
  */
 export function getStaticServerUrl(): string {
   // 浏览器环境：优先从 window 获取
-  if (typeof window !== 'undefined' && (window as any).STATIC_SERVER_URL) {
-    return (window as any).STATIC_SERVER_URL;
+  if (typeof window !== 'undefined' && window.STATIC_SERVER_URL) {
+    return window.STATIC_SERVER_URL;
   }
   
   // 构建时环境变量
@@ -47,8 +47,8 @@ export function getStaticServerUrl(): string {
  */
 export function getWebSocketUrl(): string {
   // 浏览器环境：优先从 window 获取
-  if (typeof window !== 'undefined' && (window as any).WEBSOCKET_URL) {
-    return (window as any).WEBSOCKET_URL;
+  if (typeof window !== 'undefined' && window.WEBSOCKET_URL) {
+    return window.WEBSOCKET_URL;
   }
   
   // 构建时环境变量

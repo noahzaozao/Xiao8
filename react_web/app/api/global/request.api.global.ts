@@ -62,13 +62,12 @@ function getWindowRequest(): any {
     return null;
   }
 
-  const win = window as any;
-  if (!win.request) {
+  if (!window.request) {
     console.warn('[RequestAPI] window.request 未初始化，请确保已加载 request.global.js');
     return null;
   }
 
-  return win.request;
+  return window.request;
 }
 
 /**
@@ -83,7 +82,6 @@ function initRequestAPI() {
     return;
   }
 
-  const win = window as any;
   const windowRequest = getWindowRequest();
 
   if (!windowRequest) {
@@ -95,7 +93,7 @@ function initRequestAPI() {
   }
 
   // 直接暴露整个 RequestAPI 命名空间对象
-  win.RequestAPI = RequestAPICore;
+  window.RequestAPI = RequestAPICore;
 
   console.log('[RequestAPI] API 命名空间已暴露到全局 window.RequestAPI');
   console.log('[RequestAPI] 可用方法:', Object.keys(RequestAPICore).join(', '));
@@ -109,11 +107,11 @@ if (typeof window !== 'undefined') {
     const startTime = Date.now();
     
     // 等待 window.request 初始化
-    while (!(window as any).request && Date.now() - startTime < maxWait) {
+    while (!window.request && Date.now() - startTime < maxWait) {
       await new Promise(resolve => setTimeout(resolve, 50));
     }
     
-    if ((window as any).request) {
+    if (window.request) {
       initRequestAPI();
     } else {
       console.warn('[RequestAPI] 等待 request.global.js 初始化超时，RequestAPI 可能无法正常工作');

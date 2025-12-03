@@ -85,7 +85,7 @@ export default function Main() {
       window.addEventListener('error', handleResourceError, true);
 
       // 保存清理函数引用
-      (window as any).__staticErrorHandlers = {
+      window.__staticErrorHandlers = {
         handleError,
         handleResourceError,
         originalConsoleError
@@ -117,38 +117,38 @@ export default function Main() {
     // ============================================
     
     // 1. 暴露 request 实例和工具函数（与 request.global.js 保持一致）
-    (window as any).request = request;
-    (window as any).buildApiUrl = buildApiUrl;
-    (window as any).buildStaticUrl = buildStaticUrl;
-    (window as any).buildWebSocketUrl = buildWebSocketUrl;
+    window.request = request;
+    window.buildApiUrl = buildApiUrl;
+    window.buildStaticUrl = buildStaticUrl;
+    window.buildWebSocketUrl = buildWebSocketUrl;
     
     // 2. 暴露配置变量（与 request.global.js 保持一致）
-    (window as any).API_BASE_URL = getApiBaseUrl();
-    (window as any).STATIC_SERVER_URL = getStaticServerUrl();
-    (window as any).WEBSOCKET_URL = getWebSocketUrl();
+    window.API_BASE_URL = getApiBaseUrl();
+    window.STATIC_SERVER_URL = getStaticServerUrl();
+    window.WEBSOCKET_URL = getWebSocketUrl();
     
     // 3. 暴露 RequestAPI 命名空间对象（与 request.api.global.js 保持一致）
-    (window as any).RequestAPI = RequestAPI;
+    window.RequestAPI = RequestAPI;
     
     // 4. 暴露 ReactInit 工具对象（与 react_init.js 保持一致）
-    if (!(window as any).ReactInit) {
-      (window as any).ReactInit = {} as any;
+    if (!window.ReactInit) {
+      window.ReactInit = {} as any;
     }
-    (window as any).ReactInit.waitForRequestInit = waitForRequestInit;
-    (window as any).ReactInit.waitForRequestAPIInit = waitForRequestAPIInit;
-    (window as any).ReactInit.checkRequestAvailable = checkRequestAvailable;
+    window.ReactInit!.waitForRequestInit = waitForRequestInit;
+    window.ReactInit!.waitForRequestAPIInit = waitForRequestAPIInit;
+    window.ReactInit!.checkRequestAvailable = checkRequestAvailable;
     
     console.log('[React Main] 所有 window.* 对象已暴露，与 HTML/JS 版本兼容');
     console.log('[React Main] 初始化完成:', {
-      request: !!(window as any).request,
-      buildApiUrl: !!(window as any).buildApiUrl,
-      buildStaticUrl: !!(window as any).buildStaticUrl,
-      buildWebSocketUrl: !!(window as any).buildWebSocketUrl,
-      API_BASE_URL: (window as any).API_BASE_URL,
-      STATIC_SERVER_URL: (window as any).STATIC_SERVER_URL,
-      WEBSOCKET_URL: (window as any).WEBSOCKET_URL,
-      RequestAPI: !!(window as any).RequestAPI,
-      ReactInit: !!(window as any).ReactInit,
+      request: !!window.request,
+      buildApiUrl: !!window.buildApiUrl,
+      buildStaticUrl: !!window.buildStaticUrl,
+      buildWebSocketUrl: !!window.buildWebSocketUrl,
+      API_BASE_URL: window.API_BASE_URL,
+      STATIC_SERVER_URL: window.STATIC_SERVER_URL,
+      WEBSOCKET_URL: window.WEBSOCKET_URL,
+      RequestAPI: !!window.RequestAPI,
+      ReactInit: !!window.ReactInit,
     });
 
     // 拦截机制：在外部 JS 文件加载之前，设置路径拦截
@@ -157,7 +157,7 @@ export default function Main() {
       // 辅助函数：转换静态资源路径
       const convertStaticPath = (value: string): string => {
         if (typeof value === 'string' && value.startsWith('/static/')) {
-          return (window as any).buildStaticUrl(value);
+          return window.buildStaticUrl!(value);
         }
         return value;
       };
@@ -199,7 +199,7 @@ export default function Main() {
             if (typeof value === 'string') {
               // 替换 CSS 中的 url('/static/...') 路径
               value = value.replace(/url\(['"]?(\/static\/[^'"]+)['"]?\)/g, (match, path) => {
-                return `url('${(window as any).buildStaticUrl(path)}')`;
+                return `url('${window.buildStaticUrl!(path)}')`;
               });
             }
             if (originalCssTextDescriptor.set) {
@@ -226,7 +226,7 @@ export default function Main() {
               if (typeof value === 'string') {
                 // 替换 CSS 中的 url('/static/...') 路径
                 value = value.replace(/url\(['"]?(\/static\/[^'"]+)['"]?\)/g, (match, path) => {
-                  return `url('${(window as any).buildStaticUrl(path)}')`;
+                  return `url('${window.buildStaticUrl!(path)}')`;
                 });
               }
               if (originalDescriptor.set) {
@@ -300,7 +300,7 @@ export default function Main() {
     }
 
     // 标记配置是否已加载
-    (window as any).pageConfigReady = loadPageConfig();
+    window.pageConfigReady = loadPageConfig();
 
     // 全局菜单跟踪机制
     // 方法1: 使用 window（类型安全）
@@ -663,7 +663,7 @@ export default function Main() {
     (async () => {
       try {
         // 等待配置加载完成
-        await (window as any).pageConfigReady;
+        await window.pageConfigReady;
 
         // 按顺序加载基础脚本
         for (const src of baseScripts) {
@@ -715,13 +715,13 @@ export default function Main() {
       window.removeEventListener("beforeunload", sendBeacon);
       window.removeEventListener("unload", sendBeacon);
       // 移除错误处理监听器（如果存在）
-      if ((window as any).__staticErrorHandlers) {
-        const handlers = (window as any).__staticErrorHandlers;
+      if (window.__staticErrorHandlers) {
+        const handlers = window.__staticErrorHandlers;
         window.removeEventListener('error', handlers.handleError, true);
         window.removeEventListener('error', handlers.handleResourceError, true);
         // 恢复原始的 console.error
         console.error = handlers.originalConsoleError;
-        delete (window as any).__staticErrorHandlers;
+        delete window.__staticErrorHandlers;
       }
     };
   }, []);
@@ -772,7 +772,7 @@ export default function Main() {
   // 设置 React 就绪信号，供 StatusToast 和其他组件使用
   useEffect(() => {
     // 设置全局标志
-    (window as any).__REACT_READY = true;
+    window.__REACT_READY = true;
     // 派发自定义事件
     window.dispatchEvent(new CustomEvent('react-ready'));
   }, []);

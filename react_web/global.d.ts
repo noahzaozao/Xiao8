@@ -98,6 +98,13 @@ interface Window {
   // StatusToast 消息队列
   __statusToastQueue?: Array<{message: string; duration: number}>;
   
+  // 静态资源错误处理器（开发环境使用）
+  __staticErrorHandlers?: {
+    handleError: (event: ErrorEvent) => boolean | void;
+    handleResourceError: (event: Event) => boolean | void;
+    originalConsoleError: (...args: any[]) => void;
+  };
+  
   // 国际化函数
   t?: (key: string, params?: Record<string, any>) => string;
 }
