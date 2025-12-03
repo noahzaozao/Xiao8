@@ -85,7 +85,17 @@ function getHooksDispatcher() {
       useActionState: function() { return [null, function() {}]; },
       useOptimistic: function() { return null; },
       use: function() { return null; },
-      cache: function(fn) { return fn; }
+      cache: function(fn) { return fn; },
+      useMemoCache: function(size) {
+        console.warn('[React] useMemoCache called before ReactDOM initialization, using temporary implementation');
+        // 返回一个指定大小的数组，每个元素初始化为 undefined
+        // 这是一个安全的 no-op 实现，在 ReactDOM 初始化后会切换到真正的实现
+        var cache = [];
+        for (var i = 0; i < size; i++) {
+          cache[i] = undefined;
+        }
+        return cache;
+      }
     };
   }
   return __tempHooksDispatcher;
@@ -99,7 +109,7 @@ function getHooksDispatcher() {
         );
         
         // 修复所有 hooks，使其使用 getHooksDispatcher()
-        const hookNames = ['useState', 'useEffect', 'useCallback', 'useMemo', 'useRef', 'useContext', 'useReducer', 'useLayoutEffect', 'useImperativeHandle', 'useId', 'useSyncExternalStore', 'useInsertionEffect', 'useTransition', 'useDeferredValue', 'useActionState', 'useOptimistic', 'use', 'cache'];
+        const hookNames = ['useState', 'useEffect', 'useCallback', 'useMemo', 'useRef', 'useContext', 'useReducer', 'useLayoutEffect', 'useImperativeHandle', 'useId', 'useSyncExternalStore', 'useInsertionEffect', 'useTransition', 'useDeferredValue', 'useActionState', 'useOptimistic', 'use', 'cache', 'useMemoCache'];
         
         for (const hookName of hookNames) {
           // 匹配 react_production.hookName = function(...) { return ReactSharedInternals.H.hookName(...); }
@@ -127,6 +137,25 @@ function getHooksDispatcher() {
         content = content.replace(
           /ReactSharedInternals\.H\.(\w+)/g,
           'getHooksDispatcher().$1'
+        );
+        
+        // 修复 __COMPILER_RUNTIME.c 调用，添加安全检查
+        content = content.replace(
+          /react_production\.__COMPILER_RUNTIME\s*=\s*\{[^}]*c:\s*function\s*\(size\)\s*\{[^}]*return\s+getHooksDispatcher\(\)\.useMemoCache\(size\);[^}]*\}/s,
+          `react_production.__COMPILER_RUNTIME = {
+    __proto__: null,
+    c: function(size) {
+      var d = getHooksDispatcher();
+      return typeof d.useMemoCache === 'function' ? d.useMemoCache(size) : (function() {
+        console.warn('[React] useMemoCache not available, returning empty array');
+        var cache = [];
+        for (var i = 0; i < size; i++) {
+          cache[i] = undefined;
+        }
+        return cache;
+      }());
+    }
+  }`
         );
         
         writeFileSync(jsFile, content, "utf-8");

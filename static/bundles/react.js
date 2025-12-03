@@ -37,7 +37,17 @@ function getHooksDispatcher() {
       useActionState: function() { return [null, function() {}]; },
       useOptimistic: function() { return null; },
       use: function() { return null; },
-      cache: function(fn) { return fn; }
+      cache: function(fn) { return fn; },
+      useMemoCache: function(size) {
+        console.warn('[React] useMemoCache called before ReactDOM initialization, using temporary implementation');
+        // 返回一个指定大小的数组，每个元素初始化为 undefined
+        // 这是一个安全的 no-op 实现，在 ReactDOM 初始化后会切换到真正的实现
+        var cache = [];
+        for (var i = 0; i < size; i++) {
+          cache[i] = undefined;
+        }
+        return cache;
+      }
     };
   }
   return __tempHooksDispatcher;
@@ -305,8 +315,17 @@ function requireReact_production() {
   react_production.__COMPILER_RUNTIME = {
     __proto__: null,
     c: function(size) {
-      return getHooksDispatcher().useMemoCache(size);
+      var d = getHooksDispatcher();
+      return typeof d.useMemoCache === 'function' ? d.useMemoCache(size) : (function() {
+        console.warn('[React] useMemoCache not available, returning empty array');
+        var cache = [];
+        for (var i = 0; i < size; i++) {
+          cache[i] = undefined;
+        }
+        return cache;
+      }());
     }
+  }
   };
   react_production.cache = function(fn) {
     return function() {

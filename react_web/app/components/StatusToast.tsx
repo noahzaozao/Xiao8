@@ -111,13 +111,13 @@ export function StatusToast() {
   // 暴露到全局作用域，供 app.js 和其他模块调用
   useEffect(() => {
     // 处理挂载前缓存的消息队列（在设置全局函数之前）
-    const messageQueue = (window as any).__statusToastQueue || [];
+    const messageQueue = window.__statusToastQueue || [];
     const pendingMessages = messageQueue.length > 0 ? [...messageQueue] : [];
     
     // 创建一个包装函数，确保在 React 完全初始化后再调用 showToast
     const wrappedShowToast = (message: string, duration: number = 3000) => {
       // 首先检查公共的 React 就绪信号
-      if ((window as any).__REACT_READY) {
+      if (window.__REACT_READY) {
         // React 已就绪，直接调用
         showToast(message, duration);
         return;
@@ -129,10 +129,10 @@ export function StatusToast() {
       } catch (e) {
         console.warn('[Status Toast] React 未就绪，消息已加入队列:', e);
         // 将消息加入队列，等待 React 就绪
-        if (!(window as any).__statusToastQueue) {
-          (window as any).__statusToastQueue = [];
+        if (!window.__statusToastQueue) {
+          window.__statusToastQueue = [];
         }
-        (window as any).__statusToastQueue.push({ message, duration });
+        window.__statusToastQueue.push({ message, duration });
         
         // 监听 react-ready 事件
         const handleReactReady = () => {
@@ -164,7 +164,7 @@ export function StatusToast() {
         }, 300); // 增加延迟确保 ReactDOM 完全就绪
       }
       // 清空队列
-      (window as any).__statusToastQueue = [];
+      window.__statusToastQueue = [];
     }
     
     // 触发就绪事件，通知其他代码组件已准备好
@@ -175,12 +175,12 @@ export function StatusToast() {
       // 检查是否有延迟的消息需要处理（例如 load 事件中的消息）
       // 在就绪事件触发后，再次检查队列，以防有新的消息加入
       setTimeout(() => {
-        const delayedQueue = (window as any).__statusToastQueue || [];
+        const delayedQueue = window.__statusToastQueue || [];
         if (delayedQueue.length > 0) {
           const lastDelayedMessage = delayedQueue[delayedQueue.length - 1];
           if (lastDelayedMessage) {
             wrappedShowToast(lastDelayedMessage.message, lastDelayedMessage.duration);
-            (window as any).__statusToastQueue = [];
+            window.__statusToastQueue = [];
           }
         }
       }, 100);
@@ -191,21 +191,21 @@ export function StatusToast() {
         window.addEventListener('load', () => {
           // 延迟一点，确保 app.js 中的 load 事件监听器已经执行
           setTimeout(() => {
-            const loadQueue = (window as any).__statusToastQueue || [];
+            const loadQueue = window.__statusToastQueue || [];
             if (loadQueue.length > 0) {
               const lastLoadMessage = loadQueue[loadQueue.length - 1];
               if (lastLoadMessage) {
                 wrappedShowToast(lastLoadMessage.message, lastLoadMessage.duration);
-                (window as any).__statusToastQueue = [];
+                window.__statusToastQueue = [];
               }
             } else {
               // 如果队列为空，可能是 app.js 还没有调用，或者条件不满足
               // 检查 app.js 的调用条件，如果满足则主动显示消息
-              if (typeof (window as any).lanlan_config !== 'undefined' && (window as any).lanlan_config?.lanlan_name) {
-                const message = (window as any).t 
-                  ? (window as any).t('app.started', {name: (window as any).lanlan_config.lanlan_name})
-                  : `${(window as any).lanlan_config.lanlan_name}已启动`;
-                wrappedShowToast(message, 300000);
+              if (typeof window.lanlan_config !== 'undefined' && window.lanlan_config?.lanlan_name) {
+                const message = window.t 
+                  ? window.t('app.started', {name: window.lanlan_config.lanlan_name})
+                  : `${window.lanlan_config.lanlan_name}已启动`;
+                wrappedShowToast(message, 3000);
               }
             }
           }, 1500); // 延迟 1.5 秒，确保 app.js 的 load 事件监听器（延迟 1 秒）已经执行
@@ -213,19 +213,19 @@ export function StatusToast() {
       } else {
         // load 事件已经触发，立即检查
         setTimeout(() => {
-          const loadQueue = (window as any).__statusToastQueue || [];
+          const loadQueue = window.__statusToastQueue || [];
           if (loadQueue.length > 0) {
             const lastLoadMessage = loadQueue[loadQueue.length - 1];
             if (lastLoadMessage) {
               wrappedShowToast(lastLoadMessage.message, lastLoadMessage.duration);
-              (window as any).__statusToastQueue = [];
+              window.__statusToastQueue = [];
             }
           } else {
             // 如果队列为空，检查是否需要主动显示消息
-            if (typeof (window as any).lanlan_config !== 'undefined' && (window as any).lanlan_config?.lanlan_name) {
-              const message = (window as any).t 
-                ? (window as any).t('app.started', {name: (window as any).lanlan_config.lanlan_name})
-                : `${(window as any).lanlan_config.lanlan_name}已启动`;
+            if (typeof window.lanlan_config !== 'undefined' && window.lanlan_config?.lanlan_name) {
+              const message = window.t 
+                ? window.t('app.started', {name: window.lanlan_config.lanlan_name})
+                : `${window.lanlan_config.lanlan_name}已启动`;
               wrappedShowToast(message, 300000);
             }
           }

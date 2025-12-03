@@ -3951,7 +3951,7 @@ if (document.readyState === "complete" || document.readyState === "interactive")
 window.addEventListener("load", () => {
     setTimeout(() => {
         if (typeof window.showStatusToast === 'function' && typeof lanlan_config !== 'undefined' && lanlan_config.lanlan_name) {
-            window.showStatusToast(window.t ? window.t('app.started', {name: lanlan_config.lanlan_name}) : `${lanlan_config.lanlan_name}已启动`, 300000);
+            window.showStatusToast(window.t ? window.t('app.started', {name: lanlan_config.lanlan_name}) : `${lanlan_config.lanlan_name}已启动`, 3000);
         }
     }, 1000);
 });

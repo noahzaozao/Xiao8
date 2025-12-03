@@ -91,6 +91,15 @@ interface Window {
 
   // 应用初始化函数
   showStatusToast?: (message: string, duration?: number) => void;
+  
+  // React 就绪标志
+  __REACT_READY?: boolean;
+  
+  // StatusToast 消息队列
+  __statusToastQueue?: Array<{message: string; duration: number}>;
+  
+  // 国际化函数
+  t?: (key: string, params?: Record<string, any>) => string;
 }
 
 // 声明全局变量（可以直接访问，不需要 window.）

@@ -321,13 +321,37 @@ export default function Main() {
     // 方法3: 直接访问（如果已在 global.d.ts 中声明）
     // activeMenuCount = 0;
 
-    // Beacon功能 - 页面关闭时发送信号给服务器（使用新的 API 模块）
+    // Beacon功能 - 页面关闭时发送信号给服务器（使用 navigator.sendBeacon 同步发送）
     let beaconSent = false;
-    async function sendBeacon() {
+    function sendBeacon() {
       if (beaconSent) return;
       beaconSent = true;
 
-      await RequestAPI.sendShutdownBeacon(true);
+      try {
+        const payload = {
+          timestamp: Date.now(),
+          action: 'shutdown',
+        };
+        
+        // 将 payload 序列化为 Blob，设置正确的 content-type
+        const blob = new Blob([JSON.stringify(payload)], {
+          type: 'application/json',
+        });
+        
+        // 使用 navigator.sendBeacon 同步排队发送（浏览器会在页面关闭时发送）
+        if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+          const success = navigator.sendBeacon('/api/beacon/shutdown', blob);
+          if (success) {
+            console.log('[Beacon] 关闭信号已排队发送');
+          } else {
+            console.warn('[Beacon] sendBeacon 返回 false，请求可能未排队');
+          }
+        } else {
+          console.warn('[Beacon] navigator.sendBeacon 不可用');
+        }
+      } catch (error) {
+        console.error('[Beacon] 发送关闭信号时出错:', error);
+      }
     }
 
     window.addEventListener("beforeunload", sendBeacon);
@@ -405,7 +429,11 @@ export default function Main() {
         const charactersData = await RequestAPI.getCharacters();
 
         // 确保 lanlan_config.lanlan_name 更新到 chara_manager.html 当前选中的猫娘
-        currentLanlanName = window.lanlan_config!.lanlan_name = charactersData["当前猫娘"];
+        // 安全地初始化 window.lanlan_config（如果缺失）
+        window.lanlan_config = window.lanlan_config ?? { lanlan_name: "" };
+        // 设置 lanlan_name，处理 charactersData["当前猫娘"] 可能为 undefined 的情况
+        window.lanlan_config.lanlan_name = charactersData["当前猫娘"];
+        currentLanlanName = window.lanlan_config.lanlan_name;
         console.log("AFTER currentLanlanName: ", currentLanlanName);
         
         // 检查角色名称是否有效
@@ -574,7 +602,7 @@ export default function Main() {
       const textInputBox = document.getElementById("textInputBox");
       const chatContainer = document.getElementById("chat-container");
       const toggleBtn = document.getElementById("toggle-chat-btn");
-      let autoCollapseTimer: NodeJS.Timeout | null = null;
+      let autoCollapseTimer: ReturnType<typeof setTimeout> | null = null;
 
       const hasVisitedBefore = localStorage.getItem("chat_tooltip_shown");
 
