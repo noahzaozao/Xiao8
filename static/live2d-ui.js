@@ -24,7 +24,7 @@ Live2DManager.prototype.setupHTMLLockIcon = function(model) {
     lockIcon.id = 'live2d-lock-icon';
     Object.assign(lockIcon.style, {
         position: 'fixed',
-        zIndex: '30',
+        zIndex: '99999',  // 确保始终浮动在顶层，不被live2d遮挡
         width: '32px',
         height: '32px',
         cursor: 'pointer',
@@ -155,7 +155,7 @@ Live2DManager.prototype.setupFloatingButtons = function(model) {
     buttonsContainer.id = 'live2d-floating-buttons';
     Object.assign(buttonsContainer.style, {
         position: 'fixed',
-        zIndex: '30',
+        zIndex: '99999',  // 确保始终浮动在顶层，不被live2d遮挡
         pointerEvents: 'none',
         display: 'none', // 初始隐藏，鼠标靠近时才显示
         flexDirection: 'column',
@@ -534,7 +534,7 @@ Live2DManager.prototype.setupFloatingButtons = function(model) {
         top: '0',
         left: '0',
         transform: 'none',
-        zIndex: '30',
+        zIndex: '99999',  // 确保始终浮动在顶层，不被live2d遮挡
         pointerEvents: 'auto', // 允许交互，包括拖动
         display: 'none' // 初始隐藏，只在点击"请她离开"后显示
     });
@@ -728,6 +728,7 @@ Live2DManager.prototype.createPopup = function(buttonId) {
         left: '100%',
         top: '0',
         marginLeft: '8px',
+        zIndex: '100000',  // 确保弹出菜单置顶，不被任何元素遮挡
         background: 'rgba(255, 255, 255, 0.65)',  // Fluent Acrylic
         backdropFilter: 'saturate(180%) blur(20px)',  // Fluent 标准模糊
         border: '1px solid rgba(255, 255, 255, 0.18)',  // 微妙高光边框
