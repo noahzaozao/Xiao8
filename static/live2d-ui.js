@@ -22,17 +22,59 @@ Live2DManager.prototype.setupHTMLLockIcon = function(model) {
 
     const lockIcon = document.createElement('div');
     lockIcon.id = 'live2d-lock-icon';
-    lockIcon.innerText = this.isLocked ? '🔒' : '🔓';
     Object.assign(lockIcon.style, {
         position: 'fixed',
         zIndex: '30',
-        fontSize: '24px',
+        width: '32px',
+        height: '32px',
         cursor: 'pointer',
         userSelect: 'none',
-        textShadow: '0 0 4px black',
         pointerEvents: 'auto',
         display: 'none' // 默认隐藏
     });
+    
+    // 添加版本号防止缓存
+    const iconVersion = '?v=' + Date.now();
+    
+    // 创建图片容器
+    const imgContainer = document.createElement('div');
+    Object.assign(imgContainer.style, {
+        position: 'relative',
+        width: '32px',
+        height: '32px'
+    });
+    
+    // 创建锁定状态图片
+    const imgLocked = document.createElement('img');
+    imgLocked.src = '/static/icons/locked_icon.png' + iconVersion;
+    imgLocked.alt = 'Locked';
+    Object.assign(imgLocked.style, {
+        position: 'absolute',
+        width: '32px',
+        height: '32px',
+        objectFit: 'contain',
+        pointerEvents: 'none',
+        opacity: this.isLocked ? '1' : '0',
+        transition: 'opacity 0.3s ease'
+    });
+    
+    // 创建解锁状态图片
+    const imgUnlocked = document.createElement('img');
+    imgUnlocked.src = '/static/icons/unlocked_icon.png' + iconVersion;
+    imgUnlocked.alt = 'Unlocked';
+    Object.assign(imgUnlocked.style, {
+        position: 'absolute',
+        width: '32px',
+        height: '32px',
+        objectFit: 'contain',
+        pointerEvents: 'none',
+        opacity: this.isLocked ? '0' : '1',
+        transition: 'opacity 0.3s ease'
+    });
+    
+    imgContainer.appendChild(imgLocked);
+    imgContainer.appendChild(imgUnlocked);
+    lockIcon.appendChild(imgContainer);
 
     document.body.appendChild(lockIcon);
     this._lockIconElement = lockIcon;
@@ -40,7 +82,10 @@ Live2DManager.prototype.setupHTMLLockIcon = function(model) {
     lockIcon.addEventListener('click', (e) => {
         e.stopPropagation();
         this.isLocked = !this.isLocked;
-        lockIcon.innerText = this.isLocked ? '🔒' : '🔓';
+        
+        // 切换图标显示
+        imgLocked.style.opacity = this.isLocked ? '1' : '0';
+        imgUnlocked.style.opacity = this.isLocked ? '0' : '1';
 
         if (this.isLocked) {
             container.style.pointerEvents = 'none';
