@@ -2529,11 +2529,11 @@ function init_app(){
         // 【修复】将锁定状态设为锁定，告知 Electron 进行全局鼠标穿透
         if (window.live2dManager) {
             window.live2dManager.isLocked = true;
-            // 同步更新锁图标的显示状态
+            // 同步更新锁图标的显示状态（注意 alt 属性是英文）
             const lockIcon = document.getElementById('live2d-lock-icon');
             if (lockIcon) {
-                const imgLocked = lockIcon.querySelector('img[alt="已锁定"], img:first-child');
-                const imgUnlocked = lockIcon.querySelector('img[alt="未锁定"], img:last-child');
+                const imgLocked = lockIcon.querySelector('img[alt="Locked"]');
+                const imgUnlocked = lockIcon.querySelector('img[alt="Unlocked"]');
                 if (imgLocked) imgLocked.style.opacity = '1';
                 if (imgUnlocked) imgUnlocked.style.opacity = '0';
             }
@@ -2712,12 +2712,26 @@ function init_app(){
             console.log('[App] 已恢复 live2d-canvas 的可见性和鼠标事件，isLocked:', isLocked);
         }
         
-        // 第五步：恢复锁按钮
+        // 第五步：恢复锁按钮，并设置为解锁状态（用户可以拖动模型）
+        // 【修复】统一管理锁定状态：明确设置 isLocked 并同步更新图标
+        if (window.live2dManager) {
+            window.live2dManager.isLocked = false;  // 解锁状态
+        }
         const lockIcon = document.getElementById('live2d-lock-icon');
         if (lockIcon) {
             lockIcon.style.display = 'block';
             lockIcon.style.removeProperty('visibility');
             lockIcon.style.removeProperty('opacity');
+            // 同步更新锁图标的显示状态为解锁（注意 alt 属性是英文）
+            const imgLocked = lockIcon.querySelector('img[alt="Locked"]');
+            const imgUnlocked = lockIcon.querySelector('img[alt="Unlocked"]');
+            if (imgLocked) imgLocked.style.opacity = '0';
+            if (imgUnlocked) imgUnlocked.style.opacity = '1';
+        }
+        // 同步更新 canvas 的 pointerEvents（解锁状态允许交互）
+        const live2dCanvasForLock = document.getElementById('live2d-canvas');
+        if (live2dCanvasForLock) {
+            live2dCanvasForLock.style.pointerEvents = 'auto';
         }
         
         // 第六步：恢复浮动按钮系统（使用 !important 强制显示，覆盖之前的隐藏样式）
