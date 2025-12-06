@@ -2506,6 +2506,39 @@ function init_app(){
         }
         console.log('[App] 已关闭所有弹窗，数量:', allPopups.length);
         
+        // 【修复】重置所有浮动按钮的状态（清除高亮、恢复默认背景色和图标状态）
+        if (window.live2dManager && window.live2dManager._floatingButtons) {
+            Object.keys(window.live2dManager._floatingButtons).forEach(btnId => {
+                const buttonData = window.live2dManager._floatingButtons[btnId];
+                if (buttonData && buttonData.button) {
+                    // 重置按钮激活状态
+                    buttonData.button.dataset.active = 'false';
+                    // 恢复默认背景色（Fluent Acrylic）
+                    buttonData.button.style.background = 'rgba(255, 255, 255, 0.65)';
+                    // 恢复图标状态（显示 off 图标，隐藏 on 图标）
+                    if (buttonData.imgOff) {
+                        buttonData.imgOff.style.opacity = '1';
+                    }
+                    if (buttonData.imgOn) {
+                        buttonData.imgOn.style.opacity = '0';
+                    }
+                }
+            });
+        }
+        
+        // 【修复】将锁定状态设为锁定，告知 Electron 进行全局鼠标穿透
+        if (window.live2dManager) {
+            window.live2dManager.isLocked = true;
+            // 同步更新锁图标的显示状态
+            const lockIcon = document.getElementById('live2d-lock-icon');
+            if (lockIcon) {
+                const imgLocked = lockIcon.querySelector('img[alt="已锁定"], img:first-child');
+                const imgUnlocked = lockIcon.querySelector('img[alt="未锁定"], img:last-child');
+                if (imgLocked) imgLocked.style.opacity = '1';
+                if (imgUnlocked) imgUnlocked.style.opacity = '0';
+            }
+        }
+        
         // 【修复】隐藏 Live2D canvas，使 Electron 的 alpha 检测认为该区域完全透明
         // 仅设置 pointer-events: none 不够，因为 Electron 根据像素 alpha 值来决定事件转发
         // 必须设置 visibility: hidden 来确保 canvas 不渲染任何像素
