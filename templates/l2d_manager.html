@@ -302,7 +302,6 @@
     <script src="/static/live2d-ui-popup.js"></script>
     <script src="/static/live2d-ui-hud.js"></script>
     <script src="/static/live2d-ui-drag.js"></script>
-    <script src="/static/live2d-ui.js"></script>
     <script src="/static/live2d-init.js"></script>
 
     <script>
@@ -706,14 +705,7 @@
                     if (live2dModel && live2dModel.internalModel) {
                         const canvas = document.getElementById('live2d-canvas');
                         if (canvas) {
-                            // 监听拖动和滚轮事件
-                            const markChanged = () => {
-                                window.hasUnsavedChanges = true;
-                                console.log('检测到模型位置/缩放变化，hasUnsavedChanges = true');
-                            };
-                            canvas.addEventListener('mouseup', markChanged);
-                            canvas.addEventListener('wheel', markChanged);
-                            canvas.addEventListener('touchend', markChanged);
+                            // 位置和缩放的自动保存现在由 live2d-interaction.js 处理
                         }
                     }
 
