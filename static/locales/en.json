@@ -710,7 +710,12 @@
     "status": {
       "connecting": "Connecting to Agent server...",
       "ready": "Agent server is ready",
-      "enabled": "Agent mode enabled"
+      "enabled": "Agent mode enabled",
+      "disabled": "Agent mode disabled",
+      "disabledError": "Agent mode disabled (partial cleanup failed)",
+      "enableFailed": "Enable failed",
+      "disconnected": "Server connection disconnected",
+      "agentDisconnected": "Agent server connection disconnected"
     },
     "taskHud": {
       "title": "Agent Tasks",

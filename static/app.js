@@ -3213,7 +3213,7 @@ function init_app(){
                             });
                             // 如果有特定通知则显示，否则显示默认关闭消息
                             if (!notification) {
-                                setFloatingAgentStatus('Agent模式已关闭');
+                                setFloatingAgentStatus(window.t ? window.t('agent.status.disabled') : 'Agent模式已关闭');
                             }
                             
                             if (!agentStateMachine._popupOpen) {
@@ -3302,8 +3302,8 @@ function init_app(){
                     }
                 });
                 
-                setFloatingAgentStatus('服务器连接已断开');
-                showStatusToast('Agent 服务器连接已断开', 3000);
+                setFloatingAgentStatus(window.t ? window.t('agent.status.disconnected') : '服务器连接已断开');
+                showStatusToast(window.t ? window.t('agent.status.agentDisconnected') : 'Agent 服务器连接已断开', 3000);
                 
                 agentStateMachine.transition(AgentPopupState.OFFLINE, 'connection lost');
                 window.stopAgentTaskPolling();
@@ -3486,7 +3486,7 @@ function init_app(){
                     agentMasterCheckbox.disabled = false;
                     agentMasterCheckbox.title = window.t ? window.t('settings.toggles.agentMaster') : 'Agent总开关';
                     syncCheckboxUI(agentMasterCheckbox);
-                    setFloatingAgentStatus('Agent模式已开启');
+                    setFloatingAgentStatus(window.t ? window.t('agent.status.enabled') : 'Agent模式已开启');
                     
                     // 【状态机】子开关保持禁用，等待能力检查
                     if (agentKeyboardCheckbox) {
@@ -3576,14 +3576,14 @@ function init_app(){
                         syncCheckboxUI(agentMasterCheckbox);
                         resetSubCheckboxes();
                         window.stopAgentTaskPolling();
-                        setFloatingAgentStatus('开启失败');
+                        setFloatingAgentStatus(window.t ? window.t('agent.status.enableFailed') : '开启失败');
                     }
                 } else {
                     // 关闭操作：立即停止相关检查和轮询
                     window.stopAgentAvailabilityCheck();
                     window.stopAgentTaskPolling();
                     resetSubCheckboxes();
-                    setFloatingAgentStatus('Agent模式已关闭');
+                    setFloatingAgentStatus(window.t ? window.t('agent.status.disabled') : 'Agent模式已关闭');
                     syncCheckboxUI(agentMasterCheckbox);
                     
                     // 禁用 analyzer 并停止所有任务
@@ -3619,7 +3619,7 @@ function init_app(){
                     } catch(e) {
                         if (!isExpired()) {
                             agentStateMachine.endOperation(false, true);
-                            setFloatingAgentStatus('Agent模式已关闭（部分清理失败）');
+                            setFloatingAgentStatus(window.t ? window.t('agent.status.disabledError') : 'Agent模式已关闭（部分清理失败）');
                         }
                     }
                 }
