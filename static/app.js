@@ -3023,6 +3023,7 @@ function init_app(){
     let agentCheckInterval = null;
     let lastFlagsSyncTime = 0;
     const FLAGS_SYNC_INTERVAL = 3000; // 3秒同步一次后端flags状态
+    let connectionFailureCount = 0; // 连接失败计数
     
     // 【改用状态机】追踪 Agent 弹窗是否打开
     let isAgentPopupOpen = false;
@@ -3078,6 +3079,8 @@ function init_app(){
                     if (wasOffline) {
                         setFloatingAgentStatus(window.t ? window.t('agent.status.ready') : 'Agent服务器就绪');
                     }
+                    // 连接恢复，重置失败计数
+                    connectionFailureCount = 0;
                 } else {
                     setFloatingAgentStatus(window.t ? window.t('settings.toggles.serverOffline') : 'Agent服务器未启动');
                     agentStateMachine.transition(AgentPopupState.OFFLINE, 'server offline');
@@ -3095,63 +3098,9 @@ function init_app(){
             return;
         }
         
-        // 【严格节流】定期从后端同步 flags 状态
-        const now = Date.now();
-        if (now - lastFlagsSyncTime >= FLAGS_SYNC_INTERVAL) {
-            lastFlagsSyncTime = now;
-            try {
-                const resp = await fetch('/api/agent/flags');
-                if (resp.ok) {
-                    const data = await resp.json();
-                    if (data.success) {
-                        const analyzerEnabled = data.analyzer_enabled || false;
-                        const flags = data.agent_flags || {};
-                        agentStateMachine.updateCache(true, flags);
-                        
-                        // 如果后端 analyzer 被关闭，同步关闭前端总开关
-                        if (!analyzerEnabled && agentMasterCheckbox.checked && !agentMasterCheckbox._processing) {
-                            console.log('[App] 后端 analyzer 已关闭，同步关闭前端总开关');
-                            agentMasterCheckbox.checked = false;
-                            agentMasterCheckbox._autoDisabled = true;
-                            agentMasterCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
-                            agentMasterCheckbox._autoDisabled = false;
-                            if (typeof agentMasterCheckbox._updateStyle === 'function') agentMasterCheckbox._updateStyle();
-                            [agentKeyboardCheckbox, agentMcpCheckbox].forEach(cb => {
-                                if (cb) {
-                                    cb.checked = false;
-                                    cb.disabled = true;
-                                    if (typeof cb._updateStyle === 'function') cb._updateStyle();
-                                }
-                            });
-                            setFloatingAgentStatus('Agent模式已关闭');
-                            if (!agentStateMachine._popupOpen) {
-                                window.stopAgentAvailabilityCheck();
-                            }
-                            window.stopAgentTaskPolling();
-                            return;
-                        }
-                        
-                        // 同步子开关的 checked 状态（如果后端状态与前端不一致且不在处理中）
-                        if (agentKeyboardCheckbox && !agentKeyboardCheckbox._processing && agentKeyboardCheckbox.checked !== (flags.computer_use_enabled || false)) {
-                            agentKeyboardCheckbox.checked = flags.computer_use_enabled || false;
-                            agentKeyboardCheckbox._autoDisabled = true;
-                            agentKeyboardCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
-                            agentKeyboardCheckbox._autoDisabled = false;
-                            if (typeof agentKeyboardCheckbox._updateStyle === 'function') agentKeyboardCheckbox._updateStyle();
-                        }
-                        if (agentMcpCheckbox && !agentMcpCheckbox._processing && agentMcpCheckbox.checked !== (flags.mcp_enabled || false)) {
-                            agentMcpCheckbox.checked = flags.mcp_enabled || false;
-                            agentMcpCheckbox._autoDisabled = true;
-                            agentMcpCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
-                            agentMcpCheckbox._autoDisabled = false;
-                            if (typeof agentMcpCheckbox._updateStyle === 'function') agentMcpCheckbox._updateStyle();
-                        }
-                    }
-                }
-            } catch (e) {
-                console.warn('[App] 轮询同步 flags 失败:', e);
-            }
-        }
+        // 存储能力检查结果，用于后续 flags 同步时的判断
+        const capabilityResults = {};
+        let capabilityCheckFailed = false;
         
         // 【减少能力检查频率】只在必要时检查子功能可用性
         const checks = [
@@ -3172,39 +3121,195 @@ function init_app(){
                 continue;
             }
             
-            const available = await checkCapability(capability, false);
-            
-            // 检查完成后再次确认总开关仍然开启
-            if (!agentMasterCheckbox.checked) {
-                cb.disabled = true;
-                if (typeof cb._updateStyle === 'function') cb._updateStyle();
-                continue;
-            }
-            
-            cb.disabled = !available;
-            cb.title = available ? name : (window.t ? window.t('settings.toggles.unavailable', {name: name}) : `${name}不可用`);
-            if (typeof cb._updateStyle === 'function') cb._updateStyle();
-            
-            // 如果不可用但开关是开的，需要关闭它并通知后端
-            if (!available && cb.checked) {
-                console.log(`[App] ${name}变为不可用，自动关闭`);
-                cb.checked = false;
-                cb._autoDisabled = true;
-                cb.dispatchEvent(new Event('change', { bubbles: true }));
-                cb._autoDisabled = false;
-                try {
-                    await fetch('/api/agent/flags', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({
-                            lanlan_name: lanlan_config.lanlan_name,
-                            flags: {[flagKey]: false}
-                        })
-                    });
-                } catch(e) {
-                    console.warn(`[App] 通知后端关闭${name}失败:`, e);
+            try {
+                const available = await checkCapability(capability, false);
+                capabilityResults[flagKey] = available;
+                
+                // 检查完成后再次确认总开关仍然开启
+                if (!agentMasterCheckbox.checked) {
+                    cb.disabled = true;
+                    if (typeof cb._updateStyle === 'function') cb._updateStyle();
+                    continue;
                 }
-                setFloatingAgentStatus(`${name}已断开`);
+                
+                cb.disabled = !available;
+                cb.title = available ? name : (window.t ? window.t('settings.toggles.unavailable', {name: name}) : `${name}不可用`);
+                if (typeof cb._updateStyle === 'function') cb._updateStyle();
+                
+                // 如果不可用但开关是开的，需要关闭它并通知后端
+                if (!available && cb.checked) {
+                    console.log(`[App] ${name}变为不可用，自动关闭`);
+                    cb.checked = false;
+                    cb._autoDisabled = true;
+                    cb.dispatchEvent(new Event('change', { bubbles: true }));
+                    cb._autoDisabled = false;
+                    try {
+                        await fetch('/api/agent/flags', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                lanlan_name: lanlan_config.lanlan_name,
+                                flags: {[flagKey]: false}
+                            })
+                        });
+                    } catch(e) {
+                        console.warn(`[App] 通知后端关闭${name}失败:`, e);
+                    }
+                    setFloatingAgentStatus(`${name}已断开`);
+                }
+            } catch (e) {
+                capabilityCheckFailed = true;
+                console.warn(`[App] 检查${name}能力失败:`, e);
+            }
+        }
+        
+        // 如果能力检查因网络问题失败，增加失败计数
+        if (capabilityCheckFailed) {
+            connectionFailureCount++;
+        }
+        
+        // 【严格节流】定期从后端同步 flags 状态
+        // 【修复竞态】将 flag 同步移到能力检查之后，并结合能力检查结果
+        const now = Date.now();
+        if (now - lastFlagsSyncTime >= FLAGS_SYNC_INTERVAL) {
+            lastFlagsSyncTime = now;
+            try {
+                const resp = await fetch('/api/agent/flags');
+                if (resp.ok) {
+                    // 连接成功，重置失败计数
+                    connectionFailureCount = 0;
+                    
+                    const data = await resp.json();
+                    if (data.success) {
+                        const analyzerEnabled = data.analyzer_enabled || false;
+                        const flags = data.agent_flags || {};
+                        // 处理后端推送的通知（如果有）
+                        const notification = data.notification;
+                        if (notification) {
+                            console.log('[App] 收到后端通知:', notification);
+                            setFloatingAgentStatus(notification);
+                            // 如果是错误通知，也可以考虑弹窗
+                            if (notification.includes('失败') || notification.includes('断开') || notification.includes('错误')) {
+                                showStatusToast(notification, 3000);
+                            }
+                        }
+                        
+                        agentStateMachine.updateCache(true, flags);
+                        
+                        // 如果后端 analyzer 被关闭，同步关闭前端总开关
+                        if (!analyzerEnabled && agentMasterCheckbox.checked && !agentMasterCheckbox._processing) {
+                            console.log('[App] 后端 analyzer 已关闭，同步关闭前端总开关');
+                            agentMasterCheckbox.checked = false;
+                            agentMasterCheckbox._autoDisabled = true;
+                            agentMasterCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+                            agentMasterCheckbox._autoDisabled = false;
+                            if (typeof agentMasterCheckbox._updateStyle === 'function') agentMasterCheckbox._updateStyle();
+                            [agentKeyboardCheckbox, agentMcpCheckbox].forEach(cb => {
+                                if (cb) {
+                                    cb.checked = false;
+                                    cb.disabled = true;
+                                    if (typeof cb._updateStyle === 'function') cb._updateStyle();
+                                }
+                            });
+                            // 如果有特定通知则显示，否则显示默认关闭消息
+                            if (!notification) {
+                                setFloatingAgentStatus('Agent模式已关闭');
+                            }
+                            
+                            if (!agentStateMachine._popupOpen) {
+                                window.stopAgentAvailabilityCheck();
+                            }
+                            window.stopAgentTaskPolling();
+                            return;
+                        }
+                        
+                        // 同步子开关的 checked 状态（如果后端状态与前端不一致且不在处理中）
+                        // 【修复竞态】只有当功能实际可用时，才允许根据 flag 自动开启
+                        if (agentKeyboardCheckbox && !agentKeyboardCheckbox._processing) {
+                            const flagEnabled = flags.computer_use_enabled || false;
+                            // 如果未检查(undefined)或可用(true)则允许，但此处已确保检查过
+                            // 注意：如果 capabilityCheckFailed 为 true，capabilityResults 可能不完整，保守起见不改变状态
+                            const isAvailable = capabilityCheckFailed ? agentKeyboardCheckbox.checked : (capabilityResults['computer_use_enabled'] !== false);
+                            const shouldBeChecked = flagEnabled && isAvailable;
+                            
+                            if (agentKeyboardCheckbox.checked !== shouldBeChecked) {
+                                // 只在确实需要改变状态时操作
+                                if (shouldBeChecked) {
+                                    // 开启
+                                    agentKeyboardCheckbox.checked = true;
+                                    agentKeyboardCheckbox._autoDisabled = true;
+                                    agentKeyboardCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+                                    agentKeyboardCheckbox._autoDisabled = false;
+                                    if (typeof agentKeyboardCheckbox._updateStyle === 'function') agentKeyboardCheckbox._updateStyle();
+                                } else if (!flagEnabled) {
+                                    // 仅当 flag 明确为 false 时才关闭（flag=true但unavailable的情况已在能力检查循环中处理）
+                                    agentKeyboardCheckbox.checked = false;
+                                    agentKeyboardCheckbox._autoDisabled = true;
+                                    agentKeyboardCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+                                    agentKeyboardCheckbox._autoDisabled = false;
+                                    if (typeof agentKeyboardCheckbox._updateStyle === 'function') agentKeyboardCheckbox._updateStyle();
+                                }
+                            }
+                        }
+                        
+                        if (agentMcpCheckbox && !agentMcpCheckbox._processing) {
+                            const flagEnabled = flags.mcp_enabled || false;
+                            const isAvailable = capabilityCheckFailed ? agentMcpCheckbox.checked : (capabilityResults['mcp_enabled'] !== false);
+                            const shouldBeChecked = flagEnabled && isAvailable;
+                            
+                            if (agentMcpCheckbox.checked !== shouldBeChecked) {
+                                if (shouldBeChecked) {
+                                    agentMcpCheckbox.checked = true;
+                                    agentMcpCheckbox._autoDisabled = true;
+                                    agentMcpCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+                                    agentMcpCheckbox._autoDisabled = false;
+                                    if (typeof agentMcpCheckbox._updateStyle === 'function') agentMcpCheckbox._updateStyle();
+                                } else if (!flagEnabled) {
+                                    agentMcpCheckbox.checked = false;
+                                    agentMcpCheckbox._autoDisabled = true;
+                                    agentMcpCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+                                    agentMcpCheckbox._autoDisabled = false;
+                                    if (typeof agentMcpCheckbox._updateStyle === 'function') agentMcpCheckbox._updateStyle();
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // 响应不OK，视为连接失败
+                    throw new Error(`Status ${resp.status}`);
+                }
+            } catch (e) {
+                console.warn('[App] 轮询同步 flags 失败:', e);
+                connectionFailureCount++;
+            }
+        }
+        
+        // 如果连续多次连接失败，判定为服务器失联，主动关闭总开关
+        if (connectionFailureCount >= 3) {
+            console.error('[App] Agent服务器连续连接失败，判定为失联，自动关闭');
+            if (agentMasterCheckbox.checked && !agentMasterCheckbox._processing) {
+                agentMasterCheckbox.checked = false;
+                agentMasterCheckbox._autoDisabled = true;
+                agentMasterCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+                agentMasterCheckbox._autoDisabled = false;
+                if (typeof agentMasterCheckbox._updateStyle === 'function') agentMasterCheckbox._updateStyle();
+                
+                [agentKeyboardCheckbox, agentMcpCheckbox].forEach(cb => {
+                    if (cb) {
+                        cb.checked = false;
+                        cb.disabled = true;
+                        if (typeof cb._updateStyle === 'function') cb._updateStyle();
+                    }
+                });
+                
+                setFloatingAgentStatus('服务器连接已断开');
+                showStatusToast('Agent 服务器连接已断开', 3000);
+                
+                agentStateMachine.transition(AgentPopupState.OFFLINE, 'connection lost');
+                window.stopAgentTaskPolling();
+                
+                // 重置计数，避免重复触发
+                connectionFailureCount = 0;
             }
         }
     };
@@ -3218,6 +3323,8 @@ function init_app(){
         
         // 重置 flags 同步时间，确保立即同步一次
         lastFlagsSyncTime = 0;
+        // 重置连接失败计数
+        connectionFailureCount = 0;
         
         // 立即检查一次
         checkAgentCapabilities();
@@ -3644,6 +3751,7 @@ function init_app(){
         );
         
         // 从后端同步 flags 状态到前端开关（完整同步，处理所有情况）
+        // 【重要】此函数只同步总开关状态，子开关保持禁用等待能力检查
         async function syncFlagsFromBackend() {
             try {
                 const resp = await fetch('/api/agent/flags');
@@ -3653,26 +3761,45 @@ function init_app(){
                 
                 const flags = data.agent_flags || {};
                 const analyzerEnabled = data.analyzer_enabled || false;
-                const cuEnabled = flags.computer_use_enabled || false;
-                const mcpEnabled = flags.mcp_enabled || false;
                 
-                console.log('[App] 从后端获取 flags 状态:', {analyzerEnabled, cuEnabled, mcpEnabled});
+                console.log('[App] 从后端获取 flags 状态:', {analyzerEnabled, flags});
+                
+                // 缓存后端flags供后续能力检查使用
+                agentStateMachine.updateCache(true, flags);
                 
                 // 同步总开关状态
                 if (agentMasterCheckbox) {
-                    agentMasterCheckbox.checked = analyzerEnabled;
+                    // 强制根据后端状态更新前端，确保同步
+                    if (agentMasterCheckbox.checked !== analyzerEnabled && !agentMasterCheckbox._processing) {
+                        console.log('[App] 强制同步总开关状态:', analyzerEnabled);
+                        agentMasterCheckbox.checked = analyzerEnabled;
+                        
+                        // 如果总开关被动开启，需要触发相关逻辑（如显示HUD）
+                        if (analyzerEnabled) {
+                            // 只有在非弹窗操作期间才自动启动检查
+                            if (!agentStateMachine._popupOpen) {
+                                window.startAgentAvailabilityCheck();
+                            }
+                        } else {
+                            // 如果总开关被动关闭，停止所有活动
+                            window.stopAgentAvailabilityCheck();
+                            window.stopAgentTaskPolling();
+                        }
+                    }
+                    
                     agentMasterCheckbox.disabled = false;
                     agentMasterCheckbox.title = window.t ? window.t('settings.toggles.agentMaster') : 'Agent总开关';
                     syncCheckboxUI(agentMasterCheckbox);
                 }
                 
-                // 同步键鼠控制子开关
+                // 【修复竞态】子开关不在这里设置 checked 状态
+                // 子开关保持禁用和未选中，由 checkAgentCapabilities 根据能力检查结果来设置
                 if (agentKeyboardCheckbox) {
                     if (analyzerEnabled) {
-                        // Agent 已开启，根据后端状态设置
-                        agentKeyboardCheckbox.checked = cuEnabled;
-                        agentKeyboardCheckbox.disabled = false; // 先设为可用，后续可用性检查会更新
-                        agentKeyboardCheckbox.title = window.t ? window.t('settings.toggles.keyboardControl') : '键鼠控制';
+                        // Agent 已开启，但子开关保持禁用等待能力检查
+                        agentKeyboardCheckbox.checked = false;
+                        agentKeyboardCheckbox.disabled = true;
+                        agentKeyboardCheckbox.title = window.t ? window.t('settings.toggles.checking') : '检查中...';
                     } else {
                         // Agent 未开启，复位子开关
                         agentKeyboardCheckbox.checked = false;
@@ -3682,13 +3809,12 @@ function init_app(){
                     syncCheckboxUI(agentKeyboardCheckbox);
                 }
                 
-                // 同步 MCP 工具子开关
                 if (agentMcpCheckbox) {
                     if (analyzerEnabled) {
-                        // Agent 已开启，根据后端状态设置
-                        agentMcpCheckbox.checked = mcpEnabled;
-                        agentMcpCheckbox.disabled = false; // 先设为可用，后续可用性检查会更新
-                        agentMcpCheckbox.title = window.t ? window.t('settings.toggles.mcpTools') : 'MCP工具';
+                        // Agent 已开启，但子开关保持禁用等待能力检查
+                        agentMcpCheckbox.checked = false;
+                        agentMcpCheckbox.disabled = true;
+                        agentMcpCheckbox.title = window.t ? window.t('settings.toggles.checking') : '检查中...';
                     } else {
                         // Agent 未开启，复位子开关
                         agentMcpCheckbox.checked = false;

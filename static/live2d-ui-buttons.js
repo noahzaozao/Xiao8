@@ -7,6 +7,12 @@
 Live2DManager.prototype.setupHTMLLockIcon = function (model) {
     const container = document.getElementById('live2d-canvas');
 
+    // 防御性空值检查
+    if (!container) {
+        this.isLocked = false;
+        return;
+    }
+
     // 在 l2d_manager 等页面，默认解锁并可交互
     if (!document.getElementById('chat-container')) {
         this.isLocked = false;
@@ -122,6 +128,12 @@ Live2DManager.prototype.setupHTMLLockIcon = function (model) {
 // 设置浮动按钮系统（新的控制面板）
 Live2DManager.prototype.setupFloatingButtons = function (model) {
     const container = document.getElementById('live2d-canvas');
+
+    // 防御性空值检查
+    if (!container) {
+        this.isLocked = false;
+        return;
+    }
 
     // 在 l2d_manager 等页面不显示
     if (!document.getElementById('chat-container')) {
