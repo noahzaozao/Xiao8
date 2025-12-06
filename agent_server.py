@@ -203,6 +203,45 @@ def _spawn_task(kind: str, args: Dict[str, Any]) -> Dict[str, Any]:
             "screenshot": args.get("screenshot"),
         })
         return info
+    elif kind == "processor":
+        # Create a runtime entry and execute the processor coroutine in background.
+        query = args.get("query", "") if isinstance(args, dict) else ""
+        info["params"] = {"query": query}
+        info["lanlan_name"] = None
+        Modules.task_registry[task_id] = info
+
+        async def _run_processor_task():
+            try:
+                result = await Modules.processor.process(query)
+                info["status"] = "completed" if result.get("can_execute") else "failed"
+                info["result"] = result
+
+                # Notify main_server if executed
+                if result.get("can_execute"):
+                    summary = f'你的任务\"{query[:50]}\"已完成'
+                    try:
+                        async with httpx.AsyncClient(timeout=0.5) as _client:
+                            await _client.post(
+                                f"http://localhost:{MAIN_SERVER_PORT}/api/notify_task_result",
+                                json={"text": summary[:240], "lanlan_name": info.get("lanlan_name")},
+                            )
+                    except Exception:
+                        pass
+                logger.info(f"[MCP] ✅ Spawned processor task {task_id} completed")
+            except Exception as e:
+                info["status"] = "failed"
+                info["error"] = str(e)
+                logger.error(f"[MCP] ❌ Spawned processor task {task_id} failed: {e}")
+
+        # Fire-and-forget to preserve old behavior
+        try:
+            asyncio.create_task(_run_processor_task())
+        except Exception:
+            # In case event loop not running, mark as failed
+            info["status"] = "failed"
+            info["error"] = "failed to schedule processor coroutine"
+
+        return info
     else:
         raise ValueError(f"Unknown task kind: {kind}. Note: 'processor' tasks now use coroutines directly.")
 
