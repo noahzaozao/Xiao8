@@ -233,7 +233,10 @@ Live2DManager.prototype.showAgentTaskHUD = function () {
     }
     hud.style.display = 'flex';
     hud.style.opacity = '1';
-    hud.style.transform = 'translateY(-50%) translateX(0)';
+    const savedPos = localStorage.getItem('agent-task-hud-position');
+    if (!savedPos) {
+        hud.style.transform = 'translateY(-50%) translateX(0)';
+    }
 };
 
 // 隐藏任务 HUD

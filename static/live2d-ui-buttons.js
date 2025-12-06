@@ -762,10 +762,7 @@ Live2DManager.prototype.setupFloatingButtons = function (model) {
     };
     this._floatingButtonsTicker = tick;
     this.pixi_app.ticker.add(tick);
-
-    // 为按钮容器添加拖动功能
-    this.setupButtonsContainerDrag(buttonsContainer);
-
+    
     // 页面加载时先显示5秒（锁定状态下不显示）
     setTimeout(() => {
         // 锁定状态下不显示浮动按钮容器

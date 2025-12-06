@@ -660,7 +660,12 @@
                     } else if (response.type === 'expression') {
                         // 应用表情到 Live2D 模型
                         if (window.LanLan1 && window.LanLan1.registered_expressions) {
-                            window.LanLan1.registered_expressions[response.message]();
+                            const fn = window.LanLan1.registered_expressions[response.message];
+                            if (typeof fn === 'function') {
+                                fn();
+                            } else {
+                                console.warn('未知表情指令:', response.message);
+                            }
                         }
                     } else if (response.type === 'turn end') {
                         // Turn ended, could add separator if needed
