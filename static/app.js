@@ -2473,6 +2473,25 @@ function init_app(){
         }
         console.log('[App] 设置 goodbyeClicked 为 true，当前状态:', window.live2dManager ? window.live2dManager._goodbyeClicked : 'undefined');
         
+        // 【修复】立即关闭所有弹窗，防止遗留的弹窗区域阻塞鼠标事件
+        // 这里直接操作 DOM，不使用动画延迟，确保弹窗立即完全隐藏
+        // 注意：需要同时选中 live2d-popup-* 和 live2d-mic-popup（麦克风弹窗ID格式不同）
+        const allPopups = document.querySelectorAll('[id^="live2d-popup-"], #live2d-mic-popup');
+        allPopups.forEach(popup => {
+            popup.style.setProperty('display', 'none', 'important');
+            popup.style.setProperty('visibility', 'hidden', 'important');
+            popup.style.setProperty('opacity', '0', 'important');
+            popup.style.setProperty('pointer-events', 'none', 'important');
+        });
+        // 同时清除所有弹窗定时器
+        if (window.live2dManager && window.live2dManager._popupTimers) {
+            Object.values(window.live2dManager._popupTimers).forEach(timer => {
+                if (timer) clearTimeout(timer);
+            });
+            window.live2dManager._popupTimers = {};
+        }
+        console.log('[App] 已关闭所有弹窗，数量:', allPopups.length);
+        
         // 在隐藏 DOM 之前先读取 "请她离开" 按钮的位置（避免隐藏后 getBoundingClientRect 返回异常）
         const goodbyeButton = document.getElementById('live2d-btn-goodbye');
         let savedGoodbyeRect = null;
