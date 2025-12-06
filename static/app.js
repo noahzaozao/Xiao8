@@ -118,6 +118,8 @@ function init_app(){
     let isRecording = false;
     // 暴露 isRecording 到全局，供其他模块检查
     window.isRecording = false;
+    // 麦克风启动中标志，用于区分"正在启动"和"已录音"两个阶段
+    window.isMicStarting = false;
     let socket;
     let currentGeminiMessage = null;
     let audioPlayerContext = null;
@@ -1044,6 +1046,9 @@ function init_app(){
         // 同步更新浮动按钮状态，防止浮动按钮状态不同步导致图标变灰
         syncFloatingMicButtonState(true);
         
+        // 标记麦克风正在启动中
+        window.isMicStarting = true;
+        
         // 立即禁用按钮，锁定直到连接成功或失败
         micButton.disabled = true;
         
@@ -1163,6 +1168,8 @@ function init_app(){
                 showReadyToSpeakToast();
             }, 1000);
             
+            // 麦克风启动完成
+            window.isMicStarting = false;
             isSwitchingMode = false; // 模式切换完成
         } catch (error) {
             console.error('启动语音会话失败:', error);
@@ -1192,6 +1199,8 @@ function init_app(){
             resetSessionButton.disabled = false;
             textInputArea.classList.remove('hidden');
             showStatusToast(window.t ? window.t('app.startFailed', {error: error.message}) : `启动失败: ${error.message}`, 5000);
+            // 麦克风启动失败，重置标志
+            window.isMicStarting = false;
             isSwitchingMode = false; // 切换失败，重置标志
             
             // 移除其他按钮的active类
@@ -1813,9 +1822,6 @@ function init_app(){
 
     // 使用AudioWorklet开始音频处理
     async function startAudioWorklet(stream) {
-        isRecording = true;
-        window.isRecording = true;
-
         // 先清理旧的音频上下文，防止多个 worklet 同时发送数据导致 QPS 超限
         if (audioContext) {
             // 只有在未关闭状态下才尝试关闭
@@ -1825,8 +1831,6 @@ function init_app(){
                 } catch (e) {
                     console.warn('关闭旧音频上下文时出错:', e);
                     // 强制复位所有状态，防止状态不一致
-                    isRecording = false;
-                    window.isRecording = false;
                     micButton.classList.remove('recording', 'active');
                     syncFloatingMicButtonState(false);
                     micButton.disabled = false;
@@ -1895,6 +1899,10 @@ function init_app(){
             // 启动静音检测
             startSilenceDetection();
             monitorInputVolume();
+            
+            // 所有初始化成功后，才标记为录音状态
+            isRecording = true;
+            window.isRecording = true;
 
         } catch (err) {
             console.error('加载AudioWorklet失败:', err);
@@ -2702,6 +2710,18 @@ function init_app(){
                     }
                 });
             }
+            
+            // 【修复】恢复所有弹窗的交互能力（清除"请她离开"时设置的 pointer-events: none 等样式）
+            const allPopups = document.querySelectorAll('[id^="live2d-popup-"]');
+            allPopups.forEach(popup => {
+                // 清除之前设置的 !important 样式
+                popup.style.removeProperty('pointer-events');
+                popup.style.removeProperty('visibility');
+                // 恢复正常的 pointer-events，弹窗应当能够接收鼠标事件
+                popup.style.pointerEvents = 'auto';
+                // display 和 opacity 保持隐藏状态，等待用户点击按钮时再显示
+            });
+            console.log('[App] 已恢复所有弹窗的交互能力，数量:', allPopups.length);
         }
         
         // 第七步：恢复对话区
@@ -2992,19 +3012,11 @@ function init_app(){
         if (!agentMasterCheckbox.checked) {
             // 弹窗打开但总开关未开启时，使用状态机缓存判断，减少请求
             if (!agentStateMachine.canCheck()) {
-                // 使用缓存状态更新UI
+                // 使用缓存状态通过状态机统一更新UI
                 if (agentStateMachine._cachedServerOnline === true) {
-                    if (agentMasterCheckbox.disabled) {
-                        agentMasterCheckbox.disabled = false;
-                        agentMasterCheckbox.title = window.t ? window.t('settings.toggles.agentMaster') : 'Agent总开关';
-                        if (typeof agentMasterCheckbox._updateStyle === 'function') agentMasterCheckbox._updateStyle();
-                    }
+                    agentStateMachine.transition(AgentPopupState.ONLINE, 'cached online');
                 } else if (agentStateMachine._cachedServerOnline === false) {
-                    if (!agentMasterCheckbox.disabled) {
-                        agentMasterCheckbox.disabled = true;
-                        agentMasterCheckbox.title = window.t ? window.t('settings.toggles.serverOffline') : 'Agent服务器未启动';
-                        if (typeof agentMasterCheckbox._updateStyle === 'function') agentMasterCheckbox._updateStyle();
-                    }
+                    agentStateMachine.transition(AgentPopupState.OFFLINE, 'cached offline');
                 }
                 return;
             }
@@ -3021,29 +3033,21 @@ function init_app(){
                     return;
                 }
                 
-                const wasDisabled = agentMasterCheckbox.disabled;
+                // 通过状态机统一更新UI
                 if (healthOk) {
-                    agentMasterCheckbox.disabled = false;
-                    agentMasterCheckbox.title = window.t ? window.t('settings.toggles.agentMaster') : 'Agent总开关';
-                    if (typeof agentMasterCheckbox._updateStyle === 'function') agentMasterCheckbox._updateStyle();
-                    if (wasDisabled) {
+                    const wasOffline = agentStateMachine.getState() !== AgentPopupState.ONLINE;
+                    agentStateMachine.transition(AgentPopupState.ONLINE, 'server online');
+                    if (wasOffline) {
                         setFloatingAgentStatus('Agent服务器就绪');
-                        agentStateMachine.transition(AgentPopupState.ONLINE, 'server online');
                     }
                 } else {
-                    agentMasterCheckbox.disabled = true;
-                    agentMasterCheckbox.title = window.t ? window.t('settings.toggles.serverOffline') : 'Agent服务器未启动';
-                    if (typeof agentMasterCheckbox._updateStyle === 'function') agentMasterCheckbox._updateStyle();
                     setFloatingAgentStatus('Agent服务器未启动');
                     agentStateMachine.transition(AgentPopupState.OFFLINE, 'server offline');
                 }
             } catch (e) {
                 agentStateMachine.updateCache(false, null);
-                // 【竞态保护】弹窗已关闭时不更新UI
+                // 【竞态保护】弹窗已关闭时不更新UI，通过状态机统一更新
                 if (agentStateMachine._popupOpen) {
-                    agentMasterCheckbox.disabled = true;
-                    agentMasterCheckbox.title = window.t ? window.t('settings.toggles.serverOffline') : 'Agent服务器未启动';
-                    if (typeof agentMasterCheckbox._updateStyle === 'function') agentMasterCheckbox._updateStyle();
                     agentStateMachine.transition(AgentPopupState.OFFLINE, 'check failed');
                 }
             } finally {

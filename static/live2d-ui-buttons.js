@@ -434,11 +434,11 @@ Live2DManager.prototype.setupFloatingButtons = function (model) {
                 if (config.id === 'mic') {
                     const micButton = document.getElementById('micButton');
                     if (micButton && micButton.classList.contains('active')) {
-                        // 检查是否正在录音：如果 isRecording 为 true，说明已经启动成功，允许点击退出
-                        // 如果 isRecording 为 false，说明正在启动过程中，阻止点击
-                        const isRecording = window.isRecording || false; // 从全局获取 isRecording 状态
+                        // 检查是否正在启动中：使用专用的 isMicStarting 标志
+                        // isMicStarting 为 true 表示正在启动过程中，阻止点击
+                        const isMicStarting = window.isMicStarting || false;
 
-                        if (!isRecording) {
+                        if (isMicStarting) {
                             // 正在启动过程中，强制保持激活状态，不切换
                             // 确保浮动按钮状态与 micButton 同步
                             if (btn.dataset.active !== 'true') {
@@ -450,7 +450,7 @@ Live2DManager.prototype.setupFloatingButtons = function (model) {
                             }
                             return; // 直接返回，不执行任何状态切换或事件触发
                         }
-                        // 如果 isRecording 为 true，说明已经启动成功，允许继续执行（可以退出）
+                        // 如果 isMicStarting 为 false，说明已经启动成功，允许继续执行（可以退出）
                     }
                 }
 
