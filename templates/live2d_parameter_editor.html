@@ -347,7 +347,6 @@
     <script src="/static/live2d-ui-popup.js"></script>
     <script src="/static/live2d-ui-hud.js"></script>
     <script src="/static/live2d-ui-drag.js"></script>
-    <script src="/static/live2d-ui.js"></script>
     <script src="/static/live2d-init.js"></script>
 
     <script>
@@ -534,59 +533,8 @@
                     return false;
                 }
             }
-
-            // 重要参数（外观定制相关）
-            const importantPatterns = [
-                // 面部外观
-                'blush', 'cheek', 'face.*ink.*display',
-                // 眼睛外观
-                'eye.*open', 'eye.*smile', 'eye.*form', 'eye.*deformation',
-                'eyeball', 'eyeballs',
-                // 眉毛外观
-                'eyebrow', 'brow',
-                // 嘴巴外观
-                'mouth.*form', 'mouth.*smile', 'mouth.*corner', 'pouting',
-                // 头发相关
-                'hair',
-                // 颜色相关
-                'color',
-                // 外观特效
-                'hat.*deformation', 'overall.*effect', 'overall.*color',
-                // 手部外观（如果有）
-                'hand'
-            ];
-
-            // 检查是否匹配重要模式
-            for (const pattern of importantPatterns) {
-                const regex = new RegExp(pattern, 'i');
-                if (regex.test(nameLower) || regex.test(idLower)) {
-                    return true;
-                }
-            }
-
-            // 默认：如果参数名包含常见外观关键词，认为是重要的
-            if (nameLower.includes('form') || nameLower.includes('deformation') ||
-                nameLower.includes('effect') || nameLower.includes('display')) {
-                return true;
-            }
-
-            // 其他情况：如果参数名很短或看起来像技术参数，隐藏
-            if (paramId && paramId.startsWith('Param') && paramId.length < 15) {
-                // 检查是否是已知的重要参数ID
-                const importantIds = [
-                    'ParamCheek', 'ParamEyeL', 'ParamEyeR', 'ParamEyeBall',
-                    'ParamBrow', 'ParamMouth', 'ParamHair', 'ParamFaceInkOn',
-                    'ParamHatForm', 'ParamOverall'
-                ];
-                for (const importantId of importantIds) {
-                    if (paramId.includes(importantId)) {
-                        return true;
-                    }
-                }
-            }
-
             // 默认隐藏未知参数（保守策略）
-            return false;
+            return true;
         }
 
         // 获取参数的中文名称

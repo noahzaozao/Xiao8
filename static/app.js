@@ -16,7 +16,7 @@ window.closeAllSettingsWindows = function() {
         });
     }
     
-    // 关闭 live2d-ui.js 中跟踪的窗口（如果有 Live2DManager 实例）
+    // 关闭 live2d-ui-popup.js 中跟踪的窗口（如果有 Live2DManager 实例）
     if (window.live2dManager && window.live2dManager._openSettingsWindows) {
         Object.keys(window.live2dManager._openSettingsWindows).forEach(url => {
             const winRef = window.live2dManager._openSettingsWindows[url];
@@ -2857,6 +2857,7 @@ function init_app(){
     const agentStateMachine = {
         _state: AgentPopupState.IDLE,
         _operationSeq: 0,           // 操作序列号，用于取消过期操作
+        _checkSeq: 0,               // 检查序列号，用于防止轮询竞态
         _lastCheckTime: 0,          // 上次检查时间
         _cachedServerOnline: null,  // 缓存服务器在线状态
         _cachedFlags: null,         // 缓存的flags状态
@@ -2874,6 +2875,15 @@ function init_app(){
         
         // 检查操作是否过期
         isSeqExpired(seq) { return seq !== this._operationSeq; },
+
+        // 获取新的检查序列号
+        nextCheckSeq() { return ++this._checkSeq; },
+
+        // 获取当前检查序列号
+        getCheckSeq() { return this._checkSeq; },
+
+        // 检查检查序列号是否过期
+        isCheckSeqExpired(seq) { return seq !== this._checkSeq; },
         
         // 状态转换（带日志）
         transition(newState, reason) {
@@ -3019,7 +3029,7 @@ function init_app(){
     // 暴露状态机给外部使用
     window.agentStateMachine = agentStateMachine;
     
-    // Agent 定时检查器（暴露到 window 供 live2d-ui.js 调用）
+    // Agent 定时检查器（暴露到 window 供 live2d-ui-hud.js 调用）
     let agentCheckInterval = null;
     let lastFlagsSyncTime = 0;
     const FLAGS_SYNC_INTERVAL = 3000; // 3秒同步一次后端flags状态
@@ -3104,12 +3114,14 @@ function init_app(){
         
         // 【减少能力检查频率】只在必要时检查子功能可用性
         const checks = [
-            { id: 'live2d-agent-keyboard', capability: 'computer_use', flagKey: 'computer_use_enabled', name: '键鼠控制' },
-            { id: 'live2d-agent-mcp', capability: 'mcp', flagKey: 'mcp_enabled', name: 'MCP工具' }
+            { id: 'live2d-agent-keyboard', capability: 'computer_use', flagKey: 'computer_use_enabled', nameKey: 'keyboardControl' },
+            { id: 'live2d-agent-mcp', capability: 'mcp', flagKey: 'mcp_enabled', nameKey: 'mcpTools' }
         ];
-        for (const {id, capability, flagKey, name} of checks) {
+        for (const {id, capability, flagKey, nameKey} of checks) {
             const cb = document.getElementById(id);
             if (!cb) continue;
+            
+            const name = window.t ? window.t(`settings.toggles.${nameKey}`) : nameKey;
             
             // 如果在处理中，跳过
             if (cb._processing) continue;
@@ -3363,8 +3375,8 @@ function init_app(){
     // 检查Agent能力
     async function checkCapability(kind, showError = true) {
         const apis = {
-            computer_use: { url: '/api/agent/computer_use/availability', name: '键鼠控制' },
-            mcp: { url: '/api/agent/mcp/availability', name: 'MCP工具' }
+            computer_use: { url: '/api/agent/computer_use/availability', nameKey: 'keyboardControl' },
+            mcp: { url: '/api/agent/mcp/availability', nameKey: 'mcpTools' }
         };
         const config = apis[kind];
         if (!config) return false;
@@ -3375,7 +3387,8 @@ function init_app(){
             const j = await r.json();
             if (!j.ready) {
                 if (showError) {
-                    setFloatingAgentStatus(j.reasons?.[0] || `${config.name}不可用`);
+                    const name = window.t ? window.t(`settings.toggles.${config.nameKey}`) : config.nameKey;
+                    setFloatingAgentStatus(j.reasons?.[0] || (window.t ? window.t('settings.toggles.unavailable', {name}) : `${name}不可用`));
                 }
                 return false;
             }
@@ -3453,7 +3466,7 @@ function init_app(){
                 return false;
             };
             
-            // _processing 标志已在 live2d-ui.js 的点击处理中设置
+            // _processing 标志已在 live2d-ui-popup.js 的点击处理中设置
             if (!agentMasterCheckbox._processing) {
                 agentMasterCheckbox._processing = true;
             }
@@ -3630,12 +3643,16 @@ function init_app(){
         });
         
         // 子开关通用处理函数（使用闭包捕获对应的序列号变量）
-        const setupSubCheckbox = (checkbox, capability, flagKey, name, getSeq, setSeq) => {
+        const setupSubCheckbox = (checkbox, capability, flagKey, nameKey, getSeq, setSeq) => {
             if (!checkbox) return;
             checkbox.addEventListener('change', async () => {
                 // 【修复频繁开关竞态】每次操作递增序列号
                 const currentSeq = setSeq();
                 const isChecked = checkbox.checked;
+                
+                // 获取翻译后的名称
+                const getName = () => window.t ? window.t(`settings.toggles.${nameKey}`) : nameKey;
+                const name = getName();
                 
                 // 辅助函数：检查当前操作是否已过期
                 const isExpired = () => {
@@ -3680,7 +3697,7 @@ function init_app(){
                         }
                         
                         if (!ok) {
-                            setFloatingAgentStatus(`${name}不可用`);
+                            setFloatingAgentStatus(window.t ? window.t('settings.toggles.unavailable', {name}) : `${name}不可用`);
                             checkbox.checked = false;
                             syncCheckboxUI(checkbox);
                             return;
@@ -3708,7 +3725,11 @@ function init_app(){
                             return;
                         }
                         
-                        setFloatingAgentStatus(enabled ? `${name}已开启` : `${name}已关闭`);
+                        if (window.t) {
+                            setFloatingAgentStatus(enabled ? window.t('settings.toggles.enabled', {name}) : window.t('settings.toggles.disabled', {name}));
+                        } else {
+                            setFloatingAgentStatus(enabled ? `${name}已开启` : `${name}已关闭`);
+                        }
                         // 关闭成功时也需要同步 UI
                         if (!enabled) {
                             syncCheckboxUI(checkbox);
@@ -3719,7 +3740,7 @@ function init_app(){
                         if (enabled) {
                             checkbox.checked = false;
                             syncCheckboxUI(checkbox);
-                            setFloatingAgentStatus(`${name}开启失败`);
+                            setFloatingAgentStatus(window.t ? window.t('settings.toggles.enableFailed', {name}) : `${name}开启失败`);
                         }
                     }
                 } finally {
@@ -3735,7 +3756,7 @@ function init_app(){
             agentKeyboardCheckbox, 
             'computer_use', 
             'computer_use_enabled', 
-            '键鼠控制',
+            'keyboardControl',
             () => keyboardOperationSeq,
             () => ++keyboardOperationSeq
         );
@@ -3745,7 +3766,7 @@ function init_app(){
             agentMcpCheckbox, 
             'mcp', 
             'mcp_enabled', 
-            'MCP工具',
+            'mcpTools',
             () => mcpOperationSeq,
             () => ++mcpOperationSeq
         );
@@ -3849,99 +3870,149 @@ function init_app(){
             // 【状态机控制】转换到CHECKING状态，自动禁用所有按钮
             agentStateMachine.transition(AgentPopupState.CHECKING, 'popup opened');
             
-            // 【严格节流】检查是否可以发起请求
-            if (!agentStateMachine.canCheck()) {
-                // 使用缓存结果
-                console.log('[App] 使用缓存的服务器状态');
-                if (agentStateMachine._cachedServerOnline === true) {
-                    agentStateMachine.transition(AgentPopupState.ONLINE, 'cached online');
-                    // 使用缓存的flags恢复按钮状态
-                    if (agentMasterCheckbox) {
+            // 生成本次检查的唯一序列号，防止竞态（如打开->关闭->立即打开）
+            const currentCheckSeq = agentStateMachine.nextCheckSeq();
+            
+            // 1. 极端策略：强制禁用所有按钮并提示连接中
+            if (agentMasterCheckbox) {
+                agentMasterCheckbox.disabled = true;
+                agentMasterCheckbox.title = window.t ? window.t('settings.toggles.checking') : '查询中...';
+                syncCheckboxUI(agentMasterCheckbox);
+            }
+            [agentKeyboardCheckbox, agentMcpCheckbox].forEach(cb => {
+                if (cb) {
+                    cb.disabled = true;
+                    cb.title = window.t ? window.t('settings.toggles.checking') : '查询中...';
+                    syncCheckboxUI(cb);
+                }
+            });
+            
+            // 2. 执行第一次轮询（Gather模式）
+            try {
+                agentStateMachine.recordCheck();
+                
+                // 并行请求所有状态
+                const [healthOk, flagsData, keyboardAvailable, mcpAvailable] = await Promise.all([
+                    checkToolServerHealth(),
+                    fetch('/api/agent/flags').then(r => r.ok ? r.json() : { success: false }),
+                    checkCapability('computer_use', false),
+                    checkCapability('mcp', false)
+                ]);
+                
+                // 【竞态保护 1】检查序列号是否过期（防止旧请求覆盖新请求）
+                if (agentStateMachine.isCheckSeqExpired(currentCheckSeq)) {
+                    console.log('[App] 检查请求已过期（可能是快速重新打开），跳过UI更新');
+                    return;
+                }
+
+                // 【竞态保护 2】检查完成后，验证弹窗仍打开且状态仍是CHECKING
+                if (!agentStateMachine._popupOpen || agentStateMachine.getState() !== AgentPopupState.CHECKING) {
+                    console.log('[App] 弹窗已关闭或状态已改变，跳过UI更新');
+                    return;
+                }
+                
+                // 3. 统一处理逻辑
+                const analyzerEnabled = flagsData.success ? (flagsData.analyzer_enabled || false) : false;
+                const flags = flagsData.success ? (flagsData.agent_flags || {}) : {};
+                
+                // 更新缓存
+                agentStateMachine.updateCache(healthOk, flags);
+                
+                if (healthOk) {
+                    // 服务器在线
+                    agentStateMachine.transition(AgentPopupState.ONLINE, 'server online');
+                    
+                    // 只有总开关开启状态下才允许其他两个开关打开
+                    if (analyzerEnabled) {
+                        // 总开关开启
+                        agentMasterCheckbox.checked = true;
                         agentMasterCheckbox.disabled = false;
                         agentMasterCheckbox.title = window.t ? window.t('settings.toggles.agentMaster') : 'Agent总开关';
                         syncCheckboxUI(agentMasterCheckbox);
-                    }
-                    if (agentMasterCheckbox?.checked) {
+                        
+                        // 处理子开关
+                        // 键鼠控制
+                        if (agentKeyboardCheckbox) {
+                            const shouldEnable = flags.computer_use_enabled && keyboardAvailable;
+                            agentKeyboardCheckbox.checked = shouldEnable;
+                            agentKeyboardCheckbox.disabled = !keyboardAvailable; // 仅当能力不可用时禁用
+                            agentKeyboardCheckbox.title = keyboardAvailable ? (window.t ? window.t('settings.toggles.keyboardControl') : '键鼠控制') : (window.t ? window.t('settings.toggles.unavailable', {name: window.t('settings.toggles.keyboardControl')}) : '键鼠控制不可用');
+                            syncCheckboxUI(agentKeyboardCheckbox);
+                        }
+                        
+                        // MCP工具
+                        if (agentMcpCheckbox) {
+                            const shouldEnable = flags.mcp_enabled && mcpAvailable;
+                            agentMcpCheckbox.checked = shouldEnable;
+                            agentMcpCheckbox.disabled = !mcpAvailable; // 仅当能力不可用时禁用
+                            agentMcpCheckbox.title = mcpAvailable ? (window.t ? window.t('settings.toggles.mcpTools') : 'MCP工具') : (window.t ? window.t('settings.toggles.unavailable', {name: window.t('settings.toggles.mcpTools')}) : 'MCP工具不可用');
+                            syncCheckboxUI(agentMcpCheckbox);
+                        }
+                        
                         setFloatingAgentStatus(window.t ? window.t('agent.status.enabled') : 'Agent模式已开启');
-                        window.startAgentAvailabilityCheck();
-                        // 【修复】只有子开关开启时才显示HUD
+                        
+                        // 只有子开关开启时才显示HUD
                         checkAndToggleTaskHUD();
                     } else {
-                        setFloatingAgentStatus(window.t ? window.t('agent.status.ready') : 'Agent服务器就绪');
-                        window.startAgentAvailabilityCheck();
-                    }
-                } else if (agentStateMachine._cachedServerOnline === false) {
-                    agentStateMachine.transition(AgentPopupState.OFFLINE, 'cached offline');
-                    window.startAgentAvailabilityCheck();
-                } else {
-                    // 无缓存，需要检查
-                    agentStateMachine._lastCheckTime = 0; // 强制允许检查
-                }
-            }
-            
-            // 如果仍在CHECKING状态，执行实际检查
-            if (agentStateMachine.getState() === AgentPopupState.CHECKING) {
-                try {
-                    agentStateMachine.recordCheck();
-                    const ok = await checkToolServerHealth();
-                    agentStateMachine.updateCache(ok, null);
-                    
-                    // 【竞态保护】检查完成后，验证弹窗仍打开且状态仍是CHECKING
-                    // 如果弹窗已关闭或状态已改变，跳过UI更新，只保留缓存结果
-                    if (!agentStateMachine._popupOpen || agentStateMachine.getState() !== AgentPopupState.CHECKING) {
-                        console.log('[App] 弹窗已关闭或状态已改变，跳过UI更新');
-                        return;
-                    }
-                    
-                    if (ok) {
-                        // 服务器在线，同步 flags 状态
-                        const analyzerEnabled = await syncFlagsFromBackend();
-                        
-                        // 【竞态保护】再次检查状态，syncFlagsFromBackend也是异步的
-                        if (!agentStateMachine._popupOpen) {
-                            console.log('[App] flags同步完成但弹窗已关闭，跳过UI更新');
-                            return;
-                        }
-                        
-                        agentStateMachine.transition(AgentPopupState.ONLINE, 'server online');
-                        
-                        // 启用总开关，恢复title
+                        // 总开关关闭
+                        agentMasterCheckbox.checked = false;
                         agentMasterCheckbox.disabled = false;
                         agentMasterCheckbox.title = window.t ? window.t('settings.toggles.agentMaster') : 'Agent总开关';
                         syncCheckboxUI(agentMasterCheckbox);
                         
-                        if (analyzerEnabled) {
-                            setFloatingAgentStatus(window.t ? window.t('agent.status.enabled') : 'Agent模式已开启');
-                            window.startAgentAvailabilityCheck();
-                            // 【修复】只有子开关开启时才显示HUD
-                            checkAndToggleTaskHUD();
-                        } else {
-                            setFloatingAgentStatus(window.t ? window.t('agent.status.ready') : 'Agent服务器就绪');
-                            window.startAgentAvailabilityCheck();
-                            window.stopAgentTaskPolling();
+                        // 强制关闭所有子开关
+                        resetSubCheckboxes();
+                        
+                        setFloatingAgentStatus(window.t ? window.t('agent.status.ready') : 'Agent服务器就绪');
+                        
+                        // 确保HUD隐藏
+                        window.stopAgentTaskPolling();
+                        
+                        // 立即通知后台关闭全部flags（如果后端状态不一致）
+                        if (flags.computer_use_enabled || flags.mcp_enabled) {
+                            console.log('[App] 总开关关闭但检测到子flag开启，强制同步关闭');
+                            fetch('/api/agent/flags', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({
+                                    lanlan_name: lanlan_config.lanlan_name,
+                                    flags: {agent_enabled: false, computer_use_enabled: false, mcp_enabled: false}
+                                })
+                            }).catch(e => console.warn('[App] 强制关闭flags失败:', e));
                         }
-                    } else {
-                        // 服务器离线
-                        agentStateMachine.transition(AgentPopupState.OFFLINE, 'server offline');
-                        agentMasterCheckbox.checked = false;
-                        resetSubCheckboxes();
-                        window.startAgentAvailabilityCheck();
                     }
-                } catch (e) {
-                    // 检查失败
-                    console.error('[App] Agent 健康检查失败:', e);
-                    agentStateMachine.updateCache(false, null);
-                    // 【竞态保护】弹窗已关闭时不更新状态
-                    if (agentStateMachine._popupOpen) {
-                        agentStateMachine.transition(AgentPopupState.OFFLINE, 'check failed');
-                        agentMasterCheckbox.checked = false;
-                        resetSubCheckboxes();
-                        window.startAgentAvailabilityCheck();
-                    }
-                } finally {
-                    // 确保释放检查锁
-                    agentStateMachine.releaseCheckLock();
+                    
+                    // 4. 恢复原异步逻辑
+                    window.startAgentAvailabilityCheck();
+                    
+                } else {
+                    // 服务器离线
+                    agentStateMachine.transition(AgentPopupState.OFFLINE, 'server offline');
+                    agentMasterCheckbox.checked = false;
+                    agentMasterCheckbox.disabled = true; // 离线时禁用总开关
+                    agentMasterCheckbox.title = window.t ? window.t('settings.toggles.serverOffline') : 'Agent服务器未启动';
+                    syncCheckboxUI(agentMasterCheckbox);
+                    
+                    resetSubCheckboxes();
+                    
+                    setFloatingAgentStatus(window.t ? window.t('settings.toggles.serverOffline') : 'Agent服务器未启动');
+                    
+                    // 离线也需要轮询（检查服务器何时上线）
+                    window.startAgentAvailabilityCheck();
                 }
+                
+            } catch (e) {
+                console.error('[App] Agent 初始检查失败:', e);
+                agentStateMachine.updateCache(false, null);
+                
+                if (agentStateMachine._popupOpen) {
+                    agentStateMachine.transition(AgentPopupState.OFFLINE, 'check failed');
+                    agentMasterCheckbox.checked = false;
+                    resetSubCheckboxes();
+                    window.startAgentAvailabilityCheck();
+                }
+            } finally {
+                agentStateMachine.releaseCheckLock();
             }
         });
         

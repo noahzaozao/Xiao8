@@ -604,7 +604,7 @@
     "clickToClosePreview": "💡 Click blank area to close preview"
   },
   "app": {
-    "welcomeback": "Welcome back!",
+    "welcomeBack": "{{name}} is back!",
     "title": "Project N.E.K.O.",
     "catgirlResting": "{{name}} is resting...",
     "textChatting": "Text chatting...",
@@ -697,7 +697,10 @@
       "unavailable": "{{name}} Unavailable",
       "checking": "Checking...",
       "serverOffline": "Agent server is offline",
-      "masterRequired": "Please enable Agent Master Switch first"
+      "masterRequired": "Please enable Agent Master Switch first",
+      "enabled": "{{name}} Enabled",
+      "disabled": "{{name}} Disabled",
+      "enableFailed": "Failed to enable {{name}}"
     }
   },
   "subtitle": {
