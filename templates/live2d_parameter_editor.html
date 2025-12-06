@@ -660,7 +660,11 @@
             sendMessageToMainPage('reload_model_parameters');
             // 延迟一点确保消息发送
             setTimeout(() => {
-                window.location.href = '/';
+                if (window.opener) {
+                    window.close();
+                } else {
+                    window.location.href = '/';
+                }
             }, 100);
         });
 
@@ -775,11 +779,23 @@
                 const modelConfig = await modelConfigRes.json();
                 modelConfig.url = modelJsonUrl;
 
+                // 加载用户偏好设置
+                let modelPreferences = null;
+                try {
+                    const preferences = await window.live2dManager.loadUserPreferences();
+                    if (preferences && preferences.length > 0) {
+                        modelPreferences = preferences.find(p => p && p.model_path === modelJsonUrl);
+                    }
+                } catch (e) {
+                    console.warn('加载用户偏好设置失败:', e);
+                }
+
                 // 加载模型（会自动从模型目录加载parameters.json）
                 await window.live2dManager.loadModel(modelConfig, {
                     loadEmotionMapping: false,
                     dragEnabled: true,
-                    wheelEnabled: true
+                    wheelEnabled: true,
+                    preferences: modelPreferences
                 });
 
                 live2dModel = window.live2dManager.getCurrentModel();
