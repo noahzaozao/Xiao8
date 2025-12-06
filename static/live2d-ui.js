@@ -22,17 +22,59 @@ Live2DManager.prototype.setupHTMLLockIcon = function(model) {
 
     const lockIcon = document.createElement('div');
     lockIcon.id = 'live2d-lock-icon';
-    lockIcon.innerText = this.isLocked ? '🔒' : '🔓';
     Object.assign(lockIcon.style, {
         position: 'fixed',
         zIndex: '30',
-        fontSize: '24px',
+        width: '32px',
+        height: '32px',
         cursor: 'pointer',
         userSelect: 'none',
-        textShadow: '0 0 4px black',
         pointerEvents: 'auto',
         display: 'none' // 默认隐藏
     });
+    
+    // 添加版本号防止缓存
+    const iconVersion = '?v=' + Date.now();
+    
+    // 创建图片容器
+    const imgContainer = document.createElement('div');
+    Object.assign(imgContainer.style, {
+        position: 'relative',
+        width: '32px',
+        height: '32px'
+    });
+    
+    // 创建锁定状态图片
+    const imgLocked = document.createElement('img');
+    imgLocked.src = '/static/icons/locked_icon.png' + iconVersion;
+    imgLocked.alt = 'Locked';
+    Object.assign(imgLocked.style, {
+        position: 'absolute',
+        width: '32px',
+        height: '32px',
+        objectFit: 'contain',
+        pointerEvents: 'none',
+        opacity: this.isLocked ? '1' : '0',
+        transition: 'opacity 0.3s ease'
+    });
+    
+    // 创建解锁状态图片
+    const imgUnlocked = document.createElement('img');
+    imgUnlocked.src = '/static/icons/unlocked_icon.png' + iconVersion;
+    imgUnlocked.alt = 'Unlocked';
+    Object.assign(imgUnlocked.style, {
+        position: 'absolute',
+        width: '32px',
+        height: '32px',
+        objectFit: 'contain',
+        pointerEvents: 'none',
+        opacity: this.isLocked ? '0' : '1',
+        transition: 'opacity 0.3s ease'
+    });
+    
+    imgContainer.appendChild(imgLocked);
+    imgContainer.appendChild(imgUnlocked);
+    lockIcon.appendChild(imgContainer);
 
     document.body.appendChild(lockIcon);
     this._lockIconElement = lockIcon;
@@ -40,7 +82,10 @@ Live2DManager.prototype.setupHTMLLockIcon = function(model) {
     lockIcon.addEventListener('click', (e) => {
         e.stopPropagation();
         this.isLocked = !this.isLocked;
-        lockIcon.innerText = this.isLocked ? '🔒' : '🔓';
+        
+        // 切换图标显示
+        imgLocked.style.opacity = this.isLocked ? '1' : '0';
+        imgUnlocked.style.opacity = this.isLocked ? '0' : '1';
 
         if (this.isLocked) {
             container.style.pointerEvents = 'none';
@@ -694,10 +739,11 @@ Live2DManager.prototype._createAgentPopupContent = function(popup) {
     statusDiv.textContent = ''; // 初始为空
     popup.appendChild(statusDiv);
     
+    // 【修复】所有 agent 开关初始状态为禁用，等待查询结果后由 app.js 启用
     const agentToggles = [
-        { id: 'agent-master', label: window.t ? window.t('settings.toggles.agentMaster') : 'Agent总开关', labelKey: 'settings.toggles.agentMaster' },
-        { id: 'agent-keyboard', label: window.t ? window.t('settings.toggles.keyboardControl') : '键鼠控制', labelKey: 'settings.toggles.keyboardControl' },
-        { id: 'agent-mcp', label: window.t ? window.t('settings.toggles.mcpTools') : 'MCP工具', labelKey: 'settings.toggles.mcpTools' }
+        { id: 'agent-master', label: window.t ? window.t('settings.toggles.agentMaster') : 'Agent总开关', labelKey: 'settings.toggles.agentMaster', initialDisabled: true },
+        { id: 'agent-keyboard', label: window.t ? window.t('settings.toggles.keyboardControl') : '键鼠控制', labelKey: 'settings.toggles.keyboardControl', initialDisabled: true },
+        { id: 'agent-mcp', label: window.t ? window.t('settings.toggles.mcpTools') : 'MCP工具', labelKey: 'settings.toggles.mcpTools', initialDisabled: true }
     ];
     
     agentToggles.forEach(toggle => {
@@ -1508,6 +1554,12 @@ Live2DManager.prototype._createToggleItem = function(toggle, popup) {
         display: 'none'
     });
     
+    // 【修复】如果配置了初始禁用状态，则禁用 checkbox
+    if (toggle.initialDisabled) {
+        checkbox.disabled = true;
+        checkbox.title = window.t ? window.t('settings.toggles.checking') : '查询中...';
+    }
+    
     // 创建自定义圆形指示器
     const indicator = document.createElement('div');
     Object.assign(indicator.style, {
@@ -2041,6 +2093,11 @@ Live2DManager.prototype.closePopupById = function(buttonId) {
         return false;
     }
 
+    // 如果是 agent 弹窗关闭，派发关闭事件
+    if (buttonId === 'agent') {
+        window.dispatchEvent(new CustomEvent('live2d-agent-popup-closed'));
+    }
+
     popup.style.opacity = '0';
     popup.style.transform = 'translateX(-10px)';
     setTimeout(() => {
@@ -2461,6 +2518,11 @@ Live2DManager.prototype.showPopup = function(buttonId, popup) {
         // 如果已经显示，则隐藏
         popup.style.opacity = '0';
         popup.style.transform = 'translateX(-10px)';
+        
+        // 如果是 agent 弹窗关闭，派发关闭事件
+        if (buttonId === 'agent') {
+            window.dispatchEvent(new CustomEvent('live2d-agent-popup-closed'));
+        }
         
         setTimeout(() => {
             popup.style.display = 'none';

@@ -37,9 +37,13 @@ class Live2DManager {
         this.onStatusUpdate = null;
         this.modelName = null; // 记录当前模型目录名
         this.modelRootPath = null; // 记录当前模型根路径，如 /static/<modelName>
+        this.savedModelParameters = null; // 保存的模型参数（从parameters.json加载），供定时器定期应用
+        this._shouldApplySavedParams = false; // 是否应该应用保存的参数
+        this._savedParamsTimer = null; // 保存参数应用的定时器
         
         // 常驻表情：使用官方 expression 播放并在清理后自动重放
         this.persistentExpressionNames = [];
+        this.persistentExpressionParamsByName = {};
 
         // UI/Ticker 资源句柄（便于在切换模型时清理）
         this._lockIconTicker = null;
@@ -60,15 +64,18 @@ class Live2DManager {
         this.mouthValue = 0; // 0~1
         this.mouthParameterId = null; // 例如 'ParamMouthOpenY' 或 'ParamO'
         this._mouthOverrideInstalled = false;
+        this._origMotionManagerUpdate = null; // 保存原始的 motionManager.update 方法
         this._origCoreModelUpdate = null; // 保存原始的 coreModel.update 方法
         this._mouthTicker = null;
         
         // 记录最后一次加载模型的原始路径（用于保存偏好时使用）
         this._lastLoadedModelPath = null;
 
-        // ⚠️ 已禁用自动保存功能：
-        // 不再在窗口关闭/刷新时自动保存模型位置
-        // 只有在模型设置页面手动点击"保存设置"按钮时才会保存位置和缩放
+        // 防抖定时器（用于滚轮缩放等连续操作后保存位置）
+        this._savePositionDebounceTimer = null;
+
+        // ⚠️ 已启用自动保存功能：
+        // 在拖动或缩放模型后自动保存位置和缩放
     }
 
     // 从 FileReferences 推导 EmotionMapping（用于兼容历史数据）
@@ -139,10 +146,9 @@ class Live2DManager {
         return [];
     }
 
-    // 保存用户偏好（使用 RequestAPI）
-    async saveUserPreferences(modelPath, position, scale) {
+    // 保存用户偏好
+    async saveUserPreferences(modelPath, position, scale, parameters) {
         try {
-            // 使用 RequestAPI 保存用户偏好
             return await window.RequestAPI.saveUserPreferences(modelPath, position, scale);
         } catch (error) {
             console.error("保存偏好失败:", error);

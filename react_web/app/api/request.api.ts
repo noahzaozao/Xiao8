@@ -310,7 +310,8 @@ export async function getUserPreferences(): Promise<any[]> {
 export async function saveUserPreferences(
   modelPath: string,
   position: { x: number; y: number },
-  scale: { x: number; y: number }
+  scale: { x: number; y: number },
+  parameters: Record<string, any>
 ): Promise<boolean> {
   try {
     // 验证位置和缩放值
@@ -335,8 +336,14 @@ export async function saveUserPreferences(
     const preferences = {
       model_path: modelPath,
       position: position,
-      scale: scale
+      scale: scale,
+      parameters: {}
     };
+
+    // 如果有参数，添加到偏好中
+    if (parameters && typeof parameters === 'object') {
+      preferences.parameters = parameters;
+    }
 
     const request = getRequest();
     const result = await request.post('/api/preferences', preferences) as any;
