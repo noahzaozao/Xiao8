@@ -32,7 +32,7 @@ class Live2DManager {
         this.isEmotionChanging = false;
         this.dragEnabled = false;
         this.isFocusing = false;
-        this.isLocked = true;
+        this.isLocked = false;
         this.onModelLoaded = null;
         this.onStatusUpdate = null;
         this.modelName = null; // 记录当前模型目录名
