@@ -604,6 +604,7 @@
     "clickToClosePreview": "💡 点击空白处关闭预览"
   },
   "app": {
+    "welcomeback": "欢迎回来！",
     "title": "Project N.E.K.O.",
     "catgirlResting": "{{name}}正在打盹...",
     "textChatting": "正在文本聊天中...",
@@ -656,7 +657,8 @@
     "voiceSystemPreparing": "语音系统准备中...",
     "textSystemPreparing": "文本系统准备中，请稍候...",
     "connectingToServer": "正在连接服务器...",
-    "readyToSpeak": "可以说话了！"
+    "readyToSpeak": "可以说话了！",
+    "screenShareRequiresVoice": "屏幕分享仅用于音视频通话"
   },
   "buttons": {
     "voiceControl": "语音控制",
@@ -692,7 +694,10 @@
       "keyboardControl": "键鼠控制",
       "mcpTools": "MCP工具",
       "focusMode": "🎯 允许打断",
-      "unavailable": "{{name}}不可用"
+      "unavailable": "{{name}}不可用",
+      "checking": "查询中...",
+      "serverOffline": "Agent服务器未启动",
+      "masterRequired": "请先开启Agent总开关"
     }
   },
   "subtitle": {
@@ -702,6 +707,11 @@
     "title": "Viewer - Project N.E.K.O."
   },
   "agent": {
+    "status": {
+      "connecting": "Agent服务器连接中...",
+      "ready": "Agent服务器就绪",
+      "enabled": "Agent模式已开启"
+    },
     "taskHud": {
       "title": "Agent 任务",
       "running": "运行中",
