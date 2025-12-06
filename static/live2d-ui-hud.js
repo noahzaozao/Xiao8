@@ -61,6 +61,11 @@ Live2DManager.prototype.createAgentTaskHUD = function () {
         return document.getElementById('agent-task-hud');
     }
 
+    if (this._cleanupDragging) {
+        this._cleanupDragging();
+        this._cleanupDragging = null;
+    }
+
     const hud = document.createElement('div');
     hud.id = 'agent-task-hud';
 

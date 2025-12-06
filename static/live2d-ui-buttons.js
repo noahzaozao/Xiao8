@@ -179,6 +179,7 @@ Live2DManager.prototype.setupFloatingButtons = function (model) {
 
     document.body.appendChild(buttonsContainer);
     this._floatingButtonsContainer = buttonsContainer;
+    this._floatingButtons = this._floatingButtons || {};
 
     // 响应式：小屏时固定在右下角并横向排列（使用全局 isMobileWidth）
     const applyResponsiveFloatingLayout = () => {

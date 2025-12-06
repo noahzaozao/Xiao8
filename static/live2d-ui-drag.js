@@ -6,6 +6,8 @@
 // 关闭指定按钮对应的弹出框，并恢复按钮状态
 Live2DManager.prototype.closePopupById = function (buttonId) {
     if (!buttonId) return false;
+    this._floatingButtons = this._floatingButtons || {};
+    this._popupTimers = this._popupTimers || {};
     const popup = document.getElementById(`live2d-popup-${buttonId}`);
     if (!popup || popup.style.display !== 'flex') {
         return false;

@@ -50,7 +50,8 @@ Live2DManager.prototype.createPopup = function (buttonId) {
     // 根据不同按钮创建不同的弹出内容
     if (buttonId === 'mic') {
         // 麦克风选择列表（将从页面中获取）
-        popup.id = 'live2d-mic-popup';
+        popup.id = 'live2d-popup-mic';
+        popup.setAttribute('data-legacy-id', 'live2d-mic-popup');
     } else if (buttonId === 'agent') {
         // Agent工具开关组
         this._createAgentPopupContent(popup);

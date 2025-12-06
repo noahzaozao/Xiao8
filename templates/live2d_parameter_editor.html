@@ -591,20 +591,23 @@
 
         // 获取参数的中文名称
         function getParameterChineseName(englishName) {
+            // 规范化输入，防止 null/undefined 调用字符串方法
+            const safeName = englishName ? String(englishName) : '';
+
             // 直接匹配
-            if (parameterNameTranslations[englishName]) {
-                return parameterNameTranslations[englishName];
+            if (parameterNameTranslations[safeName]) {
+                return parameterNameTranslations[safeName];
             }
 
             // 部分匹配（处理带前缀的情况）
             for (const [key, value] of Object.entries(parameterNameTranslations)) {
-                if (englishName.includes(key) || key.includes(englishName)) {
+                if (safeName.includes(key) || key.includes(safeName)) {
                     return value;
                 }
             }
 
             // 智能翻译常见单词
-            let translated = englishName;
+            let translated = safeName;
             translated = translated.replace(/Eye\s+L/gi, '左眼');
             translated = translated.replace(/Eye\s+R/gi, '右眼');
             translated = translated.replace(/Arm\s+L/gi, '左臂');
@@ -631,7 +634,7 @@
             translated = translated.replace(/Color/gi, '颜色');
             translated = translated.replace(/_/g, ' ');
 
-            return translated || englishName;
+            return translated || safeName;
         }
 
         const modelSelect = document.getElementById('model-select');
@@ -760,10 +763,14 @@
                     return true;
                 } else {
                     console.warn('无法加载参数信息:', data.error);
+                    parameterInfo = [];
+                    parameterGroups = {};
                     return false;
                 }
             } catch (error) {
                 console.error('加载参数信息失败:', error);
+                parameterInfo = [];
+                parameterGroups = {};
                 return false;
             }
         }

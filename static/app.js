@@ -343,7 +343,12 @@ function init_app(){
                         }
                     }
                 } else if (response.type === 'expression') {
-                    window.LanLan1.registered_expressions[response.message]();
+                    const fn = window.LanLan1.registered_expressions[response.message];
+                    if (typeof fn === 'function') {
+                        fn();
+                    } else {
+                        console.warn('未知表情指令:', response.message);
+                    }
                 } else if (response.type === 'system' && response.data === 'turn end') {
                     console.log('收到turn end事件，开始情感分析');
                     // 消息完成时进行情感分析
@@ -2475,8 +2480,7 @@ function init_app(){
         
         // 【修复】立即关闭所有弹窗，防止遗留的弹窗区域阻塞鼠标事件
         // 这里直接操作 DOM，不使用动画延迟，确保弹窗立即完全隐藏
-        // 注意：需要同时选中 live2d-popup-* 和 live2d-mic-popup（麦克风弹窗ID格式不同）
-        const allPopups = document.querySelectorAll('[id^="live2d-popup-"], #live2d-mic-popup');
+        const allPopups = document.querySelectorAll('[id^="live2d-popup-"]');
         allPopups.forEach(popup => {
             popup.style.setProperty('display', 'none', 'important');
             popup.style.setProperty('visibility', 'hidden', 'important');
@@ -3963,7 +3967,7 @@ function init_app(){
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 cachedMicDevices = devices.filter(device => device.kind === 'audioinput');
                 // 如果弹出框当前是显示的，刷新它
-                const micPopup = document.getElementById('live2d-mic-popup');
+                const micPopup = document.getElementById('live2d-popup-mic');
                 if (micPopup && micPopup.style.display === 'flex') {
                     await window.renderFloatingMicList();
                 }
@@ -3975,7 +3979,7 @@ function init_app(){
     
     // 为浮动弹出框渲染麦克风列表（修复版本：确保有权限后再渲染）
     window.renderFloatingMicList = async () => {
-        const micPopup = document.getElementById('live2d-mic-popup');
+        const micPopup = document.getElementById('live2d-popup-mic');
         if (!micPopup) {
             return false;
         }
@@ -4102,7 +4106,7 @@ function init_app(){
     
     // 轻量级更新：仅更新麦克风列表的选中状态（不重新渲染整个列表）
     function updateMicListSelection() {
-        const micPopup = document.getElementById('live2d-mic-popup');
+        const micPopup = document.getElementById('live2d-popup-mic');
         if (!micPopup) return;
         
         // 更新所有选项的选中状态
