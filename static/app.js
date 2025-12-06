@@ -293,6 +293,9 @@ function init_app(){
                             showStatusToast(window.t ? window.t('app.textChatting') : `正在文本聊天中...`, 5000);
                         } else {
                             stopRecording();
+                            // 同步浮动按钮状态
+                            syncFloatingMicButtonState(false);
+                            syncFloatingScreenButtonState(false);
                             if (socket.readyState === WebSocket.OPEN) {
                                 socket.send(JSON.stringify({
                                     action: 'end_session'
@@ -692,6 +695,7 @@ function init_app(){
         
         // 同步浮动按钮状态
         syncFloatingMicButtonState(false);
+        syncFloatingScreenButtonState(false);
         
         stopRecording();
         micButton.disabled = false;
@@ -800,6 +804,7 @@ function init_app(){
             screenCaptureStream.getVideoTracks()[0].onended = () => {
                 stopScreening();
                 screenButton.classList.remove('active');
+                syncFloatingScreenButtonState(false);
             };
 
             // 获取麦克风流
@@ -836,6 +841,7 @@ function init_app(){
         
         // 移除active类
         screenButton.classList.remove('active');
+        syncFloatingScreenButtonState(false);
     }
 
     window.switchMicCapture = async () => {
@@ -1028,6 +1034,22 @@ function init_app(){
         }
     }
 
+    // 同步浮动屏幕分享按钮状态的辅助函数
+    function syncFloatingScreenButtonState(isActive) {
+        if (window.live2dManager && window.live2dManager._floatingButtons && window.live2dManager._floatingButtons.screen) {
+            const floatingScreenBtn = window.live2dManager._floatingButtons.screen.button;
+            if (floatingScreenBtn) {
+                floatingScreenBtn.dataset.active = isActive ? 'true' : 'false';
+                const imgOff = window.live2dManager._floatingButtons.screen.imgOff;
+                const imgOn = window.live2dManager._floatingButtons.screen.imgOn;
+                if (imgOff && imgOn) {
+                    imgOff.style.opacity = isActive ? '0' : '1';
+                    imgOn.style.opacity = isActive ? '1' : '0';
+                }
+            }
+        }
+    }
+
     // 开始麦克风录音
     micButton.addEventListener('click', async () => {
         // 如果按钮已禁用或正在录音，直接返回
@@ -1191,6 +1213,7 @@ function init_app(){
             
             // 同步更新浮动按钮状态，确保浮动按钮也变灰
             syncFloatingMicButtonState(false);
+            syncFloatingScreenButtonState(false);
             
             micButton.disabled = false;
             muteButton.disabled = true;
@@ -1833,6 +1856,7 @@ function init_app(){
                     // 强制复位所有状态，防止状态不一致
                     micButton.classList.remove('recording', 'active');
                     syncFloatingMicButtonState(false);
+                    syncFloatingScreenButtonState(false);
                     micButton.disabled = false;
                     muteButton.disabled = true;
                     screenButton.disabled = true;
@@ -2506,37 +2530,14 @@ function init_app(){
         }
         console.log('[App] 已关闭所有弹窗，数量:', allPopups.length);
         
-        // 【修复】重置所有浮动按钮的状态（清除高亮、恢复默认背景色和图标状态）
-        if (window.live2dManager && window.live2dManager._floatingButtons) {
-            Object.keys(window.live2dManager._floatingButtons).forEach(btnId => {
-                const buttonData = window.live2dManager._floatingButtons[btnId];
-                if (buttonData && buttonData.button) {
-                    // 重置按钮激活状态
-                    buttonData.button.dataset.active = 'false';
-                    // 恢复默认背景色（Fluent Acrylic）
-                    buttonData.button.style.background = 'rgba(255, 255, 255, 0.65)';
-                    // 恢复图标状态（显示 off 图标，隐藏 on 图标）
-                    if (buttonData.imgOff) {
-                        buttonData.imgOff.style.opacity = '1';
-                    }
-                    if (buttonData.imgOn) {
-                        buttonData.imgOn.style.opacity = '0';
-                    }
-                }
-            });
+        // 【改进】使用统一的状态管理方法重置所有浮动按钮
+        if (window.live2dManager && typeof window.live2dManager.resetAllButtons === 'function') {
+            window.live2dManager.resetAllButtons();
         }
         
-        // 【修复】将锁定状态设为锁定，告知 Electron 进行全局鼠标穿透
-        if (window.live2dManager) {
-            window.live2dManager.isLocked = true;
-            // 同步更新锁图标的显示状态（注意 alt 属性是英文）
-            const lockIcon = document.getElementById('live2d-lock-icon');
-            if (lockIcon) {
-                const imgLocked = lockIcon.querySelector('img[alt="Locked"]');
-                const imgUnlocked = lockIcon.querySelector('img[alt="Unlocked"]');
-                if (imgLocked) imgLocked.style.opacity = '1';
-                if (imgUnlocked) imgUnlocked.style.opacity = '0';
-            }
+        // 【改进】使用统一的 setLocked 方法设置锁定状态（同时更新图标和 canvas）
+        if (window.live2dManager && typeof window.live2dManager.setLocked === 'function') {
+            window.live2dManager.setLocked(true, { updateFloatingButtons: false });
         }
         
         // 【修复】隐藏 Live2D canvas，使 Electron 的 alpha 检测认为该区域完全透明
@@ -2713,25 +2714,15 @@ function init_app(){
         }
         
         // 第五步：恢复锁按钮，并设置为解锁状态（用户可以拖动模型）
-        // 【修复】统一管理锁定状态：明确设置 isLocked 并同步更新图标
-        if (window.live2dManager) {
-            window.live2dManager.isLocked = false;  // 解锁状态
-        }
         const lockIcon = document.getElementById('live2d-lock-icon');
         if (lockIcon) {
             lockIcon.style.display = 'block';
             lockIcon.style.removeProperty('visibility');
             lockIcon.style.removeProperty('opacity');
-            // 同步更新锁图标的显示状态为解锁（注意 alt 属性是英文）
-            const imgLocked = lockIcon.querySelector('img[alt="Locked"]');
-            const imgUnlocked = lockIcon.querySelector('img[alt="Unlocked"]');
-            if (imgLocked) imgLocked.style.opacity = '0';
-            if (imgUnlocked) imgUnlocked.style.opacity = '1';
         }
-        // 同步更新 canvas 的 pointerEvents（解锁状态允许交互）
-        const live2dCanvasForLock = document.getElementById('live2d-canvas');
-        if (live2dCanvasForLock) {
-            live2dCanvasForLock.style.pointerEvents = 'auto';
+        // 【改进】使用统一的 setLocked 方法设置解锁状态（同时更新图标和 canvas）
+        if (window.live2dManager && typeof window.live2dManager.setLocked === 'function') {
+            window.live2dManager.setLocked(false, { updateFloatingButtons: false });
         }
         
         // 第六步：恢复浮动按钮系统（使用 !important 强制显示，覆盖之前的隐藏样式）
@@ -3085,10 +3076,10 @@ function init_app(){
                     const wasOffline = agentStateMachine.getState() !== AgentPopupState.ONLINE;
                     agentStateMachine.transition(AgentPopupState.ONLINE, 'server online');
                     if (wasOffline) {
-                        setFloatingAgentStatus('Agent服务器就绪');
+                        setFloatingAgentStatus(window.t ? window.t('agent.status.ready') : 'Agent服务器就绪');
                     }
                 } else {
-                    setFloatingAgentStatus('Agent服务器未启动');
+                    setFloatingAgentStatus(window.t ? window.t('settings.toggles.serverOffline') : 'Agent服务器未启动');
                     agentStateMachine.transition(AgentPopupState.OFFLINE, 'server offline');
                 }
             } catch (e) {
@@ -3363,7 +3354,7 @@ function init_app(){
             try {
                 if (isChecked) {
                     // 【状态机】保持PROCESSING状态，所有按钮已被禁用
-                    setFloatingAgentStatus('Agent服务器连接中...');
+                    setFloatingAgentStatus(window.t ? window.t('agent.status.connecting') : 'Agent服务器连接中...');
                     
                     let healthOk = false;
                     try {
@@ -3374,7 +3365,7 @@ function init_app(){
                         if (isExpired()) return;
                         agentStateMachine.updateCache(false, null);
                         agentStateMachine.endOperation(false, false);
-                        setFloatingAgentStatus('Agent服务器未启动');
+                        setFloatingAgentStatus(window.t ? window.t('settings.toggles.serverOffline') : 'Agent服务器未启动');
                         agentMasterCheckbox.checked = false;
                         agentMasterCheckbox.disabled = false;
                         agentMasterCheckbox.title = window.t ? window.t('settings.toggles.agentMaster') : 'Agent总开关';
@@ -3509,6 +3500,12 @@ function init_app(){
                                 flags: {agent_enabled: false, computer_use_enabled: false, mcp_enabled: false}
                             })
                         });
+                        
+                        // 【防竞态】检查操作序列号，防止过期操作覆盖新状态
+                        if (isExpired()) {
+                            console.log('[App] 关闭flags API完成后操作已过期，跳过状态转换');
+                            return;
+                        }
                         
                         // 【状态机】关闭操作成功完成
                         agentStateMachine.endOperation(true, true);
@@ -3739,12 +3736,12 @@ function init_app(){
                         syncCheckboxUI(agentMasterCheckbox);
                     }
                     if (agentMasterCheckbox?.checked) {
-                        setFloatingAgentStatus('Agent模式已开启');
+                        setFloatingAgentStatus(window.t ? window.t('agent.status.enabled') : 'Agent模式已开启');
                         window.startAgentAvailabilityCheck();
                         // 【修复】只有子开关开启时才显示HUD
                         checkAndToggleTaskHUD();
                     } else {
-                        setFloatingAgentStatus('Agent服务器就绪');
+                        setFloatingAgentStatus(window.t ? window.t('agent.status.ready') : 'Agent服务器就绪');
                         window.startAgentAvailabilityCheck();
                     }
                 } else if (agentStateMachine._cachedServerOnline === false) {
@@ -3788,12 +3785,12 @@ function init_app(){
                         syncCheckboxUI(agentMasterCheckbox);
                         
                         if (analyzerEnabled) {
-                            setFloatingAgentStatus('Agent模式已开启');
+                            setFloatingAgentStatus(window.t ? window.t('agent.status.enabled') : 'Agent模式已开启');
                             window.startAgentAvailabilityCheck();
                             // 【修复】只有子开关开启时才显示HUD
                             checkAndToggleTaskHUD();
                         } else {
-                            setFloatingAgentStatus('Agent服务器就绪');
+                            setFloatingAgentStatus(window.t ? window.t('agent.status.ready') : 'Agent服务器就绪');
                             window.startAgentAvailabilityCheck();
                             window.stopAgentTaskPolling();
                         }
@@ -4385,6 +4382,9 @@ function init_app(){
         if (isRecording) {
             console.log('[猫娘切换] 停止录音');
             stopRecording();
+            // 同步浮动按钮状态
+            syncFloatingMicButtonState(false);
+            syncFloatingScreenButtonState(false);
         }
         
         // 清空音频队列

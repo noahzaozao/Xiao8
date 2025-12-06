@@ -604,6 +604,7 @@
     "clickToClosePreview": "💡 Click blank area to close preview"
   },
   "app": {
+    "welcomeback": "Welcome back!",
     "title": "Project N.E.K.O.",
     "catgirlResting": "{{name}} is resting...",
     "textChatting": "Text chatting...",
@@ -656,7 +657,8 @@
     "voiceSystemPreparing": "Voice system preparing...",
     "textSystemPreparing": "Text system preparing, please wait...",
     "connectingToServer": "Connecting to server...",
-    "readyToSpeak": "Ready to speak!"
+    "readyToSpeak": "Ready to speak!",
+    "screenShareRequiresVoice": "Screen sharing is only available during voice calls"
   },
   "buttons": {
     "voiceControl": "Voice Control",
@@ -692,7 +694,10 @@
       "keyboardControl": "Keyboard & Mouse Control",
       "mcpTools": "MCP Tools",
       "focusMode": "🎯 Allow Interrupt",
-      "unavailable": "{{name}} Unavailable"
+      "unavailable": "{{name}} Unavailable",
+      "checking": "Checking...",
+      "serverOffline": "Agent server is offline",
+      "masterRequired": "Please enable Agent Master Switch first"
     }
   },
   "subtitle": {
@@ -702,6 +707,11 @@
     "title": "Viewer - Project N.E.K.O."
   },
   "agent": {
+    "status": {
+      "connecting": "Connecting to Agent server...",
+      "ready": "Agent server is ready",
+      "enabled": "Agent mode enabled"
+    },
     "taskHud": {
       "title": "Agent Tasks",
       "running": "Running",

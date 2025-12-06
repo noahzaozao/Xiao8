@@ -945,7 +945,7 @@
                 // 只显示 .exp3.json 文件
                 const exp3Files = currentModelFiles.expression_files.filter(file => file.endsWith('.exp3.json'));
 
-                persistentSelect.innerHTML = `<option value="" data-i18n="live2d.selectPersistentExpression">选择常驻表情</option>`;
+                persistentSelect.innerHTML = `<option value="" data-i18n="live2d.selectPersistentExpression">${t('live2d.selectPersistentExpression', '选择常驻表情')}</option>`;
                 exp3Files.forEach(file => {
                     const option = document.createElement('option');
                     option.value = file;

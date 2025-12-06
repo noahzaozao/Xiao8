@@ -78,31 +78,17 @@ Live2DManager.prototype.setupHTMLLockIcon = function (model) {
     lockIcon.appendChild(imgContainer);
 
     document.body.appendChild(lockIcon);
+    // 【改进】存储锁图标及其图片引用，便于统一管理
     this._lockIconElement = lockIcon;
+    this._lockIconImages = {
+        locked: imgLocked,
+        unlocked: imgUnlocked
+    };
 
     lockIcon.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.isLocked = !this.isLocked;
-
-        // 切换图标显示
-        imgLocked.style.opacity = this.isLocked ? '1' : '0';
-        imgUnlocked.style.opacity = this.isLocked ? '0' : '1';
-
-        if (this.isLocked) {
-            container.style.pointerEvents = 'none';
-            // 锁定时隐藏浮动菜单
-            const floatingButtons = document.getElementById('live2d-floating-buttons');
-            if (floatingButtons) {
-                floatingButtons.style.display = 'none';
-            }
-        } else {
-            container.style.pointerEvents = 'auto';
-            // 解锁时显示浮动菜单
-            const floatingButtons = document.getElementById('live2d-floating-buttons');
-            if (floatingButtons) {
-                floatingButtons.style.display = 'flex';
-            }
-        }
+        // 【改进】使用统一的 setLocked 方法来同步更新状态和 UI
+        this.setLocked(!this.isLocked);
     });
 
     // 初始状态
@@ -451,6 +437,23 @@ Live2DManager.prototype.setupFloatingButtons = function (model) {
                             return; // 直接返回，不执行任何状态切换或事件触发
                         }
                         // 如果 isMicStarting 为 false，说明已经启动成功，允许继续执行（可以退出）
+                    }
+                }
+
+                // 对于屏幕分享按钮，检查语音是否正在进行
+                if (config.id === 'screen') {
+                    const isRecording = window.isRecording || false;
+                    const wantToActivate = btn.dataset.active !== 'true';  // 当前未激活，想要激活
+                    
+                    if (wantToActivate && !isRecording) {
+                        // 语音未开启时尝试开启屏幕分享，显示提示并阻止操作
+                        if (typeof window.showStatusToast === 'function') {
+                            window.showStatusToast(
+                                window.t ? window.t('app.screenShareRequiresVoice') : '屏幕分享仅用于音视频通话',
+                                3000
+                            );
+                        }
+                        return; // 阻止操作
                     }
                 }
 
