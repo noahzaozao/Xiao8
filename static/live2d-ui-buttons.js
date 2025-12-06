@@ -181,7 +181,7 @@ Live2DManager.prototype.setupFloatingButtons = function (model) {
     this._floatingButtonsContainer = buttonsContainer;
     this._floatingButtons = this._floatingButtons || {};
 
-    // 响应式：小屏时固定在右下角并横向排列（使用全局 isMobileWidth）
+    // 响应式：小屏时固定在右下角并纵向排列（使用全局 isMobileWidth）
     const applyResponsiveFloatingLayout = () => {
         if (isMobileWidth()) {
             // 移动端：固定在右下角，纵向排布，整体上移100px
@@ -730,7 +730,7 @@ Live2DManager.prototype.setupFloatingButtons = function (model) {
 
             // 计算缩放比例（限制在合理范围内，防止按钮太小或太大）
             const minScale = 0.5;  // 最小缩放50%
-            const maxScale = 1.;  // 最大缩放120%
+            const maxScale = 1.;  // 最大缩放100%
             const rawScale = targetToolbarHeight / baseToolbarHeight;
             const scale = Math.max(minScale, Math.min(maxScale, rawScale));
 

@@ -343,11 +343,13 @@ function init_app(){
                         }
                     }
                 } else if (response.type === 'expression') {
-                    const fn = window.LanLan1.registered_expressions[response.message];
+                    const lanlan = window.LanLan1;
+                    const registry = lanlan && lanlan.registered_expressions;
+                    const fn = registry && registry[response.message];
                     if (typeof fn === 'function') {
                         fn();
                     } else {
-                        console.warn('未知表情指令:', response.message);
+                        console.warn('未知表情指令或表情系统未初始化:', response.message);
                     }
                 } else if (response.type === 'system' && response.data === 'turn end') {
                     console.log('收到turn end事件，开始情感分析');

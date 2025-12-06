@@ -234,7 +234,17 @@ Live2DManager.prototype.showAgentTaskHUD = function () {
     hud.style.display = 'flex';
     hud.style.opacity = '1';
     const savedPos = localStorage.getItem('agent-task-hud-position');
-    if (!savedPos) {
+    if (savedPos) {
+        try {
+            const parsed = JSON.parse(savedPos);
+            if (parsed.top) hud.style.top = parsed.top;
+            if (parsed.left) hud.style.left = parsed.left;
+            if (parsed.right) hud.style.right = parsed.right;
+            if (parsed.transform) hud.style.transform = parsed.transform;
+        } catch (e) {
+            hud.style.transform = 'translateY(-50%) translateX(0)';
+        }
+    } else {
         hud.style.transform = 'translateY(-50%) translateX(0)';
     }
 };
@@ -244,7 +254,10 @@ Live2DManager.prototype.hideAgentTaskHUD = function () {
     const hud = document.getElementById('agent-task-hud');
     if (hud) {
         hud.style.opacity = '0';
-        hud.style.transform = 'translateY(-50%) translateX(20px)';
+        const savedPos = localStorage.getItem('agent-task-hud-position');
+        if (!savedPos) {
+            hud.style.transform = 'translateY(-50%) translateX(20px)';
+        }
         setTimeout(() => {
             hud.style.display = 'none';
         }, 300);
