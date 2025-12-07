@@ -99,8 +99,9 @@ services:
     container_name: neko
     restart: unless-stopped
     ports:
-      #webui端口（默认48911，建议通过变量更改）
-      - "${NEKO_MAIN_SERVER_PORT:-48911}:48911"
+      #webui端口（默认48911）
+#      - "48911(服务器外部端口):80(N.E.K.O项目容器内部Nginx反代端口)"
+      - "48911:80"
     environment:
       # API Keys
       - NEKO_CORE_API_KEY=${NEKO_CORE_API_KEY}
@@ -158,7 +159,7 @@ networks:
 | `NEKO_ASSIST_API_KEY_SILICON` | 硅基流动 API Key | - | `xxxxx` |
 | `NEKO_MCP_TOKEN` | MCP Router Token | - | `xxxxx` |
 
-#### 服务器端口配置(用于容器外访问)
+#### 服务器端口配置（不要更改！！！）
 
 | 环境变量 | 说明 | 默认值 |
 |---------|------|--------|
