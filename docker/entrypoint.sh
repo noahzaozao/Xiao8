@@ -10,7 +10,7 @@ export NGINX_PORT=${NGINX_PORT:-80}
 
 # 1. 信号处理优化
 setup_signal_handlers() {
-    trap 'echo "🛑 Received shutdown signal"; for pid in "${PIDS[@]}"; do kill -TERM "$pid" 2>/dev/null || true; done; nginx -s stop; wait; exit 0' TERM INT
+    trap 'echo "🛑 Received shutdown signal"; nginx -s stop 2>/dev/null || true; for pid in "${PIDS[@]}"; do kill -TERM "$pid" 2>/dev/null || true; done; wait; exit 0' TERM INT
 }
 
 # 2. 环境检查与初始化优化
