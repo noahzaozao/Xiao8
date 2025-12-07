@@ -533,7 +533,7 @@
                     return false;
                 }
             }
-            // 默认隐藏未知参数（保守策略）
+            // 不匹配则默认显示（包括未知参数）
             return true;
         }
 
@@ -842,6 +842,63 @@
             }
         }
 
+        // 获取参数的范围和默认值
+        function getParameterRange(coreModel, index) {
+            let min = -1;
+            let max = 1;
+            let defaultVal = undefined;
+
+            try {
+                // 优先尝试 getParameterDefaultValueByIndex (Live2DManager 中使用的标准方法)
+                // Live2DManager.js 中确认使用了此方法，应该是最可靠的获取默认值方式
+                if (typeof coreModel.getParameterDefaultValueByIndex === 'function') {
+                    defaultVal = coreModel.getParameterDefaultValueByIndex(index);
+                }
+
+                // Try Cubism 2 style (Standard SDK)
+                if (typeof coreModel.getParamMin === 'function') {
+                    min = coreModel.getParamMin(index);
+                    max = coreModel.getParamMax(index);
+                    if (defaultVal === undefined) defaultVal = coreModel.getParamDefaultValue(index);
+                }
+                // Try Cubism 4 JS Wrapper style (pixi-live2d-display / Internal Model)
+                else if (coreModel.parameters && coreModel.parameters.minimumValues) {
+                    min = coreModel.parameters.minimumValues[index];
+                    max = coreModel.parameters.maximumValues ? coreModel.parameters.maximumValues[index] : 1;
+                    if (defaultVal === undefined && coreModel.parameters.defaultValues) {
+                        defaultVal = coreModel.parameters.defaultValues[index];
+                    }
+                }
+                // Try Cubism 4 Standard Emscripten binding style
+                else if (typeof coreModel.getParameterMinimumValues === 'function') {
+                    // Note: In some bindings these return arrays or pointers, not values by index directly usually
+                    // But let's check if getParameterMinimumValue exists
+                     if (typeof coreModel.getParameterMinimumValue === 'function') {
+                        min = coreModel.getParameterMinimumValue(index);
+                        max = coreModel.getParameterMaximumValue(index);
+                        if (defaultVal === undefined) defaultVal = coreModel.getParameterDefaultValue(index);
+                     }
+                }
+                // Fallback: check if we can access the arrays directly on the coreModel (some custom bindings)
+                else if (coreModel._parameterMinimumValues) {
+                     min = coreModel._parameterMinimumValues[index];
+                     max = coreModel._parameterMaximumValues ? coreModel._parameterMaximumValues[index] : 1;
+                     if (defaultVal === undefined && coreModel._parameterDefaultValues) {
+                         defaultVal = coreModel._parameterDefaultValues[index];
+                     }
+                }
+            } catch (e) {
+                console.warn('Error getting parameter range:', e);
+            }
+
+            // Validate values
+            if (typeof min !== 'number' || isNaN(min)) min = -1;
+            if (typeof max !== 'number' || isNaN(max)) max = 1;
+            if (defaultVal === undefined || typeof defaultVal !== 'number' || isNaN(defaultVal)) defaultVal = 0;
+
+            return { min, max, default: defaultVal };
+        }
+
         // 显示参数列表（按分组，显示所有参数）
         function displayParameters() {
             if (!live2dModel || !live2dModel.internalModel || !live2dModel.internalModel.coreModel) {
@@ -956,7 +1013,16 @@
                 for (const { id: paramId, name: paramName, index: i } of groupedParams[groupName]) {
                     try {
                         const currentValue = coreModel.getParameterValueByIndex(i);
-                        const initialValue = initialParameters[paramId] || 0;
+                        
+                        // 获取参数范围
+                        const range = getParameterRange(coreModel, i);
+                        let minValue = range.min;
+                        let maxValue = range.max;
+                        const initialValue = initialParameters[paramId] !== undefined ? initialParameters[paramId] : range.default;
+
+                        // 确保当前值在范围内 (或者至少如果当前值超出范围，扩展范围以包含它)
+                        if (currentValue < minValue) minValue = currentValue;
+                        if (currentValue > maxValue) maxValue = currentValue;
 
                         const paramItem = document.createElement('div');
                         paramItem.className = 'parameter-item';
@@ -982,16 +1048,16 @@
                         const slider = document.createElement('input');
                         slider.type = 'range';
                         slider.className = 'parameter-slider';
-                        slider.min = '-1';
-                        slider.max = '1';
+                        slider.min = minValue;
+                        slider.max = maxValue;
                         slider.step = '0.01';
                         slider.value = currentValue;
 
                         const input = document.createElement('input');
                         input.type = 'number';
                         input.className = 'parameter-input';
-                        input.min = '-1';
-                        input.max = '1';
+                        input.min = minValue;
+                        input.max = maxValue;
                         input.step = '0.01';
                         input.value = currentValue;
 
@@ -1003,7 +1069,7 @@
                             const numValue = parseFloat(value);
                             if (isNaN(numValue)) return;
 
-                            const clampedValue = Math.max(-1, Math.min(1, numValue));
+                            const clampedValue = Math.max(minValue, Math.min(maxValue, numValue));
                             try {
                                 coreModel.setParameterValueByIndex(i, clampedValue);
                                 valueSpan.textContent = clampedValue.toFixed(3);
@@ -1055,10 +1121,27 @@
             const coreModel = live2dModel.internalModel.coreModel;
             const paramCount = coreModel.getParameterCount();
 
-            // 将所有参数重置为零
+            // 将所有参数重置为加载时的初始值
             for (let i = 0; i < paramCount; i++) {
                 try {
-                    coreModel.setParameterValueByIndex(i, 0);
+                    let paramId = null;
+                    try {
+                        paramId = coreModel.getParameterId(i);
+                    } catch (e) {
+                        paramId = `param_${i}`;
+                    }
+
+                    let resetValue = 0;
+                    // 优先使用加载时记录的初始值
+                    if (initialParameters && initialParameters[paramId] !== undefined) {
+                        resetValue = initialParameters[paramId];
+                    } else {
+                        // 降级到使用模型定义的默认值
+                        const range = getParameterRange(coreModel, i);
+                        resetValue = range.default;
+                    }
+
+                    coreModel.setParameterValueByIndex(i, resetValue);
                 } catch (e) {
                     console.warn(`重置参数索引 ${i} 失败:`, e);
                 }

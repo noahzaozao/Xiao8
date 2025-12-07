@@ -429,7 +429,7 @@ Live2DManager.prototype.installMouthOverride = function() {
             const origMotionManagerUpdate = internalModel.motionManager.update.bind(internalModel.motionManager);
             this._origMotionManagerUpdate = origMotionManagerUpdate;
         
-        internalModel.motionManager.update = () => {
+        internalModel.motionManager.update = (...args) => {
             // 检查 coreModel 是否仍然有效（在调用原始方法之前检查）
             if (!coreModel || !this.currentModel || !this.currentModel.internalModel || !this.currentModel.internalModel.coreModel) {
                 return; // 如果模型已销毁，直接返回
@@ -451,7 +451,7 @@ Live2DManager.prototype.installMouthOverride = function() {
             // 先调用原始的 motionManager.update（添加错误处理）
             if (origMotionManagerUpdate) {
                 try {
-                    origMotionManagerUpdate();
+                    origMotionManagerUpdate(...args);
                 } catch (e) {
                     // SDK 内部 motion 在异步加载期间可能会抛出 getParameterIndex 错误
                     // 这是 pixi-live2d-display 的已知问题，静默忽略即可
