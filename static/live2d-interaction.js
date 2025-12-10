@@ -201,7 +201,8 @@ Live2DManager.prototype.enableMouseTracking = function(model, options = {}) {
         
         this.isFocusing = true;
         if (lockIcon) lockIcon.style.display = 'block';
-        if (floatingButtons) floatingButtons.style.display = 'flex';
+        // 锁定状态下不显示浮动菜单
+        if (floatingButtons && !this.isLocked) floatingButtons.style.display = 'flex';
         
         // 清除隐藏定时器
         if (this._hideButtonsTimer) {
