@@ -9,6 +9,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta charset="UTF-8">
     <title data-i18n="app.title">Project N.E.K.O.</title>
+    <!-- 新前端 UMD 产物：请求库与组件库（可在 window.ProjectNekoRequest / window.ProjectNekoComponents 访问） -->
+    <!-- 请求库不依赖 React，可先加载 -->
+    <script src="/static/bundles/request.js"></script>
+    <!-- 公共桥接：封装请求、组件等全局工具 -->
+    <script src="/static/bundles/web-bridge.js"></script>
+    <!-- React 18 UMD（19 已移除 UMD 发布，参考官方升级指南） -->
+    <script src="/static/bundles/react.production.min.js"></script>
+    <script src="/static/bundles/react-dom.production.min.js"></script>
+    <link rel="stylesheet" href="/static/bundles/components.css">
+    <script src="/static/bundles/components.js"></script>
     <!-- i18next 加载器（统一处理 CDN 加载和初始化） -->
     <script src="/static/i18n-i18next.js"></script>
     <script src="/static/common_dialogs.js"></script>
@@ -1056,6 +1066,11 @@
     </div>
 </div>
 
+<!-- 示例：调用 ProjectNekoRequest + ProjectNekoComponents.Button 的 React 挂载点 -->
+<div id="demo-api-panel" style="position: fixed; top: 16px; left: 16px; z-index: 120000; pointer-events: auto;">
+    <div id="demo-api-button-root"></div>
+</div>
+
 <!-- Status 气泡框 -->
 <div id="status-toast"></div>
 <div id="chat-container">
@@ -1112,14 +1127,9 @@
                     lanlanNameFromUrl = decodeURIComponent(pathParts[0]);
                 }
             }
-            
-            // 从 API 获取配置
-            const apiUrl = lanlanNameFromUrl 
-                ? `/api/config/page_config?lanlan_name=${encodeURIComponent(lanlanNameFromUrl)}`
-                : '/api/config/page_config';
-            
-            const response = await fetch(apiUrl);
-            const data = await response.json();
+            const data = await window.request.get("/api/config/page_config", {
+                params: lanlanNameFromUrl ? { lanlan_name: lanlanNameFromUrl } : undefined
+            });
             
             if (data.success) {
                 // 使用 URL 中的 lanlan_name（如果有），否则使用 API 返回的
@@ -1170,16 +1180,11 @@
             if (success) {
                 console.log('Beacon信号已发送');
             } else {
-                console.warn('Beacon发送失败，尝试使用fetch');
-                // 备用方案：使用fetch
-                fetch('/api/beacon/shutdown', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        timestamp: Date.now(),
-                        action: 'shutdown'
-                    }),
-                    keepalive: true // 确保请求在页面关闭时仍能发送
+                console.warn('Beacon发送失败，尝试使用request');
+                // 备用方案：使用request
+                window.request.post('/api/beacon/shutdown', {
+                    timestamp: Date.now(),
+                    action: 'shutdown'
                 }).catch(err => console.log('备用beacon发送失败:', err));
             }
         } catch (e) {
@@ -1285,12 +1290,16 @@
             console.log('BEFORE currentLanlanName: ', currentLanlanName);
             
             // 2. 获取最新的角色配置（包含所有猫娘的完整配置）
-            const charResponse = await fetch('/api/characters');
-            if (!charResponse.ok) {
-                console.warn('获取角色配置失败，跳过模型检查');
+            let charactersData;
+            try {
+                charactersData = await window.request.get('/api/characters');
+            } catch (error) {
+                console.warn('获取角色配置失败，跳过模型检查:', error);
+                if (window.showStatusToast) {
+                    window.showStatusToast('获取角色配置失败', 3000);
+                }
                 return;
             }
-            const charactersData = await charResponse.json();
 
             // 确保 lanlan_config.lanlan_name 更新到 chara_manager.html 当前选中的猫娘
             currentLanlanName = lanlan_config.lanlan_name = charactersData['当前猫娘'];
@@ -1306,12 +1315,16 @@
             console.log('AFTER newModelName: ', newModelName);
             
             // 3. 获取所有可用模型列表
-            const modelsResponse = await fetch('/api/live2d/models');
-            if (!modelsResponse.ok) {
-                console.warn('获取模型列表失败，跳过模型检查');
+            let models;
+            try {
+                models = await window.request.get('/api/live2d/models');
+            } catch (error) {
+                console.warn('获取模型列表失败，跳过模型检查:', error);
+                if (window.showStatusToast) {
+                    window.showStatusToast('获取模型列表失败', 3000);
+                }
                 return;
             }
-            const models = await modelsResponse.json();
             
             // 4. 根据模型名称查找对应的模型路径
             const modelInfo = models.find(m => m.name === newModelName);
@@ -1372,17 +1385,27 @@
                 console.log(`当前模型: ${currentModelPath}`);
                 console.log(`新模型: ${newModelPath}`);
                 
-                await window.live2dManager.loadModel(newModelPath, {
-                    preferences: modelPreferences,
-                    isMobile: window.innerWidth <= 768
-                });
-                
-                // 更新全局引用
-                window.LanLan1.live2dModel = window.live2dManager.getCurrentModel();
-                window.LanLan1.currentModel = window.live2dManager.getCurrentModel();
-                window.LanLan1.emotionMapping = window.live2dManager.getEmotionMapping();
-                
-                console.log('模型已重新加载');
+                try {
+                    await window.live2dManager.loadModel(newModelPath, {
+                        preferences: modelPreferences,
+                        isMobile: window.innerWidth <= 768
+                    });
+                    
+                    // 更新全局引用
+                    window.LanLan1.live2dModel = window.live2dManager.getCurrentModel();
+                    window.LanLan1.currentModel = window.live2dManager.getCurrentModel();
+                    window.LanLan1.emotionMapping = window.live2dManager.getEmotionMapping();
+                    
+                    console.log('模型已重新加载');
+                    if (window.showStatusToast) {
+                        window.showStatusToast('模型已重新加载', 2000);
+                    }
+                } catch (loadError) {
+                    console.error('模型加载失败:', loadError);
+                    if (window.showStatusToast) {
+                        window.showStatusToast('模型加载失败', 3000);
+                    }
+                }
             } else {
                 // 模型未变，但需要更新位置和缩放设置
                 console.log('模型未改变，但重新应用用户偏好设置');
@@ -1417,6 +1440,9 @@
         } catch (error) {
             console.error('检查/重新加载模型时出错:', error);
             // 出错时不影响UI显示
+            if (window.showStatusToast) {
+                window.showStatusToast('模型检查失败', 3000);
+            }
         }
     }
     
@@ -1769,6 +1795,30 @@
       }, 100); // 100ms 延迟确保所有初始化完成
     });
   })();
+</script>
+<script>
+    // 简易示例：点击按钮调用 /api/config/page_config?lanlan_name=test（React 组件）
+    document.addEventListener("DOMContentLoaded", () => {
+        const container = document.getElementById("demo-api-button-root");
+        const handleClick = async () => {
+            try {
+                const data = await window.request.get("/api/config/page_config", {
+                    params: { lanlan_name: "test" }
+                });
+                console.log("page_config:", data);
+            } catch (err) {
+                console.error("请求失败", err);
+            }
+        };
+        const root = window.ReactDOM.createRoot(container);
+        root.render(
+            window.React.createElement(
+                window.ProjectNekoComponents.Button,
+                { onClick: handleClick },
+                "请求 page_config"
+            )
+        );
+    });
 </script>
 </body>
 </html>
