@@ -46,7 +46,7 @@ from steamworks.exceptions import SteamNotLoadedException
 from steamworks.enums import EWorkshopFileType, EItemUpdateStatus
 import base64
 import tempfile
-from utils.screenshot_utils import ScreenshotUtils, analyze_screenshot_from_data_url
+from utils.screenshot_utils import analyze_screenshot_from_data_url
 
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, File, UploadFile, Form, Body
@@ -64,7 +64,9 @@ import dashscope
 from dashscope.audio.tts_v2 import VoiceEnrollmentService
 import httpx
 import pathlib, wave
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, APIConnectionError, InternalServerError, RateLimitError
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import SystemMessage
 from config import MAIN_SERVER_PORT, MONITOR_SERVER_PORT, MEMORY_SERVER_PORT, MODELS_WITH_EXTRA_BODY, TOOL_SERVER_PORT, USER_PLUGIN_SERVER_PORT
 from config.prompts_sys import emotion_analysis_prompt, proactive_chat_prompt, proactive_chat_prompt_screenshot
 import glob
@@ -1254,17 +1256,27 @@ async def proactive_chat(request: Request):
 
         # 4. 直接使用langchain ChatOpenAI获取AI回复（不创建临时session）
         try:
-            core_config = _config_manager.get_core_config()
+            # 使用 get_model_api_config 获取 API 配置
+            correction_config = _config_manager.get_model_api_config('correction')
             
-            # 直接使用langchain ChatOpenAI发送请求
-            from langchain_openai import ChatOpenAI
-            from langchain_core.messages import SystemMessage
-            from openai import APIConnectionError, InternalServerError, RateLimitError
+            # 安全获取配置项，使用 .get() 避免 KeyError
+            correction_model = correction_config.get('model')
+            correction_base_url = correction_config.get('base_url')
+            correction_api_key = correction_config.get('api_key')
+            
+            # 验证必需的配置项
+            if not correction_model or not correction_api_key:
+                logger.error("纠错模型配置缺失: model或api_key未设置")
+                return JSONResponse({
+                    "success": False,
+                    "error": "纠错模型配置缺失",
+                    "detail": "请在设置中配置纠错模型的model和api_key"
+                }, status_code=500)
             
             llm = ChatOpenAI(
-                model=core_config['CORRECTION_MODEL'],
-                base_url=core_config['OPENROUTER_URL'],
-                api_key=core_config['OPENROUTER_API_KEY'],
+                model=correction_model,
+                base_url=correction_base_url,
+                api_key=correction_api_key,
                 temperature=1.1,
                 streaming=False  # 不需要流式，直接获取完整响应
             )
@@ -1285,6 +1297,7 @@ async def proactive_chat(request: Request):
                     response_text = response.content.strip()
                     break  # 成功则退出重试循环
                 except (APIConnectionError, InternalServerError, RateLimitError) as e:
+                    logger.info(f"[INFO] 捕获到 {type(e).__name__} 错误")
                     if attempt < max_retries - 1:
                         wait_time = retry_delays[attempt]
                         logger.warning(f"[{lanlan_name}] 主动搭话LLM调用失败 (尝试 {attempt + 1}/{max_retries})，{wait_time}秒后重试: {e}")
@@ -2838,8 +2851,10 @@ async def voice_clone(file: UploadFile = File(...), prefix: str = Form(...)):
                 return JSONResponse({'error': f'上传成功但响应格式无法解析: {raw_text[:200]}'}, status_code=500)
         
         # 3. 用直链注册音色
-        core_config = _config_manager.get_core_config()
-        audio_api_key = core_config.get('AUDIO_API_KEY')
+        # 使用 get_model_api_config('tts_custom') 获取正确的 API 配置
+        # tts_custom 会优先使用自定义 TTS API，其次是 Qwen Cosyvoice API（目前唯一支持 voice clone 的服务）
+        tts_config = _config_manager.get_model_api_config('tts_custom')
+        audio_api_key = tts_config.get('api_key', '')
         
         if not audio_api_key:
             logger.error("未配置 AUDIO_API_KEY")
@@ -5339,19 +5354,24 @@ async def emotion_analysis(request: Request):
         api_key = data.get('api_key')
         model = data.get('model')
         
-        # 使用参数或默认配置
-        core_config = _config_manager.get_core_config()
-        api_key = api_key or core_config['OPENROUTER_API_KEY']
-        model = model or core_config['EMOTION_MODEL']
+        # 使用参数或默认配置，使用 .get() 安全获取避免 KeyError
+        emotion_config = _config_manager.get_model_api_config('emotion')
+        emotion_api_key = emotion_config.get('api_key')
+        emotion_model = emotion_config.get('model')
+        emotion_base_url = emotion_config.get('base_url')
+        
+        # 优先使用请求参数，其次使用配置
+        api_key = api_key or emotion_api_key
+        model = model or emotion_model
         
         if not api_key:
-            return {"error": "API密钥未提供且配置中未设置默认密钥"}
+            return {"error": "情绪分析模型配置缺失: API密钥未提供且配置中未设置默认密钥"}
         
         if not model:
-            return {"error": "模型名称未提供且配置中未设置默认模型"}
+            return {"error": "情绪分析模型配置缺失: 模型名称未提供且配置中未设置默认模型"}
         
         # 创建异步客户端
-        client = AsyncOpenAI(api_key=api_key, base_url=core_config['OPENROUTER_URL'])
+        client = AsyncOpenAI(api_key=api_key, base_url=emotion_base_url)
         
         # 构建请求消息
         messages = [

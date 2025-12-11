@@ -33,10 +33,10 @@ class ConversationAnalyzer:
     async def analyze(self, messages: List[Dict[str, str]]):
         import json
         
-        core_config = self._config_manager.get_core_config()
-        model = core_config['SUMMARY_MODEL']
-        api_key = core_config['OPENROUTER_API_KEY']
-        base_url = core_config['OPENROUTER_URL']
+        api_config = self._config_manager.get_model_api_config('summary')
+        model = api_config['model']
+        api_key = api_config['api_key']
+        base_url = api_config['base_url']
         
         prompt = self._build_prompt(messages)
         
@@ -70,6 +70,7 @@ class ConversationAnalyzer:
                 break  # 成功则退出重试循环
                 
             except (APIConnectionError, InternalServerError, RateLimitError) as e:
+                logger.info(f"ℹ️ 捕获到 {type(e).__name__} 错误")
                 if attempt < max_retries - 1:
                     wait_time = retry_delays[attempt]
                     logger.warning(f"[Analyzer] LLM调用失败 (尝试 {attempt + 1}/{max_retries})，{wait_time}秒后重试: {e}")
