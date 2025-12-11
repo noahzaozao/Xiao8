@@ -154,6 +154,10 @@ function init_app() {
     let proactiveChatBackoffLevel = 0; // 退避级别：0=30s, 1=1min, 2=2min, 3=4min, etc.
     const PROACTIVE_CHAT_BASE_DELAY = 30000; // 30秒基础延迟
 
+    // 截图最大尺寸（1080p）
+    const MAX_SCREENSHOT_WIDTH = 1920;
+    const MAX_SCREENSHOT_HEIGHT = 1080;
+
     // Focus模式为true时，AI播放语音时会自动静音麦克风（不允许打断）
     let focusModeEnabled = false;
 
@@ -421,6 +425,13 @@ function init_app() {
                         // 显示提示信息
                         showStatusToast(response.message || (window.t ? window.t('app.autoMuteTimeout') : '长时间无语音输入，已自动关闭麦克风'), 4000);
                     }
+                } else if (response.type === 'repetition_warning') {
+                    // 处理高重复度对话警告
+                    console.log('[WebSocket] 收到repetition_warning事件，角色:', response.name);
+                    const warningMessage = window.t
+                        ? window.t('app.repetitionDetected', { name: response.name })
+                        : `检测到高重复度对话。建议您终止对话，让${response.name}休息片刻。`;
+                    showStatusToast(warningMessage, 8000);
                 }
             } catch (error) {
                 console.error('处理消息失败:', error);
@@ -1455,10 +1466,10 @@ function init_app() {
         if (!text && !hasScreenshots) {
             return;
         }
-        
+
         // 用户主动发送文本时，重置主动搭话计时器
         resetProactiveChatBackoff();
-        
+
         // 如果还没有启动session，先启动
         if (!isTextSessionActive) {
             // 临时禁用文本输入
@@ -1589,18 +1600,22 @@ function init_app() {
 
     // 截图按钮事件
     screenshotButton.addEventListener('click', async () => {
+        let captureStream = null;
+
         try {
             // 临时禁用截图按钮，防止重复点击
             screenshotButton.disabled = true;
             showStatusToast(window.t ? window.t('app.capturing') : '正在截图...', 2000);
-
-            let captureStream;
 
             // 获取屏幕或摄像头流
             if (isMobile()) {
                 // 移动端使用摄像头
                 captureStream = await getMobileCameraStream();
             } else {
+                // API 兼容性检测（桌面端）
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+                    throw new Error('UNSUPPORTED_API');
+                }
                 // 桌面端使用屏幕共享
                 captureStream = await navigator.mediaDevices.getDisplayMedia({
                     video: {
@@ -1621,31 +1636,43 @@ function init_app() {
 
             // 创建canvas来捕获帧
             const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
             const ctx = canvas.getContext('2d');
 
-            // 捕获当前帧
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            // 计算缩放后的尺寸（保持宽高比，限制到1080p）
+            let targetWidth = video.videoWidth;
+            let targetHeight = video.videoHeight;
+
+            if (targetWidth > MAX_SCREENSHOT_WIDTH || targetHeight > MAX_SCREENSHOT_HEIGHT) {
+                const widthRatio = MAX_SCREENSHOT_WIDTH / targetWidth;
+                const heightRatio = MAX_SCREENSHOT_HEIGHT / targetHeight;
+                const scale = Math.min(widthRatio, heightRatio);
+                targetWidth = Math.round(targetWidth * scale);
+                targetHeight = Math.round(targetHeight * scale);
+            }
+
+            // 设置canvas尺寸为缩放后的尺寸
+            canvas.width = targetWidth;
+            canvas.height = targetHeight;
+
+            // 绘制视频帧到canvas（缩放绘制）
+            ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
             const dataUrl = canvas.toDataURL('image/jpeg', 0.8); // base64 jpeg
 
-            // 停止捕获流
-            captureStream.getTracks().forEach(track => track.stop());
+            console.log(`截图成功，尺寸: ${targetWidth}x${targetHeight}`);
 
             // 添加截图到待发送列表（不立即发送）
             addScreenshotToList(dataUrl);
 
             showStatusToast(window.t ? window.t('app.screenshotAdded') : '截图已添加，点击发送一起发送', 3000);
 
-            // 重新启用截图按钮
-            screenshotButton.disabled = false;
-
         } catch (err) {
             console.error('截图失败:', err);
 
             // 根据错误类型显示不同提示
             let errorMsg = window.t ? window.t('app.screenshotFailed') : '截图失败';
-            if (err.name === 'NotAllowedError') {
+            if (err.message === 'UNSUPPORTED_API') {
+                errorMsg = window.t ? window.t('app.screenshotUnsupported') : '当前浏览器不支持屏幕截图功能';
+            } else if (err.name === 'NotAllowedError') {
                 errorMsg = window.t ? window.t('app.screenshotCancelled') : '用户取消了截图';
             } else if (err.name === 'NotFoundError') {
                 errorMsg = window.t ? window.t('app.deviceNotFound') : '未找到可用的媒体设备';
@@ -1656,7 +1683,11 @@ function init_app() {
             }
 
             showStatusToast(errorMsg, 5000);
-
+        } finally {
+            // 确保流被正确关闭，防止资源泄漏
+            if (captureStream) {
+                captureStream.getTracks().forEach(track => track.stop());
+            }
             // 重新启用截图按钮
             screenshotButton.disabled = false;
         }
@@ -2156,10 +2187,24 @@ function init_app() {
 
         // 定时抓取当前帧并编码为jpeg
         video.play().then(() => {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
+            // 计算缩放后的尺寸（保持宽高比，限制到1080p）
+            let targetWidth = video.videoWidth;
+            let targetHeight = video.videoHeight;
+
+            if (targetWidth > MAX_SCREENSHOT_WIDTH || targetHeight > MAX_SCREENSHOT_HEIGHT) {
+                const widthRatio = MAX_SCREENSHOT_WIDTH / targetWidth;
+                const heightRatio = MAX_SCREENSHOT_HEIGHT / targetHeight;
+                const scale = Math.min(widthRatio, heightRatio);
+                targetWidth = Math.round(targetWidth * scale);
+                targetHeight = Math.round(targetHeight * scale);
+                console.log(`屏幕共享：原尺寸 ${video.videoWidth}x${video.videoHeight} -> 缩放到 ${targetWidth}x${targetHeight}`);
+            }
+
+            canvas.width = targetWidth;
+            canvas.height = targetHeight;
+
             videoSenderInterval = setInterval(() => {
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
                 const dataUrl = canvas.toDataURL('image/jpeg', 0.8); // base64 jpeg
 
                 if (socket.readyState === WebSocket.OPEN) {
@@ -2170,7 +2215,7 @@ function init_app() {
                     }));
                 }
             }, 1000);
-        } // 每100ms一帧
+        } // 每1000ms一帧
         )
     }
 
@@ -2419,7 +2464,7 @@ function init_app() {
                 focusModeCheckbox.style.cssText = 'cursor: pointer; width: 18px; height: 18px;';
                 focusModeDiv.appendChild(focusModeCheckbox);
                 container.appendChild(focusModeDiv);
-                
+
                 // 主动视觉开关
                 const proactiveVisionDiv = document.createElement('div');
                 proactiveVisionDiv.style.cssText = 'padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.1);';
@@ -2434,7 +2479,7 @@ function init_app() {
                 proactiveVisionCheckbox.style.cssText = 'cursor: pointer; width: 18px; height: 18px;';
                 proactiveVisionDiv.appendChild(proactiveVisionCheckbox);
                 container.appendChild(proactiveVisionDiv);
-                
+
                 // 页面链接
                 const links = [
                     { href: `/memory_browser`, text: '📝 记忆管理' },
@@ -2543,7 +2588,7 @@ function init_app() {
                         console.log(`Focus模式已${focusModeEnabled ? '开启' : '关闭'}`);
                     });
                 }
-                
+
                 if (proactiveVisionToggle) {
                     proactiveVisionToggle.checked = proactiveVisionEnabled;
                     proactiveVisionToggle.addEventListener('change', (event) => {
@@ -2551,15 +2596,15 @@ function init_app() {
                         proactiveVisionEnabled = event.target.checked;
                         window.proactiveVisionEnabled = proactiveVisionEnabled; // 同步到全局
                         saveSettings();
-                        
+
                         console.log(`主动视觉已${proactiveVisionEnabled ? '开启' : '关闭'}`);
-                        
+
                         if (proactiveVisionEnabled) {
                             resetProactiveChatBackoff();
                         } else {
                             // 只有当主动搭话也关闭时才停止调度
-                            const currentProactiveChat = typeof window.proactiveChatEnabled !== 'undefined' 
-                                ? window.proactiveChatEnabled 
+                            const currentProactiveChat = typeof window.proactiveChatEnabled !== 'undefined'
+                                ? window.proactiveChatEnabled
                                 : proactiveChatEnabled;
                             if (!currentProactiveChat) {
                                 stopProactiveChatSchedule();
@@ -2567,7 +2612,7 @@ function init_app() {
                         }
                     });
                 }
-                
+
                 settingsPopupInitialized = true;
                 console.log('设置弹出框已初始化');
 
@@ -3066,10 +3111,10 @@ function init_app() {
                         mcp.title = window.t ? window.t('settings.toggles.checking') : '查询中...';
                         syncUI(mcp);
                     }
-                    if (userPlugin) { 
-                        userPlugin.disabled = true; 
-                        userPlugin.title = window.t ? window.t('settings.toggles.checking') : '查询中...'; 
-                        syncUI(userPlugin); 
+                    if (userPlugin) {
+                        userPlugin.disabled = true;
+                        userPlugin.title = window.t ? window.t('settings.toggles.checking') : '查询中...';
+                        syncUI(userPlugin);
                     }
                     if (status) status.textContent = window.t ? window.t('agent.status.connecting') : 'Agent服务器连接中...';
                     break;
@@ -3127,7 +3172,7 @@ function init_app() {
         const agentKeyboardCheckbox = document.getElementById('live2d-agent-keyboard');
         const agentMcpCheckbox = document.getElementById('live2d-agent-mcp');
         const agentUserPluginCheckbox = document.getElementById('live2d-agent-user-plugin');
-        
+
         // 【状态机控制】如果正在处理用户操作，跳过轮询
         if (agentStateMachine.getState() === AgentPopupState.PROCESSING) {
             console.log('[App] 状态机处于PROCESSING状态，跳过轮询');
@@ -3415,8 +3460,8 @@ function init_app() {
                 agentMasterCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
                 agentMasterCheckbox._autoDisabled = false;
                 if (typeof agentMasterCheckbox._updateStyle === 'function') agentMasterCheckbox._updateStyle();
-                
-                [agentKeyboardCheckbox, agentMcpCheckbox,agentUserPluginCheckbox].forEach(cb => {
+
+                [agentKeyboardCheckbox, agentMcpCheckbox, agentUserPluginCheckbox].forEach(cb => {
                     if (cb) {
                         cb.checked = false;
                         cb.disabled = true;
@@ -3516,7 +3561,7 @@ function init_app() {
         const agentKeyboardCheckbox = document.getElementById('live2d-agent-keyboard');
         const agentMcpCheckbox = document.getElementById('live2d-agent-mcp');
         const agentUserPluginCheckbox = document.getElementById('live2d-agent-user-plugin');
-        
+
         if (!agentMasterCheckbox) {
             console.warn('[App] Agent开关元素未找到，跳过绑定');
             return;
@@ -3528,14 +3573,14 @@ function init_app() {
         let keyboardOperationSeq = 0;
         let mcpOperationSeq = 0;
         let userPluginOperationSeq = 0;
-        
+
         // 标记这些 checkbox 有外部处理器
         agentMasterCheckbox._hasExternalHandler = true;
         if (agentKeyboardCheckbox) agentKeyboardCheckbox._hasExternalHandler = true;
         if (agentMcpCheckbox) agentMcpCheckbox._hasExternalHandler = true;
         if (agentUserPluginCheckbox) agentUserPluginCheckbox._hasExternalHandler = true;
-        
-        
+
+
         // 辅助函数：同步更新 checkbox 的 UI 样式
         const syncCheckboxUI = (checkbox) => {
             if (checkbox && typeof checkbox._updateStyle === 'function') {
@@ -3633,7 +3678,7 @@ function init_app() {
                         agentUserPluginCheckbox.title = window.t ? window.t('settings.toggles.checking') : '检查中...';
                         syncCheckboxUI(agentUserPluginCheckbox);
                     }
-                    
+
                     // 检查键鼠控制和MCP工具的可用性
                     await Promise.all([
                         (async () => {
@@ -3662,7 +3707,7 @@ function init_app() {
                             agentMcpCheckbox.disabled = !available;
                             agentMcpCheckbox.title = available ? (window.t ? window.t('settings.toggles.mcpTools') : 'MCP工具') : (window.t ? window.t('settings.toggles.unavailable', { name: window.t('settings.toggles.mcpTools') }) : 'MCP工具不可用');
                             syncCheckboxUI(agentMcpCheckbox);
-                            
+
                         })(),
                         (async () => {
                             if (!agentUserPluginCheckbox) return;
@@ -3675,7 +3720,7 @@ function init_app() {
                                 return;
                             }
                             agentUserPluginCheckbox.disabled = !available;
-                            agentUserPluginCheckbox.title = available ? (window.t ? window.t('settings.toggles.userPlugin') : '用户插件') : (window.t ? window.t('settings.toggles.unavailable', {name: window.t('settings.toggles.userPlugin')}) : '用户插件不可用');
+                            agentUserPluginCheckbox.title = available ? (window.t ? window.t('settings.toggles.userPlugin') : '用户插件') : (window.t ? window.t('settings.toggles.unavailable', { name: window.t('settings.toggles.userPlugin') }) : '用户插件不可用');
                             syncCheckboxUI(agentUserPluginCheckbox);
                         })()
                     ]);
@@ -3687,8 +3732,8 @@ function init_app() {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                lanlan_name: lanlan_config.lanlan_name, 
-                                flags: {agent_enabled:true, computer_use_enabled:false, mcp_enabled:false, user_plugin_enabled:false}
+                                lanlan_name: lanlan_config.lanlan_name,
+                                flags: { agent_enabled: true, computer_use_enabled: false, mcp_enabled: false, user_plugin_enabled: false }
                             })
                         });
                         if (!r.ok) throw new Error('main_server rejected');
@@ -3752,8 +3797,8 @@ function init_app() {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                lanlan_name: lanlan_config.lanlan_name, 
-                                flags: {agent_enabled: false, computer_use_enabled: false, mcp_enabled: false,user_plugin_enabled:false}
+                                lanlan_name: lanlan_config.lanlan_name,
+                                flags: { agent_enabled: false, computer_use_enabled: false, mcp_enabled: false, user_plugin_enabled: false }
                             })
                         });
 
@@ -3908,14 +3953,14 @@ function init_app() {
         );
         // 用户插件开关逻辑（传入序列号的getter和setter）
         setupSubCheckbox(
-            agentUserPluginCheckbox, 
-            'user_plugin', 
-            'user_plugin_enabled', 
+            agentUserPluginCheckbox,
+            'user_plugin',
+            'user_plugin_enabled',
             'userPlugin',
             () => userPluginOperationSeq,
             () => ++userPluginOperationSeq
         );
-        
+
         // 从后端同步 flags 状态到前端开关（完整同步，处理所有情况）
         // 【重要】此函数只同步总开关状态，子开关保持禁用等待能力检查
         async function syncFlagsFromBackend() {
@@ -3978,14 +4023,14 @@ function init_app() {
                 if (agentUserPluginCheckbox) {
                     if (analyzerEnabled) {
                         // Agent 已开启，根据后端状态设置
-                        agentUserPluginCheckbox.checked = flags.user_plugin_enabled || false;                       
+                        agentUserPluginCheckbox.checked = flags.user_plugin_enabled || false;
                         agentUserPluginCheckbox.disabled = true; // 先设为可用，后续可用性检查会更新
                         agentUserPluginCheckbox.title = window.t ? window.t('settings.toggles.checking') : '检查中...';
                     } else {
                         // Agent 未开启，复位子开关
                         agentUserPluginCheckbox.checked = false;
                         agentUserPluginCheckbox.disabled = true;
-                        agentUserPluginCheckbox.title = window.t ? window.t('settings.toggles.masterRequired', {name: window.t ? window.t('settings.toggles.userPlugin') : '用户插件'}) : '请先开启Agent总开关';
+                        agentUserPluginCheckbox.title = window.t ? window.t('settings.toggles.masterRequired', { name: window.t ? window.t('settings.toggles.userPlugin') : '用户插件' }) : '请先开启Agent总开关';
                     }
                     syncCheckboxUI(agentUserPluginCheckbox);
                 }
@@ -4108,18 +4153,18 @@ function init_app() {
                             agentMcpCheckbox.title = mcpAvailable ? (window.t ? window.t('settings.toggles.mcpTools') : 'MCP工具') : (window.t ? window.t('settings.toggles.unavailable', { name: window.t('settings.toggles.mcpTools') }) : 'MCP工具不可用');
                             syncCheckboxUI(agentMcpCheckbox);
                         }
-                        
+
                         // 用户插件
                         if (agentUserPluginCheckbox) {
                             const shouldEnable = flags.user_plugin_enabled && userPluginAvailable;
                             agentUserPluginCheckbox.checked = shouldEnable;
                             agentUserPluginCheckbox.disabled = !userPluginAvailable;
-                            agentUserPluginCheckbox.title = userPluginAvailable ? (window.t ? window.t('settings.toggles.userPlugin') : '用户插件') : (window.t ? window.t('settings.toggles.unavailable', {name: window.t('settings.toggles.userPlugin')}) : '用户插件不可用');
+                            agentUserPluginCheckbox.title = userPluginAvailable ? (window.t ? window.t('settings.toggles.userPlugin') : '用户插件') : (window.t ? window.t('settings.toggles.unavailable', { name: window.t('settings.toggles.userPlugin') }) : '用户插件不可用');
                             syncCheckboxUI(agentUserPluginCheckbox);
                         }
 
-            
-            
+
+
                         setFloatingAgentStatus(window.t ? window.t('agent.status.enabled') : 'Agent模式已开启');
 
                         // 只有子开关开启时才显示HUD
@@ -4147,7 +4192,7 @@ function init_app() {
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
                                     lanlan_name: lanlan_config.lanlan_name,
-                                    flags: {agent_enabled: false, computer_use_enabled: false, mcp_enabled: false, user_plugin_enabled: false}
+                                    flags: { agent_enabled: false, computer_use_enabled: false, mcp_enabled: false, user_plugin_enabled: false }
                                 })
                             }).catch(e => console.warn('[App] 强制关闭flags失败:', e));
                         }
@@ -4578,7 +4623,7 @@ function init_app() {
             clearTimeout(proactiveChatTimer);
             proactiveChatTimer = null;
         }
-        
+
         // 两个功能都关闭时跳过
         if (!proactiveChatEnabled && !proactiveVisionEnabled) {
             return;
@@ -4613,7 +4658,7 @@ function init_app() {
         try {
             // 根据三种模式决定使用哪种搭话方式
             let useScreenshot = false;
-            
+
             if (proactiveChatEnabled && proactiveVisionEnabled) {
                 // 两个都开启时：各50%
                 useScreenshot = Math.random() < 0.5;
@@ -4631,15 +4676,15 @@ function init_app() {
                 console.log('主动搭话模式：两个功能都关闭，跳过本次搭话');
                 return;
             }
-            
+
             let requestBody = {
                 lanlan_name: lanlan_config.lanlan_name
             };
-            
+
             if (useScreenshot) {
                 // 使用截图搭话
                 const screenshotDataUrl = await captureProactiveChatScreenshot();
-                
+
                 if (!screenshotDataUrl) {
                     console.log('主动搭话截图失败，退回使用热门内容搭话');
                     // 截图失败时，如果主动搭话功能开启，则退回使用热门内容
@@ -4655,7 +4700,7 @@ function init_app() {
                     requestBody.screenshot_data = screenshotDataUrl;
                 }
             }
-            
+
             const response = await fetch('/api/proactive_chat', {
                 method: 'POST',
                 headers: {
@@ -4694,53 +4739,75 @@ function init_app() {
             proactiveChatTimer = null;
         }
     }
-    
+
     // 主动搭话截图函数
     async function captureProactiveChatScreenshot() {
+        // API 兼容性检测
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+            console.warn('主动搭话截图失败：当前浏览器不支持 getDisplayMedia API');
+            return null;
+        }
+
+        let captureStream = null;
+
         try {
             // 使用屏幕共享API进行截图
-            const captureStream = await navigator.mediaDevices.getDisplayMedia({
+            captureStream = await navigator.mediaDevices.getDisplayMedia({
                 video: {
                     cursor: 'always',
                 },
                 audio: false,
             });
-            
+
             // 创建video元素来加载流
             const video = document.createElement('video');
             video.srcObject = captureStream;
             video.autoplay = true;
             video.muted = true;
-            
+
             // 等待视频加载完成
             await video.play();
-            
+
             // 创建canvas来捕获帧
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
-            
-            // 设置canvas尺寸与视频相同
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            
-            // 绘制视频帧到canvas
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            // 转换为DataURL
-            const dataUrl = canvas.toDataURL('image/png');
-            
-            // 停止捕获流
-            captureStream.getTracks().forEach(track => track.stop());
-            
-            console.log('主动搭话截图成功');
+
+            // 计算缩放后的尺寸（保持宽高比，限制到1080p）
+            let targetWidth = video.videoWidth;
+            let targetHeight = video.videoHeight;
+
+            if (targetWidth > MAX_SCREENSHOT_WIDTH || targetHeight > MAX_SCREENSHOT_HEIGHT) {
+                const widthRatio = MAX_SCREENSHOT_WIDTH / targetWidth;
+                const heightRatio = MAX_SCREENSHOT_HEIGHT / targetHeight;
+                const scale = Math.min(widthRatio, heightRatio);
+                targetWidth = Math.round(targetWidth * scale);
+                targetHeight = Math.round(targetHeight * scale);
+            }
+
+            // 设置canvas尺寸为缩放后的尺寸
+            canvas.width = targetWidth;
+            canvas.height = targetHeight;
+
+            // 绘制视频帧到canvas（缩放绘制）
+            ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
+
+            // 转换为DataURL（使用JPEG格式以减小文件大小）
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+            console.log(`主动搭话截图成功，尺寸: ${targetWidth}x${targetHeight}`);
             return dataUrl;
-            
+
         } catch (err) {
             console.error('主动搭话截图失败:', err);
             return null;
+        } finally {
+            // 确保流被正确关闭，防止资源泄漏
+            if (captureStream) {
+                captureStream.getTracks().forEach(track => track.stop());
+            }
         }
     }
-    
+
     // 暴露函数到全局作用域，供 live2d.js 调用
     window.resetProactiveChatBackoff = resetProactiveChatBackoff;
     window.stopProactiveChatSchedule = stopProactiveChatSchedule;
@@ -4751,11 +4818,11 @@ function init_app() {
         const currentProactive = typeof window.proactiveChatEnabled !== 'undefined'
             ? window.proactiveChatEnabled
             : proactiveChatEnabled;
-        const currentVision = typeof window.proactiveVisionEnabled !== 'undefined' 
-            ? window.proactiveVisionEnabled 
+        const currentVision = typeof window.proactiveVisionEnabled !== 'undefined'
+            ? window.proactiveVisionEnabled
             : proactiveVisionEnabled;
-        const currentFocus = typeof window.focusModeEnabled !== 'undefined' 
-            ? window.focusModeEnabled 
+        const currentFocus = typeof window.focusModeEnabled !== 'undefined'
+            ? window.focusModeEnabled
             : focusModeEnabled;
 
         const settings = {
@@ -4812,7 +4879,7 @@ function init_app() {
 
     // 加载设置
     loadSettings();
-    
+
     // 如果已开启主动搭话或主动视觉，立即启动定时器
     if (proactiveChatEnabled || proactiveVisionEnabled) {
         scheduleProactiveChat();
