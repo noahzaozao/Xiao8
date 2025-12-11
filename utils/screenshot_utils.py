@@ -98,6 +98,7 @@ class ScreenshotUtils:
             
             # 检查是否配置了API，根据核心API和辅助API厂商选择视觉模型
             from utils.config_manager import get_config_manager
+            from config import DEFAULT_VISION_MODEL
             
             config_manager = get_config_manager()
             core_config = config_manager.get_core_config()
@@ -134,7 +135,6 @@ class ScreenshotUtils:
                 
                 # 从全局配置中获取默认的视觉模型设置
                 from utils.api_config_loader import get_assist_api_key_fields, get_assist_api_profiles
-                from config import DEFAULT_VISION_MODEL
                 
                 # 获取辅助API配置文件
                 assist_api_profiles = get_assist_api_profiles()

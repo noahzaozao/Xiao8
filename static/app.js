@@ -1214,8 +1214,12 @@ function init_app() {
             hideVoicePreparingToast();
 
             // 延迟1秒显示"可以说话了"提示，确保系统真正准备好
+            // 同时启动麦克风静音检测，此时服务器已准备就绪
             setTimeout(() => {
                 showReadyToSpeakToast();
+                // 服务器准备就绪后才启动静音检测，避免过早计时
+                startSilenceDetection();
+                monitorInputVolume();
             }, 1000);
 
             // 麦克风启动完成
@@ -1977,11 +1981,6 @@ function init_app() {
             source.connect(workletNode);
             // 不需要连接到destination，因为我们不需要听到声音
             // workletNode.connect(audioContext.destination);
-
-            // 启动静音检测
-            startSilenceDetection();
-            monitorInputVolume();
-
             // 所有初始化成功后，才标记为录音状态
             isRecording = true;
             window.isRecording = true;
