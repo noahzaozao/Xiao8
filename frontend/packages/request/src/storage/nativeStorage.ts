@@ -5,6 +5,12 @@ import type { Storage } from "./types";
 let AsyncStorageInstance: any = null;
 let asyncStoragePromise: Promise<any> | null = null;
 
+/**
+ * Lazily load and cache the React Native AsyncStorage module.
+ *
+ * @returns 已加载的 AsyncStorage 实例
+ * @throws 导入失败时（例如在非 RN 环境）抛出明确错误
+ */
 async function getAsyncStorage() {
   if (AsyncStorageInstance) {
     return AsyncStorageInstance;
@@ -39,4 +45,10 @@ const nativeStorage: Storage = {
 };
 
 export default nativeStorage;
+
+// 仅供测试覆盖使用，重置内部缓存
+export function __resetNativeStorageInternal() {
+  AsyncStorageInstance = null;
+  asyncStoragePromise = null;
+}
 

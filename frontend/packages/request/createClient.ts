@@ -5,26 +5,56 @@ import type { RequestClientConfig, TokenStorage, TokenRefreshFn } from "./src/re
 import { RequestQueue } from "./src/request-client/requestQueue";
 
 /**
- * 检查是否启用请求日志
- * 根据构建模式（mode）决定：开发模式启用，生产模式禁用
+ * 安全序列化日志内容，避免循环引用导致异常
  */
-const isRequestLogEnabled = (): boolean => {
+const safeStringify = (value: unknown): string => {
   try {
-    const env = (import.meta as any)?.env;
-    // 根据 MODE 或 NODE_ENV 判断：development 启用，production 禁用
-    const mode = env?.MODE || env?.NODE_ENV || 'development';
-    return mode === 'development';
+    return JSON.stringify(value);
   } catch {
-    // 如果无法读取环境变量，默认启用（开发环境）
-    return true;
+    try {
+      return String(value);
+    } catch {
+      return "[Unserializable]";
+    }
   }
 };
 
-const REQUEST_LOG_ENABLED = isRequestLogEnabled();
+/**
+ * 检查是否启用请求日志
+ * 优先读取 config 覆盖 / 全局标记，其次根据构建模式判断
+ * 无法读取环境变量时默认关闭
+ */
+const isRequestLogEnabled = (logEnabledOverride?: boolean): boolean => {
+  if (typeof logEnabledOverride === "boolean") return logEnabledOverride;
+
+  const globalFlag = (globalThis as any)?.NEKO_REQUEST_LOG_ENABLED;
+  if (typeof globalFlag === "boolean") return globalFlag;
+
+  try {
+    const env = (import.meta as any)?.env;
+    const mode = env?.MODE || env?.NODE_ENV || "development";
+    return mode === "development";
+  } catch {
+    /* c8 ignore next */
+    return false;
+  }
+};
 
 /**
- * 创建统一的请求客户端
- * 支持 Axios、Token 刷新、请求队列、Web/RN 通用存储
+ * Create an Axios HTTP client preconfigured with token attachment, automatic refresh, queuing, and optional logging.
+ *
+ * The client:
+ * - attaches the latest access token from `storage` to every request,
+ * - queues new requests while a refresh is in progress to avoid duplicate refresh calls,
+ * - refreshes tokens on 401 via `refreshApi`, then retries queued requests,
+ * - supports custom request/response interceptors and a unified `errorHandler`,
+ * - returns `response.data` by default when `returnDataOnly` is true,
+ * - allows request/response logging controlled by `logEnabled`, a global flag, or env (development only).
+ *
+ * @param options - Client configuration including `baseURL`, `storage`, `refreshApi`, optional interceptors,
+ *                  `timeout`, `returnDataOnly`, `errorHandler`, and `logEnabled` overrides.
+ * @returns An AxiosInstance with Bearer token injection, refresh queue handling, optional interceptors,
+ *          safe logging, and sanitized error payloads.
  */
 export function createRequestClient(options: RequestClientConfig): AxiosInstance {
   const {
@@ -35,8 +65,11 @@ export function createRequestClient(options: RequestClientConfig): AxiosInstance
     requestInterceptor,
     responseInterceptor,
     returnDataOnly = true,
-    errorHandler
+    errorHandler,
+    logEnabled
   } = options;
+
+  const REQUEST_LOG_ENABLED = isRequestLogEnabled(logEnabled);
 
   // 创建 Axios 实例
   const instance = axios.create({
@@ -63,11 +96,11 @@ export function createRequestClient(options: RequestClientConfig): AxiosInstance
         
         const logInfo: Record<string, unknown> = {};
         if (config.params) {
-          const paramsStr = JSON.stringify(config.params);
+          const paramsStr = safeStringify(config.params);
           logInfo.params = paramsStr.length > 200 ? paramsStr.substring(0, 200) + '...' : paramsStr;
         }
         if (config.data) {
-          const dataStr = typeof config.data === 'string' ? config.data : JSON.stringify(config.data);
+          const dataStr = typeof config.data === 'string' ? config.data : safeStringify(config.data);
           logInfo.data = dataStr.length > 200 ? dataStr.substring(0, 200) + '...' : dataStr;
         }
         
@@ -174,7 +207,11 @@ export function createRequestClient(options: RequestClientConfig): AxiosInstance
     },
     {
       statusCodes: [401], // 只在 401 时触发刷新
-      skipWhileRefreshing: false // 允许在刷新期间处理其他请求
+      // axios-auth-refresh v3 推荐使用 pauseInstanceWhileRefreshing：
+      // - axios-auth-refresh 负责暂停/排队当前实例内的失败请求（如并发 401 时避免重复刷新）
+      // - RequestQueue 负责请求拦截器阶段的新请求排队（isRefreshing=true 时挂起新请求）
+      // 两层机制分工清晰，避免旧的 skipWhileRefreshing 失效导致行为不确定
+      pauseInstanceWhileRefreshing: true
     }
   );
 
@@ -192,14 +229,8 @@ export function createRequestClient(options: RequestClientConfig): AxiosInstance
         
         let responseDataStr = '';
         if (response.data !== undefined && response.data !== null) {
-          if (typeof response.data === 'object') {
-            responseDataStr = JSON.stringify(response.data);
-          } else {
-            responseDataStr = String(response.data);
-          }
-          if (responseDataStr.length > 200) {
-            responseDataStr = responseDataStr.substring(0, 200) + '...';
-          }
+          const rawDataStr = typeof response.data === 'string' ? response.data : safeStringify(response.data);
+          responseDataStr = rawDataStr.length > 200 ? rawDataStr.substring(0, 200) + '...' : rawDataStr;
         }
         
         console.log(`[Request] ${method} ${fullUrl} 响应 ${status}`, responseDataStr || '');
@@ -227,16 +258,12 @@ export function createRequestClient(options: RequestClientConfig): AxiosInstance
         };
         
         if (error.response?.data) {
-          let errorDataStr = '';
-          if (typeof error.response.data === 'object') {
-            errorDataStr = JSON.stringify(error.response.data);
-          } else {
-            errorDataStr = String(error.response.data);
-          }
-          if (errorDataStr.length > 200) {
-            errorDataStr = errorDataStr.substring(0, 200) + '...';
-          }
-          errorInfo.data = errorDataStr;
+          const errorDataStr =
+            typeof error.response.data === 'string'
+              ? error.response.data
+              : safeStringify(error.response.data);
+          const truncated = errorDataStr.length > 200 ? errorDataStr.substring(0, 200) + '...' : errorDataStr;
+          errorInfo.data = truncated;
         }
         
         console.error(`[Request] ${method} ${fullUrl} 失败:`, errorInfo);

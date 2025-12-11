@@ -6,7 +6,12 @@ export type ApiResponse<T = unknown> = {
   data?: T;
 };
 
-export function noop(): void {
+/**
+ * Performs no operation.
+ *
+ * This function intentionally does nothing and exists as a callable placeholder.
+ */
+export function noop(..._args: any[]): void {
   // intentionally empty
 }
 

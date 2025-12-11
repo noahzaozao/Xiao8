@@ -1,3 +1,4 @@
+import React from "react";
 import { useState, useEffect, useRef } from "react";
 import { BaseModal } from "./BaseModal";
 import type { BaseModalProps } from "./BaseModal";
@@ -12,6 +13,18 @@ export interface PromptDialogProps extends Omit<BaseModalProps, "children"> {
   onCancel?: () => void;
 }
 
+/**
+ * Renders a modal prompt with a single-line text input and configurable OK/Cancel actions.
+ *
+ * @param message - The message displayed above the input.
+ * @param defaultValue - Initial value populated into the input when the dialog opens.
+ * @param placeholder - Placeholder text shown inside the input when empty.
+ * @param okText - Explicit label for the confirmation button; if omitted, uses i18n or a fallback.
+ * @param cancelText - Explicit label for the cancel button; if omitted, uses i18n or a fallback.
+ * @param onConfirm - Callback invoked with the current input value when the user confirms.
+ * @param onCancel - Optional callback invoked when the user cancels the dialog.
+ * @returns A JSX element representing the prompt dialog.
+ */
 export function PromptDialog({
   isOpen,
   onClose,
@@ -59,12 +72,10 @@ export function PromptDialog({
     // 不在这里调用 onClose，让父组件处理关闭逻辑
   };
 
-  // 处理 Enter 和 ESC 键
+  // 处理 Enter 键（Esc 交由 BaseModal 统一处理）
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       handleConfirm();
-    } else if (e.key === "Escape") {
-      handleCancel();
     }
   };
 

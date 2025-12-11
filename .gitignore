@@ -58,6 +58,8 @@ node_modules/
 *.cache/
 dist/
 build/
+frontend/coverage/
+frontend/packages/request/coverage/
 
 # Python venvs and wheels
 *.egg-info/
