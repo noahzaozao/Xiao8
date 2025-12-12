@@ -667,7 +667,7 @@ def get_model_files_by_id(model_id: str):
         
         # 添加额外的错误检查
         if not model_dir:
-            logger.error(f"获取模型目录失败: 目录路径为空")
+            logger.error("获取模型目录失败: 目录路径为空")
             return {"success": False, "error": "获取模型目录失败: 无效的路径"}
             
         if not os.path.exists(model_dir):

@@ -101,7 +101,7 @@ def get_emotion_mapping(model_name: str):
     """获取情绪映射配置"""
     try:
         # 使用 find_model_directory 在 static、用户文档目录、创意工坊目录中查找模型
-        model_dir, url_prefix = find_model_directory(model_name)
+        model_dir, _ = find_model_directory(model_name)
         if not os.path.exists(model_dir):
             return JSONResponse(status_code=404, content={"success": False, "error": "模型目录不存在"})
         

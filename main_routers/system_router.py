@@ -24,7 +24,7 @@ from langchain_core.messages import SystemMessage
 import httpx
 
 from .shared_state import get_steamworks, get_config_manager, get_sync_message_queue, get_session_manager
-from config import MODELS_WITH_EXTRA_BODY, MEMORY_SERVER_PORT
+from config import get_extra_body, MEMORY_SERVER_PORT
 from config.prompts_sys import emotion_analysis_prompt, proactive_chat_prompt, proactive_chat_prompt_screenshot
 from utils.workshop_utils import get_workshop_path
 from utils.screenshot_utils import analyze_screenshot_from_data_url
@@ -112,8 +112,9 @@ async def emotion_analysis(request: Request):
         }
         
         # 只有在需要时才添加 extra_body
-        if model in MODELS_WITH_EXTRA_BODY:
-            request_params["extra_body"] = {"enable_thinking": False}
+        extra_body = get_extra_body(model)
+        if extra_body:
+            request_params["extra_body"] = extra_body
         
         response = await client.chat.completions.create(**request_params)
         
