@@ -140,6 +140,12 @@ class OmniRealtimeClient:
         self._repetition_threshold = 0.8  # 相似度阈值
         self._max_recent_responses = 3  # 最多存储的回复数
         self._current_response_transcript = ""  # 当前回复的转录文本
+        
+        # Backpressure control - 防止503过载错误
+        self._send_semaphore = asyncio.Semaphore(25)  # 最多25个并发发送
+        self._is_throttled = False  # 503检测后节流状态
+        self._throttle_until = 0.0  # 节流结束时间戳
+        self._throttle_duration = 2.0  # 节流持续时间（秒）
 
     async def _check_silence_timeout(self):
         """定期检查是否超过静默超时时间，如果是则触发超时回调"""
@@ -306,13 +312,25 @@ class OmniRealtimeClient:
             raise ValueError(f"Invalid turn detection mode: {self.turn_detection_mode}")
 
     async def send_event(self, event) -> None:
+        # Backpressure: 检查是否处于节流状态
+        if self._is_throttled:
+            if time.time() < self._throttle_until:
+                # 仍在节流期，丢弃音频帧以减轻服务器压力
+                if event.get("type") == "input_audio_buffer.append":
+                    return  # 丢弃音频帧
+            else:
+                # 节流期结束，恢复正常发送
+                self._is_throttled = False
+                logger.info("🔄 Backpressure throttle ended, resuming sends")
+        
         event['event_id'] = "event_" + str(int(time.time() * 1000))
         if self.ws:
-            try:
-                await self.ws.send(json.dumps(event))
-            except Exception as e:
-                logger.warning(f"⚠️ 发送事件失败: {e}")
-                raise
+            async with self._send_semaphore:  # 限制并发发送数量
+                try:
+                    await self.ws.send(json.dumps(event))
+                except Exception as e:
+                    logger.warning(f"⚠️ 发送事件失败: {e}")
+                    raise
 
     async def update_session(self, config: Dict[str, Any]) -> None:
         """Update session configuration."""
@@ -556,10 +574,21 @@ class OmniRealtimeClient:
                 # else:
                 #     print(f"Event type: {event_type}")
                 if event_type == "error":
-                    logger.error(f"API Error: {event['error']}")
-                    if '欠费' in event['error'] or 'standing' in event['error']:
+                    error_msg = str(event.get('error', ''))
+                    logger.error(f"API Error: {error_msg}")
+                    
+                    # 检测503过载错误，触发backpressure节流
+                    if '503' in error_msg or 'overloaded' in error_msg.lower():
+                        self._is_throttled = True
+                        self._throttle_until = time.time() + self._throttle_duration
+                        logger.warning(f"⚡ 503 detected, throttling for {self._throttle_duration}s")
+                        if self.on_status_message:
+                            await self.on_status_message("⚠️ 服务器繁忙，正在自动调节发送速率...")
+                        continue  # 不关闭连接，只进行节流
+                    
+                    if '欠费' in error_msg or 'standing' in error_msg:
                         if self.on_connection_error:
-                            await self.on_connection_error(event['error'])
+                            await self.on_connection_error(error_msg)
                         await self.close()
                     continue
                 elif event_type == "response.done":
