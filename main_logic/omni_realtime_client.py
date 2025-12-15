@@ -9,6 +9,7 @@ import logging
 
 from typing import Optional, Callable, Dict, Any, Awaitable
 from enum import Enum
+from config import NATIVE_IMAGE_MIN_INTERVAL
 from utils.config_manager import get_config_manager
 from utils.audio_processor import AudioProcessor
 from utils.frontend_utils import calculate_text_similarity
@@ -146,6 +147,9 @@ class OmniRealtimeClient:
         self._is_throttled = False  # 503检测后节流状态
         self._throttle_until = 0.0  # 节流结束时间戳
         self._throttle_duration = 2.0  # 节流持续时间（秒）
+        
+        # Native image input rate limiting
+        self._last_native_image_time = 0.0  # 上次原生图片输入时间戳
 
     async def _check_silence_timeout(self):
         """定期检查是否超过静默超时时间，如果是则触发超时回调"""
@@ -409,6 +413,18 @@ class OmniRealtimeClient:
             if '用户的实时屏幕截图或相机画面正在分析中' in self._image_description and self.model in ['step', 'free']:
                 await self._analyze_image_with_vision_model(image_b64)
                 return
+            
+            # Check if model supports native image input
+            supports_native_image = any(m in self.model for m in ["qwen", "glm", "gpt"])
+            
+            # Rate limiting for native image input
+            if supports_native_image:
+                current_time = time.time()
+                elapsed = current_time - self._last_native_image_time
+                if elapsed < NATIVE_IMAGE_MIN_INTERVAL:
+                    # Skip this image frame due to rate limiting
+                    return
+                self._last_native_image_time = current_time
 
             if self._audio_in_buffer:
                 if "qwen" in self.model:
