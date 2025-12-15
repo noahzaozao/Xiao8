@@ -399,16 +399,17 @@ wheels = [
 
 [[package]]
 name = "dashscope"
-version = "1.24.1"
+version = "1.25.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
+    { name = "certifi" },
     { name = "cryptography" },
     { name = "requests" },
     { name = "websocket-client" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1a/5e/58eb42ba9d23dbb2bb37032b4991fcdf5b0e42fcb624c3f095b253f490d3/dashscope-1.24.1-py3-none-any.whl", hash = "sha256:509241ef8c173e94da58ec4b94d4aacad3a151dc93ead6e5ea12acd27615b127", size = 1301135, upload-time = "2025-08-01T06:08:22.441Z" },
+    { url = "https://files.pythonhosted.org/packages/a5/33/e9e0f4663e55f72be6408f294a42ef15da3095b8bd014275502e88085e4c/dashscope-1.25.4-py3-none-any.whl", hash = "sha256:d7f8ab06a5916c40341c3cc352160a64965ab73947df202697bee5673e3d2c04", size = 1322794, upload-time = "2025-12-15T03:09:35.601Z" },
 ]
 
 [[package]]
@@ -1122,7 +1123,7 @@ requires-dist = [
     { name = "anthropic" },
     { name = "backoff" },
     { name = "beautifulsoup4", specifier = ">=4.12.0" },
-    { name = "dashscope" },
+    { name = "dashscope", specifier = "==1.25.4" },
     { name = "fastapi", specifier = "~=0.115.9" },
     { name = "google-genai" },
     { name = "jinja2" },

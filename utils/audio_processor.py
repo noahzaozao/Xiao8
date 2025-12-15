@@ -74,8 +74,8 @@ class AudioProcessor:
     RESET_TIMEOUT_SECONDS = 2.0
     
     # AGC Configuration
-    AGC_TARGET_LEVEL = 0.25        # Target RMS level (0.0-1.0)
-    AGC_MAX_GAIN = 5.0             # Maximum gain multiplier
+    AGC_TARGET_LEVEL = 0.25        # Target RMS level (0.0-1.0), raised for easier VAD trigger
+    AGC_MAX_GAIN = 12.0             # Maximum gain multiplier, raised for quieter mics
     AGC_MIN_GAIN = 0.25            # Minimum gain multiplier
     AGC_ATTACK_TIME = 0.01         # Attack time in seconds (fast response to peaks)
     AGC_RELEASE_TIME = 0.4         # Release time in seconds (slow return to normal)
