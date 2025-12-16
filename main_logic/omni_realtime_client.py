@@ -626,7 +626,21 @@ class OmniRealtimeClient:
                         continue  # 不关闭连接，只进行节流
                     
                     if '欠费' in error_msg or 'standing' in error_msg:
+                    error_msg = str(event.get('error', ''))
+                    logger.error(f"API Error: {error_msg}")
+                    
+                    # 检测503过载错误，触发backpressure节流
+                    if '503' in error_msg or 'overloaded' in error_msg.lower():
+                        self._is_throttled = True
+                        self._throttle_until = time.time() + self._throttle_duration
+                        logger.warning(f"⚡ 503 detected, throttling for {self._throttle_duration}s")
+                        if self.on_status_message:
+                            await self.on_status_message("⚠️ 服务器繁忙，正在自动调节发送速率...")
+                        continue  # 不关闭连接，只进行节流
+                    
+                    if '欠费' in error_msg or 'standing' in error_msg:
                         if self.on_connection_error:
+                            await self.on_connection_error(error_msg)
                             await self.on_connection_error(error_msg)
                         await self.close()
                     continue
