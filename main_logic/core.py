@@ -49,7 +49,7 @@ def _get_timestamp():
             locale.setlocale(locale.LC_TIME, old_locale)
         except:
             pass
-        return timestamp
+        return "Current time: " + timestamp
     except Exception:
         return datetime.now().strftime("%Y-%m-%d %H:%M")
 
