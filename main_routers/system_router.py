@@ -110,7 +110,7 @@ async def emotion_analysis(request: Request):
             "model": model,
             "messages": messages,
             "temperature": 0.3,
-            "max_completions_tokens": 20
+            "max_completion_tokens": 20
         }
         
         # 只有在需要时才添加 extra_body

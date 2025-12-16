@@ -160,7 +160,7 @@ class AudioProcessor:
             if self._denoiser is not None:
                 self._reset_internal_state()
                 self._last_speech_time = current_time  # Prevent infinite reset loop
-                logger.info("🔄 RNNoise state auto-reset after silence")
+                logger.debug("🔄 RNNoise state auto-reset after silence")
             self._needs_reset = False
         
         # Apply RNNoise if available (processes int16, returns int16)

@@ -1043,10 +1043,9 @@ class LLMSessionManager:
                 except Exception:
                     items = ""
                 final_prime_text += (
-                    "\n[注入指令] 请忽略上一次用户的最后一条输入，不要继续该轮对话。"
-                    " 在你的下一次响应中，用简洁自然的一段话汇报和解释你先前执行的任务的结果，简要说明你做了什么：\n"
+                    f"\n[注入指令] 请{self.lanlan_name}忽略最后一轮对话。用简洁自然的一段话向{self.master_name}汇报和解释先前执行的任务的结果，简要说明自己做了什么：\n"
                     + items +
-                    "\n完成上述汇报后，恢复正常的对话节奏。"
+                    "\n完成上述汇报后，再恢复正常对话。"
                 )
                 # 清空队列，避免重复注入
                 self.pending_extra_replies.clear()

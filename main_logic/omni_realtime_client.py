@@ -114,7 +114,7 @@ class OmniRealtimeClient:
         # Track image recognition per turn
         self._image_recognized_this_turn = False
         self._image_being_analyzed = False
-        self._image_description = "[用户的实时屏幕截图或相机画面正在分析中。你先不要瞎编内容，可以请用户稍等片刻。在此期间不要用搜索功能应付。等收到画面分析结果后再描述画面。]"
+        self._image_description = "[实时屏幕截图或相机画面正在分析中。先不要瞎编内容，可以稍等片刻。在此期间不要用搜索功能应付。等收到画面分析结果后再描述画面。]"
         
         # Silence detection for auto-closing inactive sessions
         # 只在 GLM 和 free API 时启用90秒静默超时，Qwen 和 Step 放行
@@ -147,6 +147,9 @@ class OmniRealtimeClient:
         self._is_throttled = False  # 503检测后节流状态
         self._throttle_until = 0.0  # 节流结束时间戳
         self._throttle_duration = 2.0  # 节流持续时间（秒）
+        
+        # Fatal error detection - 检测到致命错误后立即中断
+        self._fatal_error_occurred = False  # 致命错误标志
         
         # Native image input rate limiting
         self._last_native_image_time = 0.0  # 上次原生图片输入时间戳
@@ -248,7 +251,10 @@ class OmniRealtimeClient:
                         "prefix_padding_ms": 300,
                         "silence_duration_ms": 500
                     },
-                    "temperature": 1.0
+                    "turn_detection_threshold": 0.2,
+                    "smooth_output": False,
+                    "repetition_penalty": 1.2,
+                    "temperature": 0.7
                 })
             elif "gpt" in self.model:
                 await self.update_session({
@@ -316,6 +322,10 @@ class OmniRealtimeClient:
             raise ValueError(f"Invalid turn detection mode: {self.turn_detection_mode}")
 
     async def send_event(self, event) -> None:
+        # 检查是否已发生致命错误，直接跳过发送
+        if self._fatal_error_occurred:
+            return
+        
         # Backpressure: 检查是否处于节流状态
         if self._is_throttled:
             if time.time() < self._throttle_until:
@@ -333,7 +343,20 @@ class OmniRealtimeClient:
                 try:
                     await self.ws.send(json.dumps(event))
                 except Exception as e:
-                    logger.warning(f"⚠️ 发送事件失败: {e}")
+                    error_msg = str(e)
+                    logger.warning(f"⚠️ 发送事件失败: {error_msg}")
+                    
+                    # 检测致命错误：Response timeout 或 1011 错误码
+                    if 'Response timeout' in error_msg or '1011' in error_msg:
+                        if not self._fatal_error_occurred:
+                            self._fatal_error_occurred = True
+                            logger.error("💥 检测到致命错误 (Response timeout / 1011)，立即中断语音对话")
+                            if self.on_connection_error:
+                                asyncio.create_task(self.on_connection_error("💥 连接超时 (Response timeout)，语音对话已中断。"))
+                            # 尝试关闭连接
+                            asyncio.create_task(self.close())
+                        return  # 不再抛出异常，直接返回
+                    
                     raise
 
     async def update_session(self, config: Dict[str, Any]) -> None:
@@ -387,7 +410,7 @@ class OmniRealtimeClient:
             )
             
             if description:
-                self._image_description = f"[用户的实时屏幕截图或相机画面]: {description}"
+                self._image_description = f"[实时屏幕截图或相机画面]: {description}"
                 logger.info("✅ Image analysis complete.")
                 self._image_being_analyzed = False
                 return description
@@ -410,7 +433,7 @@ class OmniRealtimeClient:
         """Stream raw image data to the API."""
 
         try:
-            if '用户的实时屏幕截图或相机画面正在分析中' in self._image_description and self.model in ['step', 'free']:
+            if '实时屏幕截图或相机画面正在分析中' in self._image_description and self.model in ['step', 'free']:
                 await self._analyze_image_with_vision_model(image_b64)
                 return
             
