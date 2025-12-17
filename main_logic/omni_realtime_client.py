@@ -262,7 +262,7 @@ class OmniRealtimeClient:
             elif "gpt" in self.model:
                 await self.update_session({
                     "type": "realtime",
-                    "model": "gpt-realtime",
+                    "model": "gpt-realtime-mini-2025-12-15",
                     "instructions": instructions + '\n请使用卡哇伊的声音与用户交流。\n',
                     "output_modalities": ['audio'] if 'audio' in self._modalities else ['text'],
                     "audio": {

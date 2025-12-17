@@ -857,6 +857,7 @@ function init_app() {
 
         // 停止录音后，重置主动搭话退避级别并开始定时
         if (proactiveChatEnabled || proactiveVisionEnabled) {
+            lastUserInputTime = Date.now();
             resetProactiveChatBackoff();
         }
 
