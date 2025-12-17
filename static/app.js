@@ -210,6 +210,7 @@ function init_app() {
     let proactiveVisionEnabled = false;
     let proactiveChatTimer = null;
     let proactiveChatBackoffLevel = 0; // 退避级别：0=30s, 1=75s, 2=187.5s, etc.
+    let isProactiveChatRunning = false; // 锁：防止主动搭话执行期间重复触发
     const PROACTIVE_CHAT_BASE_DELAY = 30000; // 30秒基础延迟
     // 主动视觉在语音时的单帧推送（当同时开启主动视觉 && 语音对话时，每15秒推送一帧）
     let proactiveVisionFrameTimer = null;
@@ -4820,6 +4821,12 @@ function init_app() {
             return;
         }
 
+        // 如果主动搭话正在执行中，不安排新的定时器（等当前执行完成后自动安排）
+        if (isProactiveChatRunning) {
+            console.log('主动搭话正在执行中，延迟安排下一次');
+            return;
+        }
+
         // 只在非语音模式下执行（语音模式下不触发主动搭话）
         // 文本模式或待机模式都可以触发主动搭话
         if (isRecording) {
@@ -4832,8 +4839,20 @@ function init_app() {
         console.log(`主动搭话：${delay / 1000}秒后触发（退避级别：${proactiveChatBackoffLevel}）`);
 
         proactiveChatTimer = setTimeout(async () => {
+            // 双重检查锁：定时器触发时再次检查是否正在执行
+            if (isProactiveChatRunning) {
+                console.log('主动搭话定时器触发时发现正在执行中，跳过本次');
+                return;
+            }
+
             console.log('触发主动搭话...');
-            await triggerProactiveChat();
+            isProactiveChatRunning = true; // 加锁
+
+            try {
+                await triggerProactiveChat();
+            } finally {
+                isProactiveChatRunning = false; // 解锁
+            }
 
             // 增加退避级别（最多到约7分钟，即level 3：30s * 2.5^3 = 7.5min）
             if (proactiveChatBackoffLevel < 3) {
