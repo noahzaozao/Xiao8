@@ -65,10 +65,11 @@ Live2DManager.prototype.createPopup = function (buttonId) {
 
 // 创建设置弹出框内容
 Live2DManager.prototype._createSettingsPopupContent = function (popup) {
-    // 先添加 Focus 模式和主动搭话开关（在最上面）
+    // 先添加 Focus 模式、主动搭话和主动视觉开关（在最上面）
     const settingsToggles = [
         { id: 'focus-mode', label: window.t ? window.t('settings.toggles.allowInterrupt') : '允许打断', labelKey: 'settings.toggles.allowInterrupt', storageKey: 'focusModeEnabled', inverted: true }, // inverted表示值与focusModeEnabled相反
-        { id: 'proactive-chat', label: window.t ? window.t('settings.toggles.proactiveChat') : '主动搭话', labelKey: 'settings.toggles.proactiveChat', storageKey: 'proactiveChatEnabled' }
+        { id: 'proactive-chat', label: window.t ? window.t('settings.toggles.proactiveChat') : '主动搭话', labelKey: 'settings.toggles.proactiveChat', storageKey: 'proactiveChatEnabled' },
+        { id: 'proactive-vision', label: window.t ? window.t('settings.toggles.proactiveVision') : '主动视觉', labelKey: 'settings.toggles.proactiveVision', storageKey: 'proactiveVisionEnabled' }
     ];
 
     settingsToggles.forEach(toggle => {
@@ -336,6 +337,8 @@ Live2DManager.prototype._createSettingsToggleItem = function (toggle, popup) {
         checkbox.checked = toggle.inverted ? !window.focusModeEnabled : window.focusModeEnabled;
     } else if (toggle.id === 'proactive-chat' && typeof window.proactiveChatEnabled !== 'undefined') {
         checkbox.checked = window.proactiveChatEnabled;
+    } else if (toggle.id === 'proactive-vision' && typeof window.proactiveVisionEnabled !== 'undefined') {
+        checkbox.checked = window.proactiveVisionEnabled;
     }
 
     // 创建自定义圆形指示器
@@ -454,6 +457,23 @@ Live2DManager.prototype._createSettingsToggleItem = function (toggle, popup) {
                 window.stopProactiveChatSchedule();
             }
             console.log(`主动搭话已${isChecked ? '开启' : '关闭'}`);
+        } else if (toggle.id === 'proactive-vision') {
+            window.proactiveVisionEnabled = isChecked;
+
+            // 保存到localStorage
+            if (typeof window.saveNEKOSettings === 'function') {
+                window.saveNEKOSettings();
+            }
+
+            if (isChecked && typeof window.resetProactiveChatBackoff === 'function') {
+                window.resetProactiveChatBackoff();
+            } else if (!isChecked && typeof window.stopProactiveChatSchedule === 'function') {
+                // 只有当主动搭话也关闭时才停止调度
+                if (!window.proactiveChatEnabled) {
+                    window.stopProactiveChatSchedule();
+                }
+            }
+            console.log(`主动视觉已${isChecked ? '开启' : '关闭'}`);
         }
     };
 
@@ -498,9 +518,7 @@ Live2DManager.prototype._createSettingsToggleItem = function (toggle, popup) {
 Live2DManager.prototype._createSettingsMenuItems = function (popup) {
     const settingsItems = [
         { id: 'live2d-manage', label: window.t ? window.t('settings.menu.live2dSettings') : 'Live2D设置', labelKey: 'settings.menu.live2dSettings', icon: '/static/icons/live2d_settings_icon.png', action: 'navigate', urlBase: '/l2d' },
-        { id: 'api-keys', label: window.t ? window.t('settings.menu.apiKeys') : 'API密钥', labelKey: 'settings.menu.apiKeys', icon: '/static/icons/api_key_icon.png', action: 'navigate', url: '/api_key' },
         { id: 'character', label: window.t ? window.t('settings.menu.characterManage') : '角色管理', labelKey: 'settings.menu.characterManage', icon: '/static/icons/character_icon.png', action: 'navigate', url: '/chara_manager' },
-        { id: 'voice-clone', label: window.t ? window.t('settings.menu.voiceClone') : '声音克隆', labelKey: 'settings.menu.voiceClone', icon: '/static/icons/voice_clone_icon.png', action: 'navigate', url: '/voice_clone' },
         { id: 'memory', label: window.t ? window.t('settings.menu.memoryBrowser') : '记忆浏览', labelKey: 'settings.menu.memoryBrowser', icon: '/static/icons/memory_icon.png', action: 'navigate', url: '/memory_browser' },
         { id: 'steam-workshop', label: window.t ? window.t('settings.menu.steamWorkshop') : '创意工坊', labelKey: 'settings.menu.steamWorkshop', icon: '/static/icons/Steam_icon_logo.png', action: 'navigate', url: '/steam_workshop_manager' },
     ];
@@ -584,30 +602,6 @@ Live2DManager.prototype._createSettingsMenuItems = function (popup) {
                     }
                     // Live2D设置页直接跳转
                     window.location.href = finalUrl;
-                } else if (item.id === 'voice-clone' && item.url) {
-                    // 声音克隆页面也需要传递 lanlan_name
-                    const lanlanName = (window.lanlan_config && window.lanlan_config.lanlan_name) || '';
-                    finalUrl = `${item.url}?lanlan_name=${encodeURIComponent(lanlanName)}`;
-
-                    // 检查是否已有该URL的窗口打开
-                    if (this._openSettingsWindows[finalUrl]) {
-                        const existingWindow = this._openSettingsWindows[finalUrl];
-                        if (existingWindow && !existingWindow.closed) {
-                            existingWindow.focus();
-                            return;
-                        } else {
-                            delete this._openSettingsWindows[finalUrl];
-                        }
-                    }
-
-                    // 打开新的弹窗前关闭其他已打开的设置窗口，实现全局互斥
-                    this.closeAllSettingsWindows();
-
-                    // 打开新窗口并保存引用
-                    const newWindow = window.open(finalUrl, '_blank', 'width=1000,height=800,menubar=no,toolbar=no,location=no,status=no');
-                    if (newWindow) {
-                        this._openSettingsWindows[finalUrl] = newWindow;
-                    }
                 } else {
                     // 其他页面弹出新窗口，但检查是否已打开
                     // 检查是否已有该URL的窗口打开
