@@ -2641,7 +2641,7 @@ function init_app() {
                 proactiveVisionDiv.style.cssText = 'padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.1);';
                 const proactiveVisionSpan = document.createElement('span');
                 proactiveVisionSpan.style.fontSize = '14px';
-                proactiveVisionSpan.textContent = window.t ? window.t('settings.toggles.proactiveVision') : '👁️ 主动视觉';
+                proactiveVisionSpan.textContent = window.t ? window.t('settings.toggles.proactiveVision') : '自主视觉';
                 proactiveVisionSpan.setAttribute('data-i18n', 'settings.toggles.proactiveVision');
                 proactiveVisionDiv.appendChild(proactiveVisionSpan);
                 const proactiveVisionCheckbox = document.createElement('input');
@@ -4815,8 +4815,8 @@ function init_app() {
             proactiveChatTimer = null;
         }
 
-        // 两个功能都关闭时跳过
-        if (!proactiveChatEnabled && !proactiveVisionEnabled) {
+        // 主动搭话关闭时跳过（定时主动搭话只需要proactiveChatEnabled）
+        if (!proactiveChatEnabled) {
             return;
         }
 
@@ -5239,8 +5239,8 @@ function init_app() {
     // 加载设置
     loadSettings();
 
-    // 如果已开启主动搭话或主动视觉，立即启动定时器
-    if (proactiveChatEnabled || proactiveVisionEnabled) {
+    // 如果已开启主动搭话，立即启动定时器
+    if (proactiveChatEnabled) {
         scheduleProactiveChat();
     }
 
