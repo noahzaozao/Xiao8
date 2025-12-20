@@ -21,11 +21,12 @@ export default defineConfig(({ mode }) => {
       sourcemap: isProduction ? false : true, // 开发模式生成 sourcemap，生产模式不生成
       minify: isProduction ? "esbuild" : false, // 生产模式压缩，开发模式不压缩
       rollupOptions: {
-        external: ["@project_neko/request", "@project_neko/components", "react", "react-dom"],
+        external: ["@project_neko/request", "@project_neko/components", "@project_neko/realtime", "react", "react-dom"],
         output: {
           globals: {
             "@project_neko/request": "ProjectNekoRequest",
             "@project_neko/components": "ProjectNekoComponents",
+            "@project_neko/realtime": "ProjectNekoRealtime",
             react: "React",
             "react-dom": "ReactDOM"
           }
