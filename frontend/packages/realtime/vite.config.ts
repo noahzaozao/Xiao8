@@ -28,8 +28,7 @@ export default defineConfig(({ mode }) => {
       },
       outDir: path.resolve(__dirname, "../../../static/bundles"),
       emptyOutDir: false,
-      // 按项目维护规则：保持 sourcemap 产出，便于排查线上问题
-      sourcemap: true,
+      sourcemap: isProduction ? false : true, // 开发模式生成 sourcemap，生产模式不生成
       minify: isProduction ? "esbuild" : false,
       rollupOptions: {
         external: [],
